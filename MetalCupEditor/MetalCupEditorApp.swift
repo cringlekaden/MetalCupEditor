@@ -18,7 +18,7 @@ struct MetalCupEditorApp: App {
             title: "MetalCup Editor",
             resizable: true,
             centered: true,
-            preferredFramesPerSecond: 120,
+            preferredFramesPerSecond: 60,
             colorPixelFormat: .bgra8Unorm,
             depthStencilPixelFormat: .invalid,
             resourcesFolderName: "Resources",
