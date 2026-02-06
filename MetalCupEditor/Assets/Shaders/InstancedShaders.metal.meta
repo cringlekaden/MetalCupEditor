@@ -1,0 +1,11 @@
+{
+  "dependencies" : [
+
+  ],
+  "handle" : "3502F245-BB99-47E9-AB5A-D458C8948B67",
+  "importSettings" : {
+
+  },
+  "sourcePath" : "Shaders\/InstancedShaders.metal",
+  "type" : "unknown"
+}

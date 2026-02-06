@@ -1,0 +1,11 @@
+{
+  "dependencies" : [
+
+  ],
+  "handle" : "EC21B460-8B78-4B3B-A409-B5B84EBEAAF2",
+  "importSettings" : {
+
+  },
+  "sourcePath" : "Resources\/sphere\/brick_roughness.png",
+  "type" : "texture"
+}

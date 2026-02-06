@@ -535,6 +535,19 @@ bool ImGui_ImplOSX_Init(NSView* view)
     return true;
 }
 
+void ImGui_ImplOSX_SetKeyboardInputEnabled(NSView* view)
+{
+    ImGui_ImplOSX_Data* bd = ImGui_ImplOSX_GetBackendData();
+    if (bd == nullptr || bd->KeyEventResponder == nil)
+        return;
+
+    NSWindow* window = view ? view.window : nil;
+    if (window == nil)
+        window = bd->KeyEventResponder.window;
+    if (window != nil)
+        [window makeFirstResponder:bd->KeyEventResponder];
+}
+
 void ImGui_ImplOSX_Shutdown()
 {
     ImGui_ImplOSX_Data* bd = ImGui_ImplOSX_GetBackendData();

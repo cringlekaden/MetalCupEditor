@@ -24,5 +24,7 @@ vertex RasterizerData vertex_instanced(const Vertex vert [[ stage_in ]],
     rd.surfaceNormal = normalize(modelConstant.modelMatrix * float4(vert.normal, 0.0)).xyz;
     rd.surfaceTangent = normalize(modelConstant.modelMatrix * float4(vert.tangent, 0.0)).xyz;
     rd.surfaceBitangent = normalize(modelConstant.modelMatrix * float4(vert.bitangent, 0.0)).xyz;
+    rd.toCamera = sceneConstants.cameraPositionAndIBL.xyz - worldPosition.xyz;
+    rd.cameraPositionAndIBL = sceneConstants.cameraPositionAndIBL;
     return rd;
 }

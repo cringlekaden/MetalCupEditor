@@ -23,14 +23,16 @@ vertex RasterizerData vertex_basic(const Vertex vert [[ stage_in ]],
     rd.surfaceNormal = normalize(modelConstants.modelMatrix * float4(vert.normal, 0.0)).xyz;
     rd.surfaceTangent = normalize(modelConstants.modelMatrix * float4(vert.tangent, 0.0)).xyz;
     rd.surfaceBitangent = normalize(modelConstants.modelMatrix * float4(vert.bitangent, 0.0)).xyz;
-    rd.toCamera = sceneConstants.cameraPosition - worldPosition.xyz;
+    rd.toCamera = sceneConstants.cameraPositionAndIBL.xyz - worldPosition.xyz;
+    rd.cameraPositionAndIBL = sceneConstants.cameraPositionAndIBL;
     return rd;
 }
 
 fragment float4 fragment_basic(RasterizerData rd [[ stage_in ]],
                               constant MetalCupMaterial &material [[ buffer(1) ]],
-                              constant int &lightCount [[ buffer(2) ]],
-                              constant LightData *lightDatas [[ buffer(3) ]],
+                              constant RendererSettings &settings [[ buffer(2) ]],
+                              constant int &lightCount [[ buffer(3) ]],
+                              constant LightData *lightDatas [[ buffer(4) ]],
                               sampler sam [[ sampler(0) ]],
                               texture2d<float> albedoMap [[ texture(0) ]],
                               texture2d<float> normalMap [[ texture(1) ]],
@@ -96,6 +98,8 @@ fragment float4 fragment_basic(RasterizerData rd [[ stage_in ]],
     float3 V = normalize(rd.toCamera);
     float NdotV = max(dot(N, V), 0.001);
 
+    float iblIntensity = rd.cameraPositionAndIBL.w * ((settings.iblEnabled != 0) ? settings.iblIntensity : 0.0f);
+
     // ------------------------------------------------------------
     // Unlit shortcut
     // ------------------------------------------------------------
@@ -134,7 +138,7 @@ fragment float4 fragment_basic(RasterizerData rd [[ stage_in ]],
     // Diffuse IBL
     // ------------------------------------------------------------
     float3 irradiance = irradianceMap.sample(sam, N).rgb;
-    float3 diffuseIBL = irradiance * (albedo / PBR::PI);
+    float3 diffuseIBL = irradiance * (albedo / PBR::PI) * iblIntensity;
 
     // Energy conservation split
     float3 F_ibl = PBR::FresnelSchlick(NdotV, F0);
@@ -154,7 +158,7 @@ fragment float4 fragment_basic(RasterizerData rd [[ stage_in ]],
     float2 brdfUV = float2(NdotV, roughness);
     brdfUV = clamp(brdfUV, 0.001, 0.999);
     float2 brdfSample = brdf_lut.sample(sam, brdfUV).rg;
-    float3 specularIBL = prefilteredColor * (F_ibl * brdfSample.x + brdfSample.y);
+    float3 specularIBL = prefilteredColor * (F_ibl * brdfSample.x + brdfSample.y) * iblIntensity;
 
     // Optional: Apply AO to specular too (specular occlusion)
     // specularIBL *= ao;
@@ -170,6 +174,27 @@ fragment float4 fragment_basic(RasterizerData rd [[ stage_in ]],
         emissive = e * mask;
     }
     emissive *= material.emissiveScalar;
+
+    // ------------------------------------------------------------
+    // Debug Views
+    // ------------------------------------------------------------
+    if (settings.debugFlags != 0) {
+        if (settings.debugFlags & RendererDebugFlags::ShowAlbedo) {
+            return float4(albedo, 1.0);
+        }
+        if (settings.debugFlags & RendererDebugFlags::ShowNormals) {
+            return float4(normalize(N) * 0.5 + 0.5, 1.0);
+        }
+        if (settings.debugFlags & RendererDebugFlags::ShowRoughness) {
+            return float4(roughness, roughness, roughness, 1.0);
+        }
+        if (settings.debugFlags & RendererDebugFlags::ShowMetallic) {
+            return float4(metallic, metallic, metallic, 1.0);
+        }
+        if (settings.debugFlags & RendererDebugFlags::ShowEmissive) {
+            return float4(emissive, 1.0);
+        }
+    }
 
     // ------------------------------------------------------------
     // Combine

@@ -7,6 +7,7 @@
 
 #import <Foundation/Foundation.h>
 #import <MetalKit/MetalKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -26,6 +27,13 @@ NS_ASSUME_NONNULL_BEGIN
 /// This call creates its own render command encoder.
 + (void)renderWithCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
             renderPassDescriptor:(MTLRenderPassDescriptor *)renderPassDescriptor;
+
++ (bool)wantsCaptureMouse;
++ (bool)wantsCaptureKeyboard;
++ (bool)viewportIsHovered;
++ (bool)viewportIsFocused;
++ (CGSize)viewportContentSize;
++ (CGPoint)viewportContentOrigin;
 
 @end
 

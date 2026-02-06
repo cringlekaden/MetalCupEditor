@@ -39,6 +39,7 @@ struct RasterizerData {
     float3 surfaceTangent;
     float3 surfaceBitangent;
     float3 toCamera;
+    float4 cameraPositionAndIBL;
 };
 
 struct SimpleRasterizerData {
@@ -55,7 +56,41 @@ struct SceneConstants {
     float4x4 viewMatrix;
     float4x4 skyViewMatrix;
     float4x4 projectionMatrix;
-    float3 cameraPosition;
+    float4 cameraPositionAndIBL;
+};
+
+struct RendererSettings {
+    float bloomThreshold;
+    float bloomKnee;
+    float bloomIntensity;
+    uint bloomEnabled;
+    float2 bloomTexelSize;
+    float2 bloomPadding;
+    uint blurPasses;
+    uint tonemap;
+    float exposure;
+    float gamma;
+    uint iblEnabled;
+    float iblIntensity;
+    uint iblResolutionOverride;
+    uint debugFlags;
+    uint perfFlags;
+    float2 padding;
+};
+
+enum RendererDebugFlags : uint {
+    ShowAlbedo = 1 << 0,
+    ShowNormals = 1 << 1,
+    ShowRoughness = 1 << 2,
+    ShowMetallic = 1 << 3,
+    ShowEmissive = 1 << 4,
+    ShowBloom = 1 << 5
+};
+
+enum TonemapType : uint {
+    TonemapNone = 0,
+    TonemapReinhard = 1,
+    TonemapACES = 2
 };
 
 struct MetalCupMaterial {
