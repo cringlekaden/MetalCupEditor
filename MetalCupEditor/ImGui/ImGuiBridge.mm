@@ -13,12 +13,14 @@
 #import "backends/imgui_impl_metal.h"
 
 #import "RendererSettingsBridge.h"
+#import <Cocoa/Cocoa.h>
 
 static bool g_ImGuiInitialized = false;
 static bool g_ViewportHovered = false;
 static bool g_ViewportFocused = false;
 static CGSize g_ViewportContentSize = {0, 0};
 static CGPoint g_ViewportContentOrigin = {0, 0};
+static bool g_ShowRendererPanel = true;
 
 @implementation ImGuiBridge
 
@@ -105,7 +107,9 @@ static CGPoint g_ViewportContentOrigin = {0, 0};
     // Example menu bar
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("File")) {
-            ImGui::MenuItem("Quit");
+            if (ImGui::MenuItem("Quit")) {
+                [NSApp terminate:nil];
+            }
             ImGui::EndMenu();
         }
         ImGui::EndMenuBar();
@@ -114,15 +118,51 @@ static CGPoint g_ViewportContentOrigin = {0, 0};
     ImGui::PopStyleVar(3);
 
     // --- Panels ---
-    ImGui::Begin("Renderer");
+    bool rendererOpen = g_ShowRendererPanel;
+    ImGui::Begin("Renderer", &rendererOpen);
 
     if (ImGui::CollapsingHeader("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
         bool bloomEnabled = MCERendererGetBloomEnabled() != 0;
         if (ImGui::Checkbox("Enable Bloom", &bloomEnabled)) {
             MCERendererSetBloomEnabled(bloomEnabled ? 1 : 0);
         }
+        ImGui::TextUnformatted("Multi-scale bloom (mip chain + per-mip blur)");
+
+        const char* qualityItems[] = { "Low", "Medium", "High", "Ultra" };
+        static int qualityIndex = 2;
+        if (ImGui::Combo("Quality Preset", &qualityIndex, qualityItems, IM_ARRAYSIZE(qualityItems))) {
+            switch (qualityIndex) {
+            case 0: // Low
+                MCERendererSetHalfResBloom(1);
+                MCERendererSetBlurPasses(2);
+                MCERendererSetBloomUpsampleScale(0.8f);
+                MCERendererSetBloomMaxMips(3);
+                break;
+            case 1: // Medium
+                MCERendererSetHalfResBloom(1);
+                MCERendererSetBlurPasses(3);
+                MCERendererSetBloomUpsampleScale(1.0f);
+                MCERendererSetBloomMaxMips(4);
+                break;
+            case 2: // High
+                MCERendererSetHalfResBloom(0);
+                MCERendererSetBlurPasses(4);
+                MCERendererSetBloomUpsampleScale(1.1f);
+                MCERendererSetBloomMaxMips(5);
+                break;
+            case 3: // Ultra
+                MCERendererSetHalfResBloom(0);
+                MCERendererSetBlurPasses(6);
+                MCERendererSetBloomUpsampleScale(1.25f);
+                MCERendererSetBloomMaxMips(6);
+                break;
+            default:
+                break;
+            }
+        }
+
         float threshold = MCERendererGetBloomThreshold();
-        if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 5.0f)) {
+        if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 10.0f)) {
             MCERendererSetBloomThreshold(threshold);
         }
         float knee = MCERendererGetBloomKnee();
@@ -130,12 +170,24 @@ static CGPoint g_ViewportContentOrigin = {0, 0};
             MCERendererSetBloomKnee(knee);
         }
         float intensity = MCERendererGetBloomIntensity();
-        if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 2.0f)) {
+        if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 3.0f)) {
             MCERendererSetBloomIntensity(intensity);
         }
+        float upsampleScale = MCERendererGetBloomUpsampleScale();
+        if (ImGui::SliderFloat("Upsample Scale", &upsampleScale, 0.5f, 2.0f)) {
+            MCERendererSetBloomUpsampleScale(upsampleScale);
+        }
+        float dirtIntensity = MCERendererGetBloomDirtIntensity();
+        if (ImGui::SliderFloat("Dirt Intensity", &dirtIntensity, 0.0f, 2.0f)) {
+            MCERendererSetBloomDirtIntensity(dirtIntensity);
+        }
         int blurPasses = static_cast<int>(MCERendererGetBlurPasses());
-        if (ImGui::SliderInt("Blur Passes", &blurPasses, 0, 8)) {
+        if (ImGui::SliderInt("Blur Passes (per mip)", &blurPasses, 0, 8)) {
             MCERendererSetBlurPasses(static_cast<uint32_t>(blurPasses));
+        }
+        int maxMips = static_cast<int>(MCERendererGetBloomMaxMips());
+        if (ImGui::SliderInt("Max Mip Levels", &maxMips, 1, 8)) {
+            MCERendererSetBloomMaxMips(static_cast<uint32_t>(maxMips));
         }
         bool halfRes = MCERendererGetHalfResBloom() != 0;
         if (ImGui::Checkbox("Half-Res Bloom", &halfRes)) {
@@ -144,7 +196,7 @@ static CGPoint g_ViewportContentOrigin = {0, 0};
     }
 
     if (ImGui::CollapsingHeader("Tonemap", ImGuiTreeNodeFlags_DefaultOpen)) {
-        const char* tonemapItems[] = { "None", "Reinhard", "ACES" };
+        const char* tonemapItems[] = { "None", "Reinhard", "ACES", "Hazel" };
         int tonemap = static_cast<int>(MCERendererGetTonemap());
         if (ImGui::Combo("Tonemap##Mode", &tonemap, tonemapItems, IM_ARRAYSIZE(tonemapItems))) {
             MCERendererSetTonemap(static_cast<uint32_t>(tonemap));
@@ -159,6 +211,67 @@ static CGPoint g_ViewportContentOrigin = {0, 0};
         }
     }
 
+    if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_DefaultOpen)) {
+        bool skyEnabled = MCESkyGetEnabled() != 0;
+        if (ImGui::Checkbox("Enabled", &skyEnabled)) {
+            MCESkySetEnabled(skyEnabled ? 1 : 0);
+        }
+
+        const char* skyModes[] = { "HDRI", "Procedural" };
+        int skyMode = static_cast<int>(MCESkyGetMode());
+        if (ImGui::Combo("Mode", &skyMode, skyModes, IM_ARRAYSIZE(skyModes))) {
+            MCESkySetMode(static_cast<uint32_t>(skyMode));
+        }
+
+        static bool skyInit = false;
+        static float skyIntensity = 1.0f;
+        static float skyTurbidity = 2.0f;
+        static float skyAzimuth = 0.0f;
+        static float skyElevation = 30.0f;
+        static float skyTint[3] = {1.0f, 1.0f, 1.0f};
+
+        if (!skyInit) {
+            skyIntensity = MCESkyGetIntensity();
+            skyTurbidity = MCESkyGetTurbidity();
+            skyAzimuth = MCESkyGetAzimuthDegrees();
+            skyElevation = MCESkyGetElevationDegrees();
+            MCESkyGetTint(&skyTint[0], &skyTint[1], &skyTint[2]);
+            skyInit = true;
+        }
+
+        if (ImGui::SliderFloat("Intensity##Sky", &skyIntensity, 0.0f, 10.0f)) {
+            MCESkySetIntensity(skyIntensity);
+        }
+
+        if (ImGui::ColorEdit3("Sky Tint", skyTint)) {
+            MCESkySetTint(skyTint[0], skyTint[1], skyTint[2]);
+        }
+
+        if (skyMode == 1) {
+            if (ImGui::SliderFloat("Turbidity", &skyTurbidity, 1.0f, 10.0f)) {
+                MCESkySetTurbidity(skyTurbidity);
+            }
+
+            if (ImGui::SliderFloat("Azimuth (deg)", &skyAzimuth, 0.0f, 360.0f)) {
+                MCESkySetAzimuthDegrees(skyAzimuth);
+            }
+
+            if (ImGui::SliderFloat("Elevation (deg)", &skyElevation, 0.0f, 90.0f)) {
+                MCESkySetElevationDegrees(skyElevation);
+            }
+        } else {
+            ImGui::TextUnformatted("HDRI asset picker not hooked up yet.");
+        }
+
+        bool realtime = MCESkyGetRealtimeUpdate() != 0;
+        if (ImGui::Checkbox("Real-time Update", &realtime)) {
+            MCESkySetRealtimeUpdate(realtime ? 1 : 0);
+        }
+        if (ImGui::Button("Regenerate")) {
+            MCESkyRegenerate();
+        }
+    }
+
     if (ImGui::CollapsingHeader("IBL", ImGuiTreeNodeFlags_DefaultOpen)) {
         bool iblEnabled = MCERendererGetIBLEnabled() != 0;
         if (ImGui::Checkbox("Enable IBL", &iblEnabled)) {
@@ -170,43 +283,66 @@ static CGPoint g_ViewportContentOrigin = {0, 0};
         }
     }
 
-    if (ImGui::CollapsingHeader("Debug")) {
-        bool showAlbedo = MCERendererGetShowAlbedo() != 0;
-        if (ImGui::Checkbox("Show Albedo", &showAlbedo)) {
-            MCERendererSetShowAlbedo(showAlbedo ? 1 : 0);
+    if (ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen)) {
+        bool globalFlip = MCERendererGetNormalFlipYGlobal() != 0;
+        if (ImGui::Checkbox("Global Normal Flip (Y)", &globalFlip)) {
+            MCERendererSetNormalFlipYGlobal(globalFlip ? 1 : 0);
         }
-        bool showNormals = MCERendererGetShowNormals() != 0;
-        if (ImGui::Checkbox("Show Normals", &showNormals)) {
-            MCERendererSetShowNormals(showNormals ? 1 : 0);
+    }
+
+    if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) {
+        bool disableSpecAA = MCERendererGetDisableSpecularAA() != 0;
+        if (ImGui::Checkbox("Disable Specular AA", &disableSpecAA)) {
+            MCERendererSetDisableSpecularAA(disableSpecAA ? 1 : 0);
         }
-        bool showRoughness = MCERendererGetShowRoughness() != 0;
-        if (ImGui::Checkbox("Show Roughness", &showRoughness)) {
-            MCERendererSetShowRoughness(showRoughness ? 1 : 0);
+        bool disableClearcoat = MCERendererGetDisableClearcoat() != 0;
+        if (ImGui::Checkbox("Disable Clearcoat", &disableClearcoat)) {
+            MCERendererSetDisableClearcoat(disableClearcoat ? 1 : 0);
         }
-        bool showMetallic = MCERendererGetShowMetallic() != 0;
-        if (ImGui::Checkbox("Show Metallic", &showMetallic)) {
-            MCERendererSetShowMetallic(showMetallic ? 1 : 0);
+        bool disableSheen = MCERendererGetDisableSheen() != 0;
+        if (ImGui::Checkbox("Disable Sheen", &disableSheen)) {
+            MCERendererSetDisableSheen(disableSheen ? 1 : 0);
         }
-        bool showEmissive = MCERendererGetShowEmissive() != 0;
-        if (ImGui::Checkbox("Show Emissive", &showEmissive)) {
-            MCERendererSetShowEmissive(showEmissive ? 1 : 0);
-        }
-        bool showBloom = MCERendererGetShowBloom() != 0;
-        if (ImGui::Checkbox("Show Bloom", &showBloom)) {
-            MCERendererSetShowBloom(showBloom ? 1 : 0);
+        bool skipSpecIBL = MCERendererGetSkipSpecIBLHighRoughness() != 0;
+        if (ImGui::Checkbox("Skip Spec IBL (Rough>0.9)", &skipSpecIBL)) {
+            MCERendererSetSkipSpecIBLHighRoughness(skipSpecIBL ? 1 : 0);
         }
     }
 
     if (ImGui::CollapsingHeader("Profiling", ImGuiTreeNodeFlags_DefaultOpen)) {
-        ImGui::Text("Frame:  %.2f ms", MCERendererGetFrameMs());
-        ImGui::Text("Update: %.2f ms", MCERendererGetUpdateMs());
-        ImGui::Text("Render: %.2f ms", MCERendererGetRenderMs());
-        ImGui::Text("Bloom:  %.2f ms", MCERendererGetBloomMs());
-        ImGui::Text("Present:%.2f ms", MCERendererGetPresentMs());
-        ImGui::Text("GPU:    %.2f ms", MCERendererGetGpuMs());
+        float frameMs = MCERendererGetFrameMs();
+        float updateMs = MCERendererGetUpdateMs();
+        float sceneMs = MCERendererGetSceneMs();
+        float renderMs = MCERendererGetRenderMs();
+        float bloomMs = MCERendererGetBloomMs();
+        float bloomExtractMs = MCERendererGetBloomExtractMs();
+        float bloomDownsampleMs = MCERendererGetBloomDownsampleMs();
+        float bloomBlurMs = MCERendererGetBloomBlurMs();
+        float compositeMs = MCERendererGetCompositeMs();
+        float overlaysMs = MCERendererGetOverlaysMs();
+        float presentMs = MCERendererGetPresentMs();
+        float gpuMs = MCERendererGetGpuMs();
+
+        ImGui::Text("Frame:   %.2f ms", frameMs);
+        ImGui::Text("Update:  %.2f ms", updateMs);
+        ImGui::Text("Scene:   %.2f ms", sceneMs);
+        ImGui::Text("Render:  %.2f ms", renderMs);
+        ImGui::Text("Bloom:   %.2f ms", bloomMs);
+        ImGui::Text("  - Extract:    %.2f ms", bloomExtractMs);
+        ImGui::Text("  - Downsample: %.2f ms", bloomDownsampleMs);
+        ImGui::Text("  - Blur:       %.2f ms", bloomBlurMs);
+        ImGui::Text("Composite: %.2f ms", compositeMs);
+        ImGui::Text("Overlays:  %.2f ms", overlaysMs);
+        ImGui::Text("Present:   %.2f ms", presentMs);
+        ImGui::Text("GPU:       %.2f ms", gpuMs);
     }
 
     ImGui::End();
+
+    if (!rendererOpen) {
+        g_ShowRendererPanel = false;
+        [NSApp terminate:nil];
+    }
 
     // --- Viewport ---
     ImGui::Begin("Viewport");

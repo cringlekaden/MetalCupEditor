@@ -27,6 +27,7 @@ vertex SimpleRasterizerData vertex_quad(const SimpleVertex vert [[ stage_in ]]) 
 }
 
 fragment float4 fragment_cubemap(CubemapRasterizerData rd [[ stage_in ]],
+                                 constant float &intensity [[ buffer(0) ]],
                                  texture2d<float> hdri [[ texture(0) ]],
                                  sampler samp [[ sampler(0) ]]) {
     float3 dir = normalize(rd.localPosition);
@@ -35,7 +36,7 @@ fragment float4 fragment_cubemap(CubemapRasterizerData rd [[ stage_in ]],
     if (phi < 0.0) phi += 2.0 * PBR::PI;
     float u = phi / (2.0 * PBR::PI);
     float v = asin(dir.y) / PBR::PI + 0.5;
-    float3 color = hdri.sample(samp, float2(u, v)).rgb;
+    float3 color = hdri.sample(samp, float2(u, v)).rgb * max(intensity, 0.0);
     return float4(color, 1.0);
 }
 
@@ -108,4 +109,3 @@ fragment float2 fragment_brdf(SimpleRasterizerData rd [[ stage_in ]]) {
     const uint SAMPLE_COUNT = 2048;
     return PBR::integrateBRDF(NdotV, roughness, SAMPLE_COUNT);
 }
-
