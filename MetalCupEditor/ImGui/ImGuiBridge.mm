@@ -12,8 +12,44 @@
 #import "backends/imgui_impl_osx.h"
 #import "backends/imgui_impl_metal.h"
 
-#import "RendererSettingsBridge.h"
+#import "Panels/RendererPanel.h"
+#import "Panels/ViewportPanel.h"
+#import "Panels/SceneHierarchyPanel.h"
+#import "Panels/InspectorPanel.h"
+#import "Panels/ContentBrowserPanel.h"
 #import <Cocoa/Cocoa.h>
+#include <cstring>
+#include <ctime>
+#include <string>
+
+extern "C" void MCEProjectNew(void);
+extern "C" void MCEProjectOpen(void);
+extern "C" void MCEProjectSave(void);
+extern "C" void MCEProjectSaveAs(void);
+extern "C" uint32_t MCEProjectHasOpen(void);
+extern "C" uint32_t MCEProjectNeedsModal(void);
+extern "C" int32_t MCEProjectRecentCount(void);
+extern "C" int32_t MCEProjectRecentPathAt(int32_t index, char *buffer, int32_t bufferSize);
+extern "C" void MCEProjectOpenRecent(const char *path);
+extern "C" int32_t MCEProjectListCount(void);
+extern "C" uint32_t MCEProjectListAt(int32_t index,
+                                     char *nameBuffer, int32_t nameBufferSize,
+                                     char *pathBuffer, int32_t pathBufferSize,
+                                     double *modifiedOut);
+extern "C" uint32_t MCEProjectOpenAtPath(const char *path);
+extern "C" uint32_t MCEProjectDeleteAtPath(const char *path);
+extern "C" void MCESceneSave(void);
+extern "C" void MCESceneSaveAs(void);
+extern "C" void MCESceneLoad(void);
+extern "C" void MCEScenePlay(void);
+extern "C" void MCESceneStop(void);
+extern "C" void MCEScenePause(void);
+extern "C" void MCESceneResume(void);
+extern "C" uint32_t MCESceneIsPlaying(void);
+extern "C" uint32_t MCESceneIsPaused(void);
+extern "C" uint32_t MCEEditorPopNextAlert(char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEEditorPopNextStatus(char *buffer, int32_t bufferSize, int32_t *kindOut);
+extern "C" uint32_t MCEEditorGetImGuiIniPath(char *buffer, int32_t bufferSize);
 
 static bool g_ImGuiInitialized = false;
 static bool g_ViewportHovered = false;
@@ -21,6 +57,21 @@ static bool g_ViewportFocused = false;
 static CGSize g_ViewportContentSize = {0, 0};
 static CGPoint g_ViewportContentOrigin = {0, 0};
 static bool g_ShowRendererPanel = true;
+static bool g_ShowSceneHierarchyPanel = true;
+static bool g_ShowInspectorPanel = true;
+static char g_SelectedEntityId[64] = {0};
+
+static std::string FormatTimestamp(double seconds) {
+    if (seconds <= 0.0) { return "-"; }
+    std::time_t timeValue = static_cast<std::time_t>(seconds);
+    std::tm localTime {};
+    localtime_r(&timeValue, &localTime);
+    char buffer[64] = {0};
+    if (std::strftime(buffer, sizeof(buffer), "%Y-%m-%d %H:%M", &localTime) == 0) {
+        return "-";
+    }
+    return std::string(buffer);
+}
 
 @implementation ImGuiBridge
 
@@ -34,17 +85,9 @@ static bool g_ShowRendererPanel = true;
     (void)io;
 
     // Store ImGui config in Application Support so it persists with or without sandbox.
-    NSArray<NSURL *> *appSupport = [[NSFileManager defaultManager] URLsForDirectory:NSApplicationSupportDirectory
-                                                                          inDomains:NSUserDomainMask];
-    NSURL *supportURL = appSupport.firstObject;
-    if (supportURL) {
-        NSURL *configDir = [supportURL URLByAppendingPathComponent:@"MetalCupEditor" isDirectory:YES];
-        [[NSFileManager defaultManager] createDirectoryAtURL:configDir
-                                 withIntermediateDirectories:YES
-                                                  attributes:nil
-                                                       error:nil];
-        NSString *iniPath = [[configDir URLByAppendingPathComponent:@"imgui.ini"] path];
-        io.IniFilename = strdup(iniPath.UTF8String);
+    char iniPathBuffer[512] = {0};
+    if (MCEEditorGetImGuiIniPath(iniPathBuffer, sizeof(iniPathBuffer)) != 0) {
+        io.IniFilename = strdup(iniPathBuffer);
     }
 
     // Nice defaults
@@ -80,6 +123,34 @@ static bool g_ShowRendererPanel = true;
 }
 
 + (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture {
+    static char g_AlertMessage[512] = {0};
+    static char g_StatusMessage[256] = {0};
+    static int32_t g_StatusKind = 0;
+    if (g_AlertMessage[0] == 0) {
+        if (MCEEditorPopNextAlert(g_AlertMessage, sizeof(g_AlertMessage)) != 0) {
+            ImGui::OpenPopup("Error");
+            strncpy(g_StatusMessage, g_AlertMessage, sizeof(g_StatusMessage) - 1);
+            g_StatusMessage[sizeof(g_StatusMessage) - 1] = 0;
+            g_StatusKind = 2;
+        }
+    }
+    char statusBuffer[256] = {0};
+    int32_t statusKind = 0;
+    if (MCEEditorPopNextStatus(statusBuffer, sizeof(statusBuffer), &statusKind) != 0) {
+        strncpy(g_StatusMessage, statusBuffer, sizeof(g_StatusMessage) - 1);
+        g_StatusMessage[sizeof(g_StatusMessage) - 1] = 0;
+        g_StatusKind = statusKind;
+    }
+
+    if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextWrapped("%s", g_AlertMessage);
+        if (ImGui::Button("OK")) {
+            g_AlertMessage[0] = 0;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     // Dockspace host window (fills main viewport)
     ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->Pos);
@@ -104,9 +175,33 @@ static bool g_ShowRendererPanel = true;
     ImGuiID dockspaceId = ImGui::GetID("MainDockspace");
     ImGui::DockSpace(dockspaceId, ImVec2(0,0), ImGuiDockNodeFlags_PassthruCentralNode);
 
-    // Example menu bar
+    // Menu bar
     if (ImGui::BeginMenuBar()) {
         if (ImGui::BeginMenu("File")) {
+            if (ImGui::MenuItem("New Project...")) {
+                MCEProjectNew();
+            }
+            if (ImGui::MenuItem("Open Project...")) {
+                MCEProjectOpen();
+            }
+            bool hasProject = MCEProjectHasOpen() != 0;
+            if (ImGui::MenuItem("Save Project", nullptr, false, hasProject)) {
+                MCEProjectSave();
+            }
+            if (ImGui::MenuItem("Save Project As...", nullptr, false, hasProject)) {
+                MCEProjectSaveAs();
+            }
+            ImGui::Separator();
+            if (ImGui::MenuItem("Open Scene...", nullptr, false, hasProject)) {
+                MCESceneLoad();
+            }
+            if (ImGui::MenuItem("Save Scene", nullptr, false, hasProject)) {
+                MCESceneSave();
+            }
+            if (ImGui::MenuItem("Save Scene As...", nullptr, false, hasProject)) {
+                MCESceneSaveAs();
+            }
+            ImGui::Separator();
             if (ImGui::MenuItem("Quit")) {
                 [NSApp terminate:nil];
             }
@@ -117,254 +212,140 @@ static bool g_ShowRendererPanel = true;
 
     ImGui::PopStyleVar(3);
 
+    if (MCEProjectNeedsModal() != 0) {
+        ImGui::OpenPopup("Create or Open Project");
+    }
+    if (ImGui::BeginPopupModal("Create or Open Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("Select a project to get started.");
+        if (ImGui::Button("New Project...")) {
+            MCEProjectNew();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Open Project...")) {
+            MCEProjectOpen();
+        }
+        ImGui::Separator();
+
+        static int32_t g_SelectedProjectIndex = -1;
+        static char g_SelectedProjectPath[512] = {0};
+
+        ImGui::TextUnformatted("Projects");
+        if (ImGui::BeginChild("ProjectList", ImVec2(520, 240), true)) {
+            int32_t projectCount = MCEProjectListCount();
+            if (projectCount <= 0) {
+                ImGui::TextUnformatted("No projects found in the Projects folder.");
+            }
+            if (ImGui::BeginTable("ProjectTable", 3, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_SizingStretchProp)) {
+                ImGui::TableSetupColumn("Name", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthStretch);
+                ImGui::TableSetupColumn("Modified", ImGuiTableColumnFlags_WidthFixed, 140.0f);
+                ImGui::TableHeadersRow();
+
+                for (int32_t i = 0; i < projectCount; ++i) {
+                    char nameBuffer[256] = {0};
+                    char pathBuffer[512] = {0};
+                    double modified = 0.0;
+                    if (MCEProjectListAt(i, nameBuffer, sizeof(nameBuffer), pathBuffer, sizeof(pathBuffer), &modified) == 0) {
+                        continue;
+                    }
+                    ImGui::TableNextRow();
+                    ImGui::TableSetColumnIndex(0);
+                    ImGui::PushID(i);
+                    bool selected = (g_SelectedProjectIndex == i);
+                    if (ImGui::Selectable(nameBuffer, selected, ImGuiSelectableFlags_SpanAllColumns)) {
+                        g_SelectedProjectIndex = i;
+                        strncpy(g_SelectedProjectPath, pathBuffer, sizeof(g_SelectedProjectPath) - 1);
+                        g_SelectedProjectPath[sizeof(g_SelectedProjectPath) - 1] = 0;
+                    }
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
+                        MCEProjectOpenAtPath(pathBuffer);
+                    }
+                    ImGui::TableSetColumnIndex(1);
+                    ImGui::TextUnformatted(pathBuffer);
+                    ImGui::TableSetColumnIndex(2);
+                    std::string timeText = FormatTimestamp(modified);
+                    ImGui::TextUnformatted(timeText.c_str());
+                    ImGui::PopID();
+                }
+                ImGui::EndTable();
+            }
+        }
+        ImGui::EndChild();
+
+        bool hasSelection = g_SelectedProjectIndex >= 0 && g_SelectedProjectPath[0] != 0;
+        if (ImGui::Button("Open Selected") && hasSelection) {
+            MCEProjectOpenAtPath(g_SelectedProjectPath);
+        }
+        ImGui::SameLine();
+        ImGui::BeginDisabled(!hasSelection);
+        if (ImGui::Button("Delete")) {
+            ImGui::OpenPopup("Confirm Delete Project");
+        }
+        ImGui::EndDisabled();
+        if (ImGui::BeginPopupModal("Confirm Delete Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextWrapped("Delete the selected project? This will remove it from disk.");
+            if (ImGui::Button("Delete")) {
+                MCEProjectDeleteAtPath(g_SelectedProjectPath);
+                g_SelectedProjectIndex = -1;
+                g_SelectedProjectPath[0] = 0;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel")) {
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+
+        if (MCEProjectHasOpen() != 0) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+
     // --- Panels ---
     bool rendererOpen = g_ShowRendererPanel;
-    ImGui::Begin("Renderer", &rendererOpen);
-
-    if (ImGui::CollapsingHeader("Bloom", ImGuiTreeNodeFlags_DefaultOpen)) {
-        bool bloomEnabled = MCERendererGetBloomEnabled() != 0;
-        if (ImGui::Checkbox("Enable Bloom", &bloomEnabled)) {
-            MCERendererSetBloomEnabled(bloomEnabled ? 1 : 0);
-        }
-        ImGui::TextUnformatted("Multi-scale bloom (mip chain + per-mip blur)");
-
-        const char* qualityItems[] = { "Low", "Medium", "High", "Ultra" };
-        static int qualityIndex = 2;
-        if (ImGui::Combo("Quality Preset", &qualityIndex, qualityItems, IM_ARRAYSIZE(qualityItems))) {
-            switch (qualityIndex) {
-            case 0: // Low
-                MCERendererSetHalfResBloom(1);
-                MCERendererSetBlurPasses(2);
-                MCERendererSetBloomUpsampleScale(0.8f);
-                MCERendererSetBloomMaxMips(3);
-                break;
-            case 1: // Medium
-                MCERendererSetHalfResBloom(1);
-                MCERendererSetBlurPasses(3);
-                MCERendererSetBloomUpsampleScale(1.0f);
-                MCERendererSetBloomMaxMips(4);
-                break;
-            case 2: // High
-                MCERendererSetHalfResBloom(0);
-                MCERendererSetBlurPasses(4);
-                MCERendererSetBloomUpsampleScale(1.1f);
-                MCERendererSetBloomMaxMips(5);
-                break;
-            case 3: // Ultra
-                MCERendererSetHalfResBloom(0);
-                MCERendererSetBlurPasses(6);
-                MCERendererSetBloomUpsampleScale(1.25f);
-                MCERendererSetBloomMaxMips(6);
-                break;
-            default:
-                break;
-            }
-        }
-
-        float threshold = MCERendererGetBloomThreshold();
-        if (ImGui::SliderFloat("Threshold", &threshold, 0.0f, 10.0f)) {
-            MCERendererSetBloomThreshold(threshold);
-        }
-        float knee = MCERendererGetBloomKnee();
-        if (ImGui::SliderFloat("Knee", &knee, 0.0f, 1.0f)) {
-            MCERendererSetBloomKnee(knee);
-        }
-        float intensity = MCERendererGetBloomIntensity();
-        if (ImGui::SliderFloat("Intensity", &intensity, 0.0f, 3.0f)) {
-            MCERendererSetBloomIntensity(intensity);
-        }
-        float upsampleScale = MCERendererGetBloomUpsampleScale();
-        if (ImGui::SliderFloat("Upsample Scale", &upsampleScale, 0.5f, 2.0f)) {
-            MCERendererSetBloomUpsampleScale(upsampleScale);
-        }
-        float dirtIntensity = MCERendererGetBloomDirtIntensity();
-        if (ImGui::SliderFloat("Dirt Intensity", &dirtIntensity, 0.0f, 2.0f)) {
-            MCERendererSetBloomDirtIntensity(dirtIntensity);
-        }
-        int blurPasses = static_cast<int>(MCERendererGetBlurPasses());
-        if (ImGui::SliderInt("Blur Passes (per mip)", &blurPasses, 0, 8)) {
-            MCERendererSetBlurPasses(static_cast<uint32_t>(blurPasses));
-        }
-        int maxMips = static_cast<int>(MCERendererGetBloomMaxMips());
-        if (ImGui::SliderInt("Max Mip Levels", &maxMips, 1, 8)) {
-            MCERendererSetBloomMaxMips(static_cast<uint32_t>(maxMips));
-        }
-        bool halfRes = MCERendererGetHalfResBloom() != 0;
-        if (ImGui::Checkbox("Half-Res Bloom", &halfRes)) {
-            MCERendererSetHalfResBloom(halfRes ? 1 : 0);
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Tonemap", ImGuiTreeNodeFlags_DefaultOpen)) {
-        const char* tonemapItems[] = { "None", "Reinhard", "ACES", "Hazel" };
-        int tonemap = static_cast<int>(MCERendererGetTonemap());
-        if (ImGui::Combo("Tonemap##Mode", &tonemap, tonemapItems, IM_ARRAYSIZE(tonemapItems))) {
-            MCERendererSetTonemap(static_cast<uint32_t>(tonemap));
-        }
-        float exposure = MCERendererGetExposure();
-        if (ImGui::SliderFloat("Exposure", &exposure, 0.1f, 4.0f)) {
-            MCERendererSetExposure(exposure);
-        }
-        float gamma = MCERendererGetGamma();
-        if (ImGui::SliderFloat("Gamma", &gamma, 1.8f, 2.4f)) {
-            MCERendererSetGamma(gamma);
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Sky", ImGuiTreeNodeFlags_DefaultOpen)) {
-        bool skyEnabled = MCESkyGetEnabled() != 0;
-        if (ImGui::Checkbox("Enabled", &skyEnabled)) {
-            MCESkySetEnabled(skyEnabled ? 1 : 0);
-        }
-
-        const char* skyModes[] = { "HDRI", "Procedural" };
-        int skyMode = static_cast<int>(MCESkyGetMode());
-        if (ImGui::Combo("Mode", &skyMode, skyModes, IM_ARRAYSIZE(skyModes))) {
-            MCESkySetMode(static_cast<uint32_t>(skyMode));
-        }
-
-        static bool skyInit = false;
-        static float skyIntensity = 1.0f;
-        static float skyTurbidity = 2.0f;
-        static float skyAzimuth = 0.0f;
-        static float skyElevation = 30.0f;
-        static float skyTint[3] = {1.0f, 1.0f, 1.0f};
-
-        if (!skyInit) {
-            skyIntensity = MCESkyGetIntensity();
-            skyTurbidity = MCESkyGetTurbidity();
-            skyAzimuth = MCESkyGetAzimuthDegrees();
-            skyElevation = MCESkyGetElevationDegrees();
-            MCESkyGetTint(&skyTint[0], &skyTint[1], &skyTint[2]);
-            skyInit = true;
-        }
-
-        if (ImGui::SliderFloat("Intensity##Sky", &skyIntensity, 0.0f, 10.0f)) {
-            MCESkySetIntensity(skyIntensity);
-        }
-
-        if (ImGui::ColorEdit3("Sky Tint", skyTint)) {
-            MCESkySetTint(skyTint[0], skyTint[1], skyTint[2]);
-        }
-
-        if (skyMode == 1) {
-            if (ImGui::SliderFloat("Turbidity", &skyTurbidity, 1.0f, 10.0f)) {
-                MCESkySetTurbidity(skyTurbidity);
-            }
-
-            if (ImGui::SliderFloat("Azimuth (deg)", &skyAzimuth, 0.0f, 360.0f)) {
-                MCESkySetAzimuthDegrees(skyAzimuth);
-            }
-
-            if (ImGui::SliderFloat("Elevation (deg)", &skyElevation, 0.0f, 90.0f)) {
-                MCESkySetElevationDegrees(skyElevation);
-            }
-        } else {
-            ImGui::TextUnformatted("HDRI asset picker not hooked up yet.");
-        }
-
-        bool realtime = MCESkyGetRealtimeUpdate() != 0;
-        if (ImGui::Checkbox("Real-time Update", &realtime)) {
-            MCESkySetRealtimeUpdate(realtime ? 1 : 0);
-        }
-        if (ImGui::Button("Regenerate")) {
-            MCESkyRegenerate();
-        }
-    }
-
-    if (ImGui::CollapsingHeader("IBL", ImGuiTreeNodeFlags_DefaultOpen)) {
-        bool iblEnabled = MCERendererGetIBLEnabled() != 0;
-        if (ImGui::Checkbox("Enable IBL", &iblEnabled)) {
-            MCERendererSetIBLEnabled(iblEnabled ? 1 : 0);
-        }
-        float iblIntensity = MCERendererGetIBLIntensity();
-        if (ImGui::SliderFloat("IBL Intensity", &iblIntensity, 0.0f, 3.0f)) {
-            MCERendererSetIBLIntensity(iblIntensity);
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen)) {
-        bool globalFlip = MCERendererGetNormalFlipYGlobal() != 0;
-        if (ImGui::Checkbox("Global Normal Flip (Y)", &globalFlip)) {
-            MCERendererSetNormalFlipYGlobal(globalFlip ? 1 : 0);
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen)) {
-        bool disableSpecAA = MCERendererGetDisableSpecularAA() != 0;
-        if (ImGui::Checkbox("Disable Specular AA", &disableSpecAA)) {
-            MCERendererSetDisableSpecularAA(disableSpecAA ? 1 : 0);
-        }
-        bool disableClearcoat = MCERendererGetDisableClearcoat() != 0;
-        if (ImGui::Checkbox("Disable Clearcoat", &disableClearcoat)) {
-            MCERendererSetDisableClearcoat(disableClearcoat ? 1 : 0);
-        }
-        bool disableSheen = MCERendererGetDisableSheen() != 0;
-        if (ImGui::Checkbox("Disable Sheen", &disableSheen)) {
-            MCERendererSetDisableSheen(disableSheen ? 1 : 0);
-        }
-        bool skipSpecIBL = MCERendererGetSkipSpecIBLHighRoughness() != 0;
-        if (ImGui::Checkbox("Skip Spec IBL (Rough>0.9)", &skipSpecIBL)) {
-            MCERendererSetSkipSpecIBLHighRoughness(skipSpecIBL ? 1 : 0);
-        }
-    }
-
-    if (ImGui::CollapsingHeader("Profiling", ImGuiTreeNodeFlags_DefaultOpen)) {
-        float frameMs = MCERendererGetFrameMs();
-        float updateMs = MCERendererGetUpdateMs();
-        float sceneMs = MCERendererGetSceneMs();
-        float renderMs = MCERendererGetRenderMs();
-        float bloomMs = MCERendererGetBloomMs();
-        float bloomExtractMs = MCERendererGetBloomExtractMs();
-        float bloomDownsampleMs = MCERendererGetBloomDownsampleMs();
-        float bloomBlurMs = MCERendererGetBloomBlurMs();
-        float compositeMs = MCERendererGetCompositeMs();
-        float overlaysMs = MCERendererGetOverlaysMs();
-        float presentMs = MCERendererGetPresentMs();
-        float gpuMs = MCERendererGetGpuMs();
-
-        ImGui::Text("Frame:   %.2f ms", frameMs);
-        ImGui::Text("Update:  %.2f ms", updateMs);
-        ImGui::Text("Scene:   %.2f ms", sceneMs);
-        ImGui::Text("Render:  %.2f ms", renderMs);
-        ImGui::Text("Bloom:   %.2f ms", bloomMs);
-        ImGui::Text("  - Extract:    %.2f ms", bloomExtractMs);
-        ImGui::Text("  - Downsample: %.2f ms", bloomDownsampleMs);
-        ImGui::Text("  - Blur:       %.2f ms", bloomBlurMs);
-        ImGui::Text("Composite: %.2f ms", compositeMs);
-        ImGui::Text("Overlays:  %.2f ms", overlaysMs);
-        ImGui::Text("Present:   %.2f ms", presentMs);
-        ImGui::Text("GPU:       %.2f ms", gpuMs);
-    }
-
-    ImGui::End();
-
+    ImGuiRendererPanelDraw(&rendererOpen);
     if (!rendererOpen) {
         g_ShowRendererPanel = false;
         [NSApp terminate:nil];
     }
 
-    // --- Viewport ---
-    ImGui::Begin("Viewport");
+    bool hierarchyOpen = g_ShowSceneHierarchyPanel;
+    ImGuiSceneHierarchyPanelDraw(&hierarchyOpen, g_SelectedEntityId, sizeof(g_SelectedEntityId));
+    g_ShowSceneHierarchyPanel = hierarchyOpen;
 
-    ImVec2 avail = ImGui::GetContentRegionAvail();
-    g_ViewportContentSize = CGSizeMake(avail.x, avail.y);
-    g_ViewportHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_RootAndChildWindows);
-    g_ViewportFocused = ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
-    ImVec2 contentMin = ImGui::GetWindowContentRegionMin();
-    ImVec2 windowPos = ImGui::GetWindowPos();
-    g_ViewportContentOrigin = CGPointMake(windowPos.x + contentMin.x, windowPos.y + contentMin.y);
-    if (sceneTexture && avail.x > 1 && avail.y > 1) {
-        ImVec2 uv0 = ImVec2(0.0f, 0.0f);
-        ImVec2 uv1 = ImVec2(1.0f, 1.0f);
+    bool inspectorOpen = g_ShowInspectorPanel;
+    ImGuiInspectorPanelDraw(&inspectorOpen, g_SelectedEntityId);
+    g_ShowInspectorPanel = inspectorOpen;
 
-        // The Metal backend accepts MTLTexture* as ImTextureID.
-        ImGui::Image((ImTextureID)sceneTexture, avail, uv0, uv1);
-    } else {
-        ImGui::Text("No scene texture (yet).");
+    static bool contentOpen = true;
+    ImGuiContentBrowserPanelDraw(&contentOpen);
+
+    ImGuiViewportPanelDraw(sceneTexture,
+                           &g_ViewportHovered,
+                           &g_ViewportFocused,
+                           &g_ViewportContentSize,
+                           &g_ViewportContentOrigin);
+
+    if (g_StatusMessage[0] != 0) {
+        const float statusHeight = 24.0f;
+        ImGui::SetNextWindowPos(ImVec2(vp->Pos.x, vp->Pos.y + vp->Size.y - statusHeight));
+        ImGui::SetNextWindowSize(ImVec2(vp->Size.x, statusHeight));
+        ImGui::SetNextWindowViewport(vp->ID);
+        ImGuiWindowFlags statusFlags = ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoScrollbar;
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(10, 4));
+        ImGui::Begin("StatusBar", nullptr, statusFlags);
+        ImVec4 color = ImVec4(0.7f, 0.75f, 0.8f, 1.0f);
+        if (g_StatusKind == 1) {
+            color = ImVec4(0.95f, 0.7f, 0.2f, 1.0f);
+        } else if (g_StatusKind == 2) {
+            color = ImVec4(0.95f, 0.4f, 0.35f, 1.0f);
+        }
+        ImGui::TextColored(color, "%s", g_StatusMessage);
+        ImGui::End();
+        ImGui::PopStyleVar();
     }
-
-    ImGui::End();
 
     ImGui::End(); // DockSpaceHost
 }

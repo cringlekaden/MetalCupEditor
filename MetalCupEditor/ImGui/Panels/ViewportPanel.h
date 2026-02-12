@@ -1,0 +1,18 @@
+#pragma once
+
+#import <CoreGraphics/CoreGraphics.h>
+#import <Metal/Metal.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
+                            bool *hovered,
+                            bool *focused,
+                            CGSize *contentSize,
+                            CGPoint *contentOrigin);
+
+#ifdef __cplusplus
+}
+#endif

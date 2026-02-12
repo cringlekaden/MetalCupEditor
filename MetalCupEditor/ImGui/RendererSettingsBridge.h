@@ -70,6 +70,31 @@ void MCERendererSetSkipSpecIBLHighRoughness(uint32_t value);
 uint32_t MCERendererGetNormalFlipYGlobal(void);
 void MCERendererSetNormalFlipYGlobal(uint32_t value);
 
+uint32_t MCERendererGetShadingDebugMode(void);
+void MCERendererSetShadingDebugMode(uint32_t value);
+
+float MCERendererGetIBLSpecularLodExponent(void);
+void MCERendererSetIBLSpecularLodExponent(float value);
+float MCERendererGetIBLSpecularLodBias(void);
+void MCERendererSetIBLSpecularLodBias(float value);
+float MCERendererGetIBLSpecularGrazingLodBias(void);
+void MCERendererSetIBLSpecularGrazingLodBias(float value);
+float MCERendererGetIBLSpecularMinRoughness(void);
+void MCERendererSetIBLSpecularMinRoughness(float value);
+float MCERendererGetSpecularAAStrength(void);
+void MCERendererSetSpecularAAStrength(float value);
+float MCERendererGetNormalMapMipBias(void);
+void MCERendererSetNormalMapMipBias(float value);
+float MCERendererGetNormalMapMipBiasGrazing(void);
+void MCERendererSetNormalMapMipBiasGrazing(float value);
+
+uint32_t MCERendererGetIBLFireflyClampEnabled(void);
+void MCERendererSetIBLFireflyClampEnabled(uint32_t value);
+float MCERendererGetIBLFireflyClamp(void);
+void MCERendererSetIBLFireflyClamp(float value);
+float MCERendererGetIBLSampleMultiplier(void);
+void MCERendererSetIBLSampleMultiplier(float value);
+
 float MCERendererGetFrameMs(void);
 float MCERendererGetUpdateMs(void);
 float MCERendererGetSceneMs(void);
