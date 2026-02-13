@@ -54,6 +54,8 @@ Package.resolved
 # =========================
 .idea/
 .vscode/
+*.meta
+AGENTS.md
 
 # =========================
 # Asset processing artifacts (safe)

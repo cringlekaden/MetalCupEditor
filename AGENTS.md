@@ -3,9 +3,16 @@
 This repository contains:
 - **MetalCupEngine** (Swift framework): rendering + ECS + serialization runtime.
 - **MetalCupEditor** (macOS app): ImGui editor + project/asset workflow.
-- **ImGui Bridge** (ObjC++/C++): editor UI panels and backend glue (Metal + macOS input).
+- **ImGui (vendor)**: upstream ImGui sources + official backends only.
 
 This file defines how automated agents (Codex/LLMs) must operate in this codebase.
+
+---
+
+## Reference Docs
+- `ARCHITECTURE.md` (repo root): source of truth for boundaries and data flow.
+- `MetalCupEditor/MetalCupEditor/README.md`: editor features + high-level structure.
+- `MetalCupEngine/README.md`: engine features + high-level structure.
 
 ---
 
@@ -64,12 +71,22 @@ If you change public API visibility across modules:
 
 ## ImGui Panel Architecture (preferred)
 Panels should follow a consistent pattern:
-- `Panel` class encapsulates:
+- Panel functions live in `MetalCupEditor/MetalCupEditor/EditorUI/Panels/`:
   - visibility state (persisted)
   - `onImGuiRender()` or `render()`
   - minimal direct filesystem access (delegate to services)
 - Avoid panels owning long-lived engine objects directly.
-- Panels interact via a small set of editor services (ProjectService, AssetService, SelectionService, EditorLogCenter).
+- Panels interact via editor services:
+  - `EditorProjectManager` (project/scene lifecycle)
+  - `AssetOps` / `AssetRegistry` (asset operations + metadata)
+  - `EditorSelection` (selection state)
+  - `EditorLogCenter` (logging)
+ - Shared ImGui widgets live in `MetalCupEditor/MetalCupEditor/EditorUI/Widgets/`.
+
+ImGui setup and panel dispatch are centralized in:
+- `MetalCupEditor/MetalCupEditor/EditorCore/ImGui/ImGuiBridge.mm`
+- `MetalCupEditor/MetalCupEditor/EditorCore/ImGui/ImGuiLayer.swift`
+ - If text input breaks, ensure ImGui's `KeyEventResponder` remains in the responder chain (see `ImGuiBridge.mm`).
 
 ---
 
@@ -85,7 +102,8 @@ Store under: current canonical editor state location.
 ---
 
 ## Filesystem / Assets
-- All asset operations go through a single “source of truth” service.
+- All asset operations go through a single “source of truth” service (`AssetOps`).
+- Asset metadata and lookups live in `AssetRegistry`.
 - Avoid multiple competing path utilities.
 - Canonicalize all paths (no `/Assets/Assets/...`).
 

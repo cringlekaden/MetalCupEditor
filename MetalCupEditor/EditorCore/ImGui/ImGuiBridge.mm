@@ -32,9 +32,10 @@ extern "C" void MCEProjectSaveAs(void);
 extern "C" void MCEProjectSaveAll(void);
 extern "C" uint32_t MCEProjectHasOpen(void);
 extern "C" uint32_t MCEProjectNeedsModal(void);
+extern "C" void MCEProjectDismissModal(void);
 extern "C" int32_t MCEProjectRecentCount(void);
 extern "C" int32_t MCEProjectRecentPathAt(int32_t index, char *buffer, int32_t bufferSize);
-extern "C" void MCEProjectOpenRecent(const char *path);
+extern "C" uint32_t MCEProjectOpenRecent(const char *path);
 extern "C" int32_t MCEProjectListCount(void);
 extern "C" uint32_t MCEProjectListAt(int32_t index,
                                      char *nameBuffer, int32_t nameBufferSize,
@@ -724,12 +725,23 @@ static void EnsureImGuiKeyResponder(NSView *view) {
     }
     if (ImGui::BeginPopupModal("Create or Open Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted("Select a project to get started.");
-        if (ImGui::Button("New Project...")) {
-            MCEProjectNew();
+        int32_t recentCount = MCEProjectRecentCount();
+        char recentPath[512] = {0};
+        bool hasRecent = recentCount > 0 && MCEProjectRecentPathAt(0, recentPath, sizeof(recentPath)) > 0;
+        if (MCEProjectHasOpen() != 0) {
+            if (ImGui::Button("Continue with Loaded Project")) {
+                MCEProjectDismissModal();
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::Separator();
+        }
+
+        if (ImGui::Button("Open Other Project...")) {
+            MCEProjectOpen();
         }
         ImGui::SameLine();
-        if (ImGui::Button("Open Project...")) {
-            MCEProjectOpen();
+        if (ImGui::Button("New Project...")) {
+            MCEProjectNew();
         }
         ImGui::Separator();
 
@@ -765,7 +777,10 @@ static void EnsureImGuiKeyResponder(NSView *view) {
                         g_SelectedProjectPath[sizeof(g_SelectedProjectPath) - 1] = 0;
                     }
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-                        MCEProjectOpenAtPath(pathBuffer);
+                        if (MCEProjectOpenAtPath(pathBuffer) != 0) {
+                            MCEProjectDismissModal();
+                            ImGui::CloseCurrentPopup();
+                        }
                     }
                     ImGui::TableSetColumnIndex(1);
                     ImGui::TextUnformatted(pathBuffer);
@@ -781,7 +796,10 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
         bool hasSelection = g_SelectedProjectIndex >= 0 && g_SelectedProjectPath[0] != 0;
         if (ImGui::Button("Open Selected") && hasSelection) {
-            MCEProjectOpenAtPath(g_SelectedProjectPath);
+            if (MCEProjectOpenAtPath(g_SelectedProjectPath) != 0) {
+                MCEProjectDismissModal();
+                ImGui::CloseCurrentPopup();
+            }
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!hasSelection);
@@ -804,9 +822,6 @@ static void EnsureImGuiKeyResponder(NSView *view) {
             ImGui::EndPopup();
         }
 
-        if (MCEProjectHasOpen() != 0) {
-            ImGui::CloseCurrentPopup();
-        }
         ImGui::EndPopup();
     }
 

@@ -51,17 +51,14 @@ final class EditorProjectManager {
 
         if let recent = settingsStore.recentProjects.first {
             let url = URL(fileURLWithPath: recent)
-            if !openProject(at: url, updateRecent: false) {
-                shouldShowProjectModal = true
-            }
+            _ = openProject(at: url, updateRecent: false)
         } else {
             let projects = listProjects()
             if projects.count == 1 {
                 _ = openProject(at: projects[0].url, updateRecent: false)
-            } else {
-                shouldShowProjectModal = true
             }
         }
+        shouldShowProjectModal = true
 
         if !isProjectOpen {
             setEmptyScene()
@@ -71,7 +68,11 @@ final class EditorProjectManager {
     }
 
     func needsProjectModal() -> Bool {
-        return shouldShowProjectModal && !isProjectOpen
+        return shouldShowProjectModal
+    }
+
+    func dismissProjectModal() {
+        shouldShowProjectModal = false
     }
 
     func recentProjects() -> [String] {
@@ -737,6 +738,11 @@ public func MCEProjectNeedsModal() -> UInt32 {
     return EditorProjectManager.shared.needsProjectModal() ? 1 : 0
 }
 
+@_cdecl("MCEProjectDismissModal")
+public func MCEProjectDismissModal() {
+    EditorProjectManager.shared.dismissProjectModal()
+}
+
 @_cdecl("MCEProjectRecentCount")
 public func MCEProjectRecentCount() -> Int32 {
     return Int32(EditorProjectManager.shared.recentProjects().count)
@@ -758,9 +764,9 @@ public func MCEProjectRecentPathAt(_ index: Int32, _ buffer: UnsafeMutablePointe
 }
 
 @_cdecl("MCEProjectOpenRecent")
-public func MCEProjectOpenRecent(_ path: UnsafePointer<CChar>?) {
-    guard let path else { return }
-    EditorProjectManager.shared.openRecentProject(path: String(cString: path))
+public func MCEProjectOpenRecent(_ path: UnsafePointer<CChar>?) -> UInt32 {
+    guard let path else { return 0 }
+    return EditorProjectManager.shared.openProjectAtPath(String(cString: path)) ? 1 : 0
 }
 
 @_cdecl("MCEProjectListCount")

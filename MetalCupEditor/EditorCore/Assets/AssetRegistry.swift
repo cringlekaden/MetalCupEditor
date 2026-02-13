@@ -87,7 +87,7 @@ final class AssetRegistry: AssetDatabase {
             let data = try encoder.encode(metadata)
             try data.write(to: url, options: [.atomic])
         } catch {
-            print("WARN::ASSET::META::__\(url.lastPathComponent)__::\(error)")
+            EditorLogCenter.shared.logWarning("Asset meta write failed: \(url.lastPathComponent) (\(error.localizedDescription))", category: .assets)
         }
     }
 

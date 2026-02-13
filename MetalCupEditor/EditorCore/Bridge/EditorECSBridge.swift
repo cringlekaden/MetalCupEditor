@@ -54,7 +54,7 @@ private func ensureActiveSkyEntity(ecs: SceneECS) -> Entity? {
     let skyEntities = allSkyEntities(ecs: ecs)
     guard let first = skyEntities.first else { return nil }
     ecs.add(SkyLightTag(), to: first)
-    print("EDITOR::SKY::ACTIVE_ASSIGNED=\(first.id.uuidString)")
+    EditorLogCenter.shared.logInfo("Sky active assigned: \(first.id.uuidString)", category: .scene)
     return first
 }
 
@@ -68,9 +68,9 @@ private func setActiveSky(ecs: SceneECS, entity: Entity) {
     if var sky = ecs.get(SkyLightComponent.self, for: entity) {
         sky.needsRegenerate = true
         ecs.add(sky, to: entity)
-        print("EDITOR::SKY::REGEN_REQUESTED=\(entity.id.uuidString)")
+        EditorLogCenter.shared.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
-    print("EDITOR::SKY::ACTIVE_SET=\(entity.id.uuidString)")
+    EditorLogCenter.shared.logInfo("Sky active set: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorGetEntityCount")
@@ -114,7 +114,7 @@ public func MCEEditorSetEntityName(_ entityId: UnsafePointer<CChar>?, _ name: Un
     let newName = String(cString: name)
     ecs.add(NameComponent(name: newName), to: entity)
     EditorProjectManager.shared.markSceneDirty()
-    print("EDITOR::COMPONENT::NAME=\(entity.id.uuidString) \(newName)")
+    EditorLogCenter.shared.logInfo("Entity renamed: \(entity.id.uuidString) \(newName)", category: .scene)
 }
 
 @_cdecl("MCEEditorCreateEntity")
@@ -307,7 +307,7 @@ public func MCEEditorSetTransform(_ entityId: UnsafePointer<CChar>?,
     )
     ecs.add(transform, to: entity)
     EditorProjectManager.shared.markSceneDirty()
-    print("EDITOR::COMPONENT::TRANSFORM=\(entity.id.uuidString)")
+    EditorLogCenter.shared.logInfo("Transform updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorGetMeshRenderer")
@@ -332,7 +332,7 @@ public func MCEEditorSetMeshRenderer(_ entityId: UnsafePointer<CChar>?, _ meshHa
     component.materialHandle = handleFromString(materialString)
     ecs.add(component, to: entity)
     EditorProjectManager.shared.markSceneDirty()
-    print("EDITOR::COMPONENT::MESH=\(entity.id.uuidString)")
+    EditorLogCenter.shared.logInfo("Mesh updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorAssignMaterialToEntity")
@@ -354,7 +354,7 @@ public func MCEEditorAssignMaterialToEntity(_ entityId: UnsafePointer<CChar>?, _
     }
 
     EditorProjectManager.shared.markSceneDirty()
-    print("EDITOR::COMPONENT::MATERIAL=\(entity.id.uuidString)")
+    EditorLogCenter.shared.logInfo("Material updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorGetMaterialComponent")
@@ -373,7 +373,7 @@ public func MCEEditorSetMaterialComponent(_ entityId: UnsafePointer<CChar>?, _ m
     component.materialHandle = handleFromString(materialString)
     ecs.add(component, to: entity)
     EditorProjectManager.shared.markSceneDirty()
-    print("EDITOR::COMPONENT::MATERIAL=\(entity.id.uuidString)")
+    EditorLogCenter.shared.logInfo("Material updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorGetLight")
@@ -425,7 +425,7 @@ public func MCEEditorSetLight(_ entityId: UnsafePointer<CChar>?, _ type: Int32,
     light.direction = SIMD3<Float>(dirX, dirY, dirZ)
     ecs.add(light, to: entity)
     EditorProjectManager.shared.markSceneDirty()
-    print("EDITOR::COMPONENT::LIGHT=\(entity.id.uuidString)")
+    EditorLogCenter.shared.logInfo("Light updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorGetSkyLight")
@@ -471,7 +471,7 @@ public func MCEEditorSetSkyLight(_ entityId: UnsafePointer<CChar>?, _ mode: Int3
     sky.needsRegenerate = true
     ecs.add(sky, to: entity)
     if sky.needsRegenerate {
-        print("EDITOR::SKY::REGEN_REQUESTED=\(entity.id.uuidString)")
+        EditorLogCenter.shared.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
     EditorProjectManager.shared.markSceneDirty()
 }
@@ -501,5 +501,5 @@ public func MCEEditorSetActiveSky(_ entityId: UnsafePointer<CChar>?) -> UInt32 {
 public func MCEEditorLogSelection(_ entityId: UnsafePointer<CChar>?) {
     guard let entityId else { return }
     let idString = String(cString: entityId)
-    print("EDITOR::SELECTION=\(idString)")
+    EditorLogCenter.shared.logInfo("Selection changed: \(idString)", category: .editor)
 }
