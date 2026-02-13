@@ -1,3 +1,7 @@
+/// ProjectDocuments.swift
+/// Defines the ProjectDocuments types and helpers for the editor.
+/// Created by Kaden Cringle.
+
 import Foundation
 import MetalCupEngine
 
@@ -61,11 +65,11 @@ struct ProjectDocument: Codable {
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Untitled"
         rootPath = try container.decodeIfPresent(String.self, forKey: .rootPath) ?? "."
         assetDirectory = try container.decodeIfPresent(String.self, forKey: .assetDirectory) ?? "Assets"
-        scenesDirectory = try container.decodeIfPresent(String.self, forKey: .scenesDirectory) ?? "Scenes"
+        scenesDirectory = try container.decodeIfPresent(String.self, forKey: .scenesDirectory) ?? "Assets/Scenes"
         cacheDirectory = try container.decodeIfPresent(String.self, forKey: .cacheDirectory) ?? "Cache"
         intermediateDirectory = try container.decodeIfPresent(String.self, forKey: .intermediateDirectory) ?? "Intermediate"
         savedDirectory = try container.decodeIfPresent(String.self, forKey: .savedDirectory) ?? "Saved"
-        startScene = try container.decodeIfPresent(String.self, forKey: .startScene) ?? "Scenes/Default.scene"
+        startScene = try container.decodeIfPresent(String.self, forKey: .startScene) ?? "Assets/Scenes/Default.mcscene"
     }
 }
 

@@ -1,3 +1,7 @@
+/// EditorProjectManager.swift
+/// Defines the EditorProjectManager types and helpers for the editor.
+/// Created by Kaden Cringle.
+
 import AppKit
 import Foundation
 import MetalCupEngine
@@ -19,10 +23,12 @@ final class EditorProjectManager {
 
     private var assetRegistry: AssetRegistry?
     private var projectPaths: ProjectPaths?
-    private var settingsStore = EditorSettingsStore()
+    private let settingsStore = EditorSettingsStore.shared
     private var shouldShowProjectModal: Bool = false
     private var resourcesRootURL: URL?
     private var didRunStartupCheck: Bool = false
+    private var sceneDirty: Bool = false
+    private var assetRevision: UInt64 = 0
 
     private init() {}
 
@@ -87,7 +93,7 @@ final class EditorProjectManager {
         let projectName = url.deletingPathExtension().lastPathComponent
         let projectFolder = projectsRoot.appendingPathComponent(projectName, isDirectory: true)
         let assetsFolder = projectFolder.appendingPathComponent("Assets", isDirectory: true)
-        let scenesFolder = projectFolder.appendingPathComponent("Scenes", isDirectory: true)
+        let scenesFolder = assetsFolder.appendingPathComponent("Scenes", isDirectory: true)
         let cacheFolder = projectFolder.appendingPathComponent("Cache", isDirectory: true)
         let intermediateFolder = projectFolder.appendingPathComponent("Intermediate", isDirectory: true)
         let savedFolder = projectFolder.appendingPathComponent("Saved", isDirectory: true)
@@ -103,13 +109,13 @@ final class EditorProjectManager {
             return
         }
 
-        let startScenePath = "Scenes/Default.scene"
+        let startScenePath = "Assets/Scenes/Default.mcscene"
         let project = ProjectDocument(
             schemaVersion: ProjectSchema.currentVersion,
             name: projectName,
             rootPath: ".",
             assetDirectory: "Assets",
-            scenesDirectory: "Scenes",
+            scenesDirectory: "Assets/Scenes",
             cacheDirectory: "Cache",
             intermediateDirectory: "Intermediate",
             savedDirectory: "Saved",
@@ -141,7 +147,9 @@ final class EditorProjectManager {
             EditorAlertCenter.shared.enqueueError("No project is open to save.")
             return
         }
-        _ = writeProject(projectDocument, to: projectURL)
+        if writeProject(projectDocument, to: projectURL) {
+            EditorLogCenter.shared.logInfo("Saved project.", category: .project)
+        }
     }
 
     func saveProjectAs() {
@@ -154,11 +162,12 @@ final class EditorProjectManager {
                                                  message: "Save Project As") else {
             return
         }
-        _ = writeProject(projectDocument, to: url)
+        guard writeProject(projectDocument, to: url) else { return }
         projectURL = url
         projectRootURL = url.deletingLastPathComponent()
         settingsStore.addRecentProject(url)
         settingsStore.save()
+        EditorLogCenter.shared.logInfo("Saved project as: \(url.lastPathComponent)", category: .project)
     }
 
     func openScenePanel() {
@@ -167,7 +176,7 @@ final class EditorProjectManager {
             return
         }
         let scenesRoot = projectRootURL.appendingPathComponent(projectDocument.scenesDirectory, isDirectory: true)
-        guard let url = EditorFileDialog.openFile(allowedExtensions: ["scene"], directoryURL: scenesRoot, message: "Open Scene") else {
+        guard let url = EditorFileDialog.openFile(allowedExtensions: ["mcscene", "scene"], directoryURL: scenesRoot, message: "Open Scene") else {
             return
         }
         let relativePath = relativePath(from: projectRootURL, to: url)
@@ -192,8 +201,8 @@ final class EditorProjectManager {
             return
         }
         let scenesRoot = projectRootURL.appendingPathComponent(projectDocument.scenesDirectory, isDirectory: true)
-        guard let url = EditorFileDialog.saveFile(defaultName: "Untitled.scene",
-                                                 allowedExtensions: ["scene"],
+        guard let url = EditorFileDialog.saveFile(defaultName: "Untitled.mcscene",
+                                                 allowedExtensions: ["mcscene", "scene"],
                                                  directoryURL: scenesRoot,
                                                  message: "Save Scene As") else {
             return
@@ -215,6 +224,8 @@ final class EditorProjectManager {
             try SceneManager.saveScene(to: url)
             lastOpenedScenePath = relativePath
             saveEditorState()
+            sceneDirty = false
+            EditorLogCenter.shared.logInfo("Saved scene: \(relativePath)", category: .scene)
         } catch {
             EditorAlertCenter.shared.enqueueError("Failed to save scene: \(error.localizedDescription)")
         }
@@ -241,7 +252,7 @@ final class EditorProjectManager {
             try FileManager.default.removeItem(at: projectFolder)
             settingsStore.removeRecentProject(at: standardized.path)
             settingsStore.save()
-            EditorStatusCenter.shared.enqueueInfo("Deleted project: \(projectFolder.lastPathComponent)")
+            EditorLogCenter.shared.logInfo("Deleted project: \(projectFolder.lastPathComponent)", category: .project)
             return true
         } catch {
             EditorAlertCenter.shared.enqueueError("Failed to delete project: \(error.localizedDescription)")
@@ -303,10 +314,12 @@ final class EditorProjectManager {
         }
         let registry = AssetRegistry(projectAssetRootURL: resolvedAssetRoot)
         registry.startWatching()
-        registry.onChange = {
+        assetRevision = 1
+        registry.onChange = { [weak self] in
+            self?.assetRevision &+= 1
             AssetManager.clearCache()
             AssetManager.preload(from: registry)
-            EditorStatusCenter.shared.enqueueInfo("Assets reloaded.")
+            EditorLogCenter.shared.logInfo("Assets reloaded.", category: .assets)
         }
         assetRegistry = registry
         Engine.assetDatabase = registry
@@ -323,6 +336,8 @@ final class EditorProjectManager {
             try SceneManager.loadScene(from: url)
             lastOpenedScenePath = relativePath
             saveEditorState()
+            sceneDirty = false
+            EditorLogCenter.shared.logInfo("Loaded scene: \(relativePath)", category: .scene)
         } catch {
             EditorAlertCenter.shared.enqueueError("Failed to load scene: \(error.localizedDescription)")
         }
@@ -335,7 +350,7 @@ final class EditorProjectManager {
         let decoder = JSONDecoder()
         if let data = try? Data(contentsOf: stateURL),
            let state = try? decoder.decode(EditorStateDocument.self, from: data) {
-            let normalized = normalizeScenePathIfNeeded(state.lastOpenedScenePath)
+            let normalized = normalizeScenePathIfNeeded(state.lastOpenedScenePath, project: project)
             lastOpenedScenePath = normalized
             if normalized != state.lastOpenedScenePath {
                 saveEditorState()
@@ -343,12 +358,17 @@ final class EditorProjectManager {
         }
     }
 
-    private func normalizeScenePathIfNeeded(_ path: String) -> String {
+    private func normalizeScenePathIfNeeded(_ path: String, project: ProjectDocument) -> String {
         guard let projectRootURL else { return path }
         if path.isEmpty { return "" }
         if PathUtils.isAbsolutePath(path) {
             let absoluteURL = URL(fileURLWithPath: path)
             return PathUtils.relativePath(from: projectRootURL, to: absoluteURL) ?? path
+        }
+        let legacyPrefix = "Scenes/"
+        let targetPrefix = "\(project.scenesDirectory.trimmingCharacters(in: CharacterSet(charactersIn: "/")))/"
+        if path.hasPrefix(legacyPrefix) && !targetPrefix.isEmpty {
+            return targetPrefix + path.dropFirst(legacyPrefix.count)
         }
         return path
     }
@@ -408,8 +428,84 @@ final class EditorProjectManager {
         assetsRootPath
     }
 
+    func assetRevisionToken() -> UInt64 {
+        assetRevision
+    }
+
     func refreshAssets() {
+        assetRevision &+= 1
         assetRegistry?.refresh()
+    }
+
+    func performAssetMutation(_ operation: () throws -> Bool) -> Bool {
+        assetRegistry?.stopWatching()
+        defer { assetRegistry?.startWatching() }
+        do {
+            let ok = try operation()
+            if ok {
+                refreshAssets()
+            }
+            return ok
+        } catch {
+            EditorAlertCenter.shared.enqueueError("Asset operation failed: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    func markSceneDirty() {
+        sceneDirty = true
+    }
+
+    func clearSceneDirty() {
+        sceneDirty = false
+    }
+
+    func isSceneDirty() -> Bool {
+        return sceneDirty
+    }
+
+    func saveAll() {
+        guard isProjectOpen else { return }
+        saveProject()
+        if !lastOpenedScenePath.isEmpty {
+            saveCurrentScene(relativePath: lastOpenedScenePath)
+        }
+    }
+
+    func saveSettings() {
+        settingsStore.save()
+    }
+
+    func panelIsVisible(_ panelId: String, defaultValue: Bool) -> Bool {
+        EditorUIState.shared.panelIsVisible(panelId, defaultValue: defaultValue)
+    }
+
+    func setPanelVisible(_ panelId: String, visible: Bool) {
+        EditorUIState.shared.setPanelVisible(panelId, visible: visible)
+    }
+
+    func headerIsOpen(_ headerId: String, defaultValue: Bool) -> Bool {
+        EditorUIState.shared.headerIsOpen(headerId, defaultValue: defaultValue)
+    }
+
+    func setHeaderOpen(_ headerId: String, open: Bool) {
+        EditorUIState.shared.setHeaderOpen(headerId, open: open)
+    }
+
+    func lastSelectedEntityId() -> String {
+        EditorUIState.shared.lastSelectedEntityId()
+    }
+
+    func setLastSelectedEntityId(_ entityId: String) {
+        EditorUIState.shared.setLastSelectedEntityId(entityId)
+    }
+
+    func lastContentBrowserPath() -> String {
+        EditorUIState.shared.lastContentBrowserPath()
+    }
+
+    func setLastContentBrowserPath(_ path: String) {
+        EditorUIState.shared.setLastContentBrowserPath(path)
     }
 
     func metaURLForAsset(assetURL: URL, relativePath: String) -> URL? {
@@ -594,7 +690,7 @@ final class EditorProjectManager {
                 EditorAlertCenter.shared.enqueueError("Active project folder is missing.")
             }
         } else {
-            EditorStatusCenter.shared.enqueueInfo("No active project loaded.")
+            EditorLogCenter.shared.logInfo("No active project loaded.", category: .project)
         }
 
         assetRegistry?.refresh()
@@ -762,4 +858,86 @@ public func MCESceneIsPlaying() -> UInt32 {
 @_cdecl("MCESceneIsPaused")
 public func MCESceneIsPaused() -> UInt32 {
     return SceneManager.isPaused ? 1 : 0
+}
+
+@_cdecl("MCESceneIsDirty")
+public func MCESceneIsDirty() -> UInt32 {
+    return EditorProjectManager.shared.isSceneDirty() ? 1 : 0
+}
+
+@_cdecl("MCEProjectSaveAll")
+public func MCEProjectSaveAll() {
+    EditorProjectManager.shared.saveAll()
+}
+
+@_cdecl("MCEEditorSaveSettings")
+public func MCEEditorSaveSettings() {
+    EditorProjectManager.shared.saveSettings()
+}
+
+@_cdecl("MCEEditorGetPanelVisibility")
+public func MCEEditorGetPanelVisibility(_ panelId: UnsafePointer<CChar>?, _ defaultValue: UInt32) -> UInt32 {
+    guard let panelId else { return defaultValue }
+    let key = String(cString: panelId)
+    return EditorProjectManager.shared.panelIsVisible(key, defaultValue: defaultValue != 0) ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetPanelVisibility")
+public func MCEEditorSetPanelVisibility(_ panelId: UnsafePointer<CChar>?, _ visible: UInt32) {
+    guard let panelId else { return }
+    let key = String(cString: panelId)
+    EditorProjectManager.shared.setPanelVisible(key, visible: visible != 0)
+    EditorProjectManager.shared.saveSettings()
+}
+@_cdecl("MCEEditorGetHeaderOpen")
+public func MCEEditorGetHeaderOpen(_ headerId: UnsafePointer<CChar>?, _ defaultValue: UInt32) -> UInt32 {
+    guard let headerId else { return defaultValue }
+    let key = String(cString: headerId)
+    return EditorProjectManager.shared.headerIsOpen(key, defaultValue: defaultValue != 0) ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetHeaderOpen")
+public func MCEEditorSetHeaderOpen(_ headerId: UnsafePointer<CChar>?, _ open: UInt32) {
+    guard let headerId else { return }
+    let key = String(cString: headerId)
+    EditorProjectManager.shared.setHeaderOpen(key, open: open != 0)
+    EditorProjectManager.shared.saveSettings()
+}
+
+@_cdecl("MCEEditorGetLastSelectedEntityId")
+public func MCEEditorGetLastSelectedEntityId(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+    guard let buffer, bufferSize > 0 else { return 0 }
+    let value = EditorProjectManager.shared.lastSelectedEntityId()
+    let length = min(Int(bufferSize - 1), value.count)
+    value.withCString { ptr in
+        if length > 0 { memcpy(buffer, ptr, length) }
+    }
+    buffer[length] = 0
+    return value.isEmpty ? 0 : 1
+}
+
+@_cdecl("MCEEditorSetLastSelectedEntityId")
+public func MCEEditorSetLastSelectedEntityId(_ value: UnsafePointer<CChar>?) {
+    guard let value else { return }
+    EditorProjectManager.shared.setLastSelectedEntityId(String(cString: value))
+    EditorProjectManager.shared.saveSettings()
+}
+
+@_cdecl("MCEEditorGetLastContentBrowserPath")
+public func MCEEditorGetLastContentBrowserPath(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+    guard let buffer, bufferSize > 0 else { return 0 }
+    let value = EditorProjectManager.shared.lastContentBrowserPath()
+    let length = min(Int(bufferSize - 1), value.count)
+    value.withCString { ptr in
+        if length > 0 { memcpy(buffer, ptr, length) }
+    }
+    buffer[length] = 0
+    return value.isEmpty ? 0 : 1
+}
+
+@_cdecl("MCEEditorSetLastContentBrowserPath")
+public func MCEEditorSetLastContentBrowserPath(_ value: UnsafePointer<CChar>?) {
+    guard let value else { return }
+    EditorProjectManager.shared.setLastContentBrowserPath(String(cString: value))
+    EditorProjectManager.shared.saveSettings()
 }

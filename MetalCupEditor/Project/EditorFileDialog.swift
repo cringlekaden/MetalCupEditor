@@ -1,3 +1,7 @@
+/// EditorFileDialog.swift
+/// Defines the EditorFileDialog types and helpers for the editor.
+/// Created by Kaden Cringle.
+
 import AppKit
 import Foundation
 

@@ -1,3 +1,7 @@
+/// ProjectMigration.swift
+/// Defines the ProjectMigration types and helpers for the editor.
+/// Created by Kaden Cringle.
+
 import Foundation
 
 // Canonical project layout:
@@ -5,7 +9,7 @@ import Foundation
 //   <ProjectName>/
 //     Project.mcp
 //     Assets/
-//     Scenes/
+//       Scenes/
 //     Cache/
 //     Intermediate/
 //     Saved/
@@ -77,11 +81,14 @@ enum ProjectMigration {
         if updated.assetDirectory.isEmpty || updated.assetDirectory == "." || updated.assetDirectory == "../Assets" {
             updated.assetDirectory = "Assets"
         }
-        if updated.scenesDirectory.isEmpty { updated.scenesDirectory = "Scenes" }
+        if updated.assetDirectory.hasPrefix("Assets/Assets") {
+            updated.assetDirectory = "Assets"
+        }
+        if updated.scenesDirectory.isEmpty { updated.scenesDirectory = "Assets/Scenes" }
         if updated.cacheDirectory.isEmpty { updated.cacheDirectory = "Cache" }
         if updated.intermediateDirectory.isEmpty { updated.intermediateDirectory = "Intermediate" }
         if updated.savedDirectory.isEmpty { updated.savedDirectory = "Saved" }
-        if updated.startScene.isEmpty { updated.startScene = "Scenes/Default.scene" }
+        if updated.startScene.isEmpty { updated.startScene = "Assets/Scenes/Default.mcscene" }
 
         if isAbsolutePath(updated.startScene) {
             if let rel = PathUtils.relativePath(from: projectRoot, to: URL(fileURLWithPath: updated.startScene)) {
@@ -90,9 +97,55 @@ enum ProjectMigration {
         }
 
         migrateLooseAssetsIfNeeded(projectRoot: projectRoot)
+        migrateNestedAssetsIfNeeded(projectRoot: projectRoot)
+        migrateScenesToAssetsIfNeeded(projectRoot: projectRoot, project: &updated)
 
         updated.schemaVersion = ProjectSchema.currentVersion
         return updated
+    }
+
+    private static func migrateScenesToAssetsIfNeeded(projectRoot: URL, project: inout ProjectDocument) {
+        let desiredScenesRel = "Assets/Scenes"
+        let currentScenesRel = project.scenesDirectory.isEmpty ? "Scenes" : project.scenesDirectory
+        if currentScenesRel == desiredScenesRel {
+            project.scenesDirectory = desiredScenesRel
+            if project.startScene.hasPrefix("Scenes/") {
+                project.startScene = "Assets/Scenes/" + project.startScene.dropFirst("Scenes/".count)
+            }
+            return
+        }
+
+        let legacyURL = projectRoot.appendingPathComponent(currentScenesRel, isDirectory: true)
+        let targetURL = projectRoot.appendingPathComponent(desiredScenesRel, isDirectory: true)
+
+        var didMove = false
+        if FileManager.default.fileExists(atPath: legacyURL.path) {
+            PathUtils.ensureDirectoryExists(targetURL)
+            if let enumerator = FileManager.default.enumerator(at: legacyURL, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) {
+                for case let url as URL in enumerator {
+                    let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+                    if values?.isDirectory == true { continue }
+                    guard let relative = PathUtils.relativePath(from: legacyURL, to: url) else { continue }
+                    let destination = targetURL.appendingPathComponent(relative)
+                    PathUtils.ensureDirectoryExists(destination.deletingLastPathComponent())
+                    if moveOrCopyItem(from: url, to: destination) {
+                        didMove = true
+                    }
+                }
+            }
+        }
+
+        project.scenesDirectory = desiredScenesRel
+        if project.startScene.hasPrefix(currentScenesRel + "/") {
+            let suffix = project.startScene.dropFirst(currentScenesRel.count + 1)
+            project.startScene = desiredScenesRel + "/" + suffix
+        } else if project.startScene.hasPrefix("Scenes/") {
+            project.startScene = "Assets/Scenes/" + project.startScene.dropFirst("Scenes/".count)
+        }
+
+        if didMove {
+            print("PROJECT_MIGRATION::Scenes -> Assets/Scenes")
+        }
     }
 
     private static func migrateLooseAssetsIfNeeded(projectRoot: URL) {
@@ -115,6 +168,36 @@ enum ProjectMigration {
             let destination = uniqueDestination(for: assetsRoot.appendingPathComponent(name, isDirectory: item.hasDirectoryPath))
             if moveOrCopyItem(from: item, to: destination) {
                 print("PROJECT_MIGRATION::Moved \(name) -> Assets/\(destination.lastPathComponent)")
+            }
+        }
+    }
+
+    private static func migrateNestedAssetsIfNeeded(projectRoot: URL) {
+        let assetsRoot = projectRoot.appendingPathComponent("Assets", isDirectory: true)
+        let nestedRoot = assetsRoot.appendingPathComponent("Assets", isDirectory: true)
+        guard FileManager.default.fileExists(atPath: nestedRoot.path) else { return }
+
+        guard let contents = try? FileManager.default.contentsOfDirectory(at: nestedRoot, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]) else {
+            return
+        }
+
+        var movedAny = false
+        for item in contents {
+            let destination = assetsRoot.appendingPathComponent(item.lastPathComponent, isDirectory: item.hasDirectoryPath)
+            if FileManager.default.fileExists(atPath: destination.path) {
+                EditorLogCenter.shared.logWarning("Assets repair skipped existing item: \(item.lastPathComponent)", category: .assets)
+                continue
+            }
+            if moveOrCopyItem(from: item, to: destination) {
+                movedAny = true
+                EditorLogCenter.shared.logInfo("Assets repair moved: Assets/Assets/\(item.lastPathComponent) -> Assets/\(item.lastPathComponent)", category: .assets)
+            }
+        }
+
+        if movedAny {
+            let remaining = (try? FileManager.default.contentsOfDirectory(atPath: nestedRoot.path)) ?? []
+            if remaining.isEmpty {
+                try? FileManager.default.removeItem(at: nestedRoot)
             }
         }
     }

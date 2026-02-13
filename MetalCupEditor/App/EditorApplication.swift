@@ -1,14 +1,14 @@
-//
-//  EditorApplication.swift
-//  MetalCupEditor
-//
-//  Created by Kaden Cringle on 2/4/26.
-//
+/// EditorApplication.swift
+/// Defines the EditorApplication types and helpers for the editor.
+/// Created by Kaden Cringle.
 
+import AppKit
 import MetalCupEngine
 import MetalKit
 
-final class EditorApplication: Application {
+final class EditorApplication: Application, NSWindowDelegate {
+    private var isShuttingDown = false
+
     nonisolated override init(specification: ApplicationSpecification) {
         super.init(specification: specification)
     }
@@ -22,5 +22,67 @@ final class EditorApplication: Application {
     
     nonisolated override func didCreateWindow() {
         layerStack.pushLayer(ImGuiLayer(name: "Sandbox"))
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.mainWindow.nsWindow.delegate = self
+        }
+    }
+
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        if isShuttingDown { return true }
+
+        let hasProject = EditorProjectManager.shared.isProjectOpen
+        let isDirty = EditorProjectManager.shared.isSceneDirty()
+
+        if hasProject && isDirty {
+            let alert = NSAlert()
+            alert.messageText = "Save changes before closing?"
+            alert.informativeText = "Your project has unsaved scene changes."
+            alert.addButton(withTitle: "Save")
+            alert.addButton(withTitle: "Don't Save")
+            alert.addButton(withTitle: "Cancel")
+            let response = alert.runModal()
+            switch response {
+            case .alertFirstButtonReturn:
+                performShutdown(saveChanges: true)
+            case .alertSecondButtonReturn:
+                performShutdown(saveChanges: false)
+            default:
+                return false
+            }
+        } else {
+            performShutdown(saveChanges: false)
+        }
+
+        return false
+    }
+
+    private func performShutdown(saveChanges: Bool) {
+        guard !isShuttingDown else { return }
+        isShuttingDown = true
+
+        EditorProjectManager.shared.saveSettings()
+        if saveChanges {
+            EditorProjectManager.shared.saveAll()
+        }
+
+        if SceneManager.isPlaying {
+            SceneManager.stop()
+        }
+
+        mainWindow.mtkView.delegate = nil
+        mainWindow.nsWindow.delegate = nil
+
+        EditorLogCenter.shared.logInfo("Editor exiting.", category: .editor)
+        DispatchQueue.main.async {
+            NSApp.terminate(nil)
+        }
+    }
+}
+
+@_cdecl("MCEEditorRequestQuit")
+public func MCEEditorRequestQuit() {
+    DispatchQueue.main.async {
+        NSApp.mainWindow?.performClose(nil)
     }
 }

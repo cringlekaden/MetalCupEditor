@@ -27,6 +27,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		375E99272F3F589A00F39780 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AGENTS.md; sourceTree = "<group>"; };
 		3786521A2F32EDBB00321B24 /* MetalCupEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MetalCupEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		378652292F32EE2800321B24 /* MetalCupEngine.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = MetalCupEngine.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		37F505022F3C2AB8001C21A5 /* MetalCupEditor */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MetalCupEditor; path = "../../../Library/Application Support/MetalCupEditor"; sourceTree = "<group>"; };
@@ -55,6 +56,7 @@
 		378652112F32EDBB00321B24 = {
 			isa = PBXGroup;
 			children = (
+				375E99272F3F589A00F39780 /* AGENTS.md */,
 				37F505022F3C2AB8001C21A5 /* MetalCupEditor */,
 				3786521C2F32EDBB00321B24 /* MetalCupEditor */,
 				378652282F32EE2800321B24 /* Frameworks */,
@@ -317,7 +319,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "MetalCupEditor/ImGui/MetalCupEditor-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "MetalCupEditor/EditorCore/MetalCupEditor-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
@@ -354,7 +356,7 @@
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
-				SWIFT_OBJC_BRIDGING_HEADER = "MetalCupEditor/ImGui/MetalCupEditor-Bridging-Header.h";
+				SWIFT_OBJC_BRIDGING_HEADER = "MetalCupEditor/EditorCore/MetalCupEditor-Bridging-Header.h";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 			};

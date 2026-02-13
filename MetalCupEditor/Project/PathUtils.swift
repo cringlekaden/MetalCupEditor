@@ -1,3 +1,7 @@
+/// PathUtils.swift
+/// Defines the PathUtils types and helpers for the editor.
+/// Created by Kaden Cringle.
+
 import Foundation
 
 enum PathUtils {

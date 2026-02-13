@@ -1,9 +1,6 @@
-//
-//  MetalCupEditorApp.swift
-//  MetalCupEditor
-//
-//  Created by Kaden Cringle on 2/3/26.
-//
+/// MetalCupEditorApp.swift
+/// Defines the MetalCupEditorApp types and helpers for the editor.
+/// Created by Kaden Cringle.
 
 import Foundation
 import SwiftUI
