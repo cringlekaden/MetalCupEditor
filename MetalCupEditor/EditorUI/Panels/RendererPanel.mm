@@ -143,6 +143,56 @@ void ImGuiRendererPanelDraw(bool *isOpen) {
         }
     }
 
+    bool outlineOpen = EditorUI::BeginSection("Selection Outline", "Renderer.Outline", true);
+    if (outlineOpen) {
+        if (EditorUI::BeginPropertyTable("OutlineTable")) {
+            bool outlineEnabled = MCERendererGetOutlineEnabled() != 0;
+            if (EditorUI::PropertyBool("Enable Outline", &outlineEnabled)) {
+                MCERendererSetOutlineEnabled(outlineEnabled ? 1 : 0);
+            }
+            int thickness = static_cast<int>(MCERendererGetOutlineThickness());
+            if (EditorUI::PropertyInt("Thickness (px)", &thickness, 1, 4)) {
+                MCERendererSetOutlineThickness(static_cast<uint32_t>(thickness));
+            }
+            float opacity = MCERendererGetOutlineOpacity();
+            if (EditorUI::PropertyFloat("Opacity", &opacity, EditorUIConstants::kOutlineOpacityStep,
+                                        EditorUIConstants::kOutlineOpacityMin, EditorUIConstants::kOutlineOpacityMax, "%.2f", true, true, EditorUIConstants::kDefaultOutlineOpacity)) {
+                MCERendererSetOutlineOpacity(opacity);
+            }
+            float outlineColor[3];
+            MCERendererGetOutlineColor(&outlineColor[0], &outlineColor[1], &outlineColor[2]);
+            if (EditorUI::PropertyColor3("Color", outlineColor, EditorUIConstants::kDefaultOutlineColor, true)) {
+                MCERendererSetOutlineColor(outlineColor[0], outlineColor[1], outlineColor[2]);
+            }
+            EditorUI::EndPropertyTable();
+        }
+    }
+
+    bool gridOpen = EditorUI::BeginSection("Viewport Grid", "Renderer.Grid", true);
+    if (gridOpen) {
+        if (EditorUI::BeginPropertyTable("GridTable")) {
+            bool gridEnabled = MCERendererGetGridEnabled() != 0;
+            if (EditorUI::PropertyBool("Enable Grid", &gridEnabled)) {
+                MCERendererSetGridEnabled(gridEnabled ? 1 : 0);
+            }
+            float gridOpacity = MCERendererGetGridOpacity();
+            if (EditorUI::PropertyFloat("Opacity", &gridOpacity, EditorUIConstants::kGridOpacityStep,
+                                        EditorUIConstants::kGridOpacityMin, EditorUIConstants::kGridOpacityMax, "%.2f", true, true, EditorUIConstants::kDefaultGridOpacity)) {
+                MCERendererSetGridOpacity(gridOpacity);
+            }
+            float gridFade = MCERendererGetGridFadeDistance();
+            if (EditorUI::PropertyFloat("Fade Distance", &gridFade, EditorUIConstants::kGridFadeStep,
+                                        EditorUIConstants::kGridFadeMin, EditorUIConstants::kGridFadeMax, "%.1f", true, true, EditorUIConstants::kDefaultGridFadeDistance)) {
+                MCERendererSetGridFadeDistance(gridFade);
+            }
+            float gridMajor = MCERendererGetGridMajorLineEvery();
+            if (EditorUI::PropertyFloat("Major Line Every", &gridMajor, EditorUIConstants::kGridMajorLineStep,
+                                        EditorUIConstants::kGridMajorLineMin, EditorUIConstants::kGridMajorLineMax, "%.0f", true, true, EditorUIConstants::kDefaultGridMajorLineEvery)) {
+                MCERendererSetGridMajorLineEvery(gridMajor);
+            }
+            EditorUI::EndPropertyTable();
+        }
+    }
 
     bool iblOpen = EditorUI::BeginSection("IBL", "Renderer.IBL", true);
     if (iblOpen) {

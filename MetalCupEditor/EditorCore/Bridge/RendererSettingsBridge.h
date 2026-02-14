@@ -88,6 +88,24 @@ void MCERendererSetNormalMapMipBias(float value);
 float MCERendererGetNormalMapMipBiasGrazing(void);
 void MCERendererSetNormalMapMipBiasGrazing(float value);
 
+uint32_t MCERendererGetOutlineEnabled(void);
+void MCERendererSetOutlineEnabled(uint32_t value);
+uint32_t MCERendererGetOutlineThickness(void);
+void MCERendererSetOutlineThickness(uint32_t value);
+float MCERendererGetOutlineOpacity(void);
+void MCERendererSetOutlineOpacity(float value);
+void MCERendererGetOutlineColor(float *r, float *g, float *b);
+void MCERendererSetOutlineColor(float r, float g, float b);
+
+uint32_t MCERendererGetGridEnabled(void);
+void MCERendererSetGridEnabled(uint32_t value);
+float MCERendererGetGridOpacity(void);
+void MCERendererSetGridOpacity(float value);
+float MCERendererGetGridFadeDistance(void);
+void MCERendererSetGridFadeDistance(float value);
+float MCERendererGetGridMajorLineEvery(void);
+void MCERendererSetGridMajorLineEvery(float value);
+
 uint32_t MCERendererGetIBLFireflyClampEnabled(void);
 void MCERendererSetIBLFireflyClampEnabled(uint32_t value);
 float MCERendererGetIBLFireflyClamp(void);

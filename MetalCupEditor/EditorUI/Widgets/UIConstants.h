@@ -59,6 +59,25 @@ namespace EditorUIConstants {
     constexpr float kBloomDirtStep = 0.05f;
     constexpr float kDefaultBloomDirt = 0.0f;
 
+    constexpr float kOutlineOpacityMin = 0.0f;
+    constexpr float kOutlineOpacityMax = 1.0f;
+    constexpr float kOutlineOpacityStep = 0.05f;
+    constexpr float kDefaultOutlineOpacity = 1.0f;
+    constexpr float kDefaultOutlineColor[3] = { 1.0f, 0.9f, 0.2f };
+
+    constexpr float kGridOpacityMin = 0.0f;
+    constexpr float kGridOpacityMax = 1.0f;
+    constexpr float kGridOpacityStep = 0.05f;
+    constexpr float kGridFadeMin = 1.0f;
+    constexpr float kGridFadeMax = 300.0f;
+    constexpr float kGridFadeStep = 1.0f;
+    constexpr float kGridMajorLineMin = 1.0f;
+    constexpr float kGridMajorLineMax = 100.0f;
+    constexpr float kGridMajorLineStep = 1.0f;
+    constexpr float kDefaultGridOpacity = 0.6f;
+    constexpr float kDefaultGridFadeDistance = 80.0f;
+    constexpr float kDefaultGridMajorLineEvery = 10.0f;
+
     constexpr float kIBLIntensityMin = 0.0f;
     constexpr float kIBLIntensityMax = 5.0f;
     constexpr float kIBLIntensityStep = 0.05f;

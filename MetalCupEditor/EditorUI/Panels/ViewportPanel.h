@@ -12,6 +12,7 @@ extern "C" {
 #endif
 
 void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
+                            const char *selectedEntityId,
                             bool *hovered,
                             bool *focused,
                             CGSize *contentSize,

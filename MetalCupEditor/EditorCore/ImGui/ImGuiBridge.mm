@@ -76,6 +76,8 @@ static CGSize g_ViewportContentSize = {0, 0};
 static CGPoint g_ViewportContentOrigin = {0, 0};
 static CGPoint g_ViewportImageOrigin = {0, 0};
 static CGSize g_ViewportImageSize = {0, 0};
+static bool g_GizmoCaptureMouse = false;
+static bool g_GizmoCaptureKeyboard = false;
 static bool g_ShowRendererPanel = true;
 static bool g_ShowSceneHierarchyPanel = true;
 static bool g_ShowInspectorPanel = true;
@@ -85,6 +87,11 @@ static bool g_ShowProfilingPanel = false;
 static bool g_ShowLogsPanel = true;
 static bool g_LoadedPanelVisibility = false;
 static char g_SelectedEntityId[64] = {0};
+
+extern "C" void MCEImGuiSetGizmoCapture(uint32_t wantsMouse, uint32_t wantsKeyboard) {
+    g_GizmoCaptureMouse = wantsMouse != 0;
+    g_GizmoCaptureKeyboard = wantsKeyboard != 0;
+}
 
 struct LogEntrySnapshot {
     int32_t level = 0;
@@ -624,6 +631,8 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
 + (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture {
     static char g_AlertMessage[512] = {0};
+    g_GizmoCaptureMouse = false;
+    g_GizmoCaptureKeyboard = false;
     if (g_AlertMessage[0] == 0) {
         if (MCEEditorPopNextAlert(g_AlertMessage, sizeof(g_AlertMessage)) != 0) {
             ImGui::OpenPopup("Error");
@@ -885,6 +894,7 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
     if (g_ShowViewportPanel) {
         ImGuiViewportPanelDraw(sceneTexture,
+                               g_SelectedEntityId,
                                &g_ViewportHovered,
                                &g_ViewportFocused,
                                &g_ViewportContentSize,
@@ -920,13 +930,13 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 + (bool)wantsCaptureMouse {
     if (!g_ImGuiInitialized) { return false; }
     ImGuiIO& io = ImGui::GetIO();
-    return io.WantCaptureMouse;
+    return io.WantCaptureMouse || g_GizmoCaptureMouse;
 }
 
 + (bool)wantsCaptureKeyboard {
     if (!g_ImGuiInitialized) { return false; }
     ImGuiIO& io = ImGui::GetIO();
-    return io.WantCaptureKeyboard;
+    return io.WantCaptureKeyboard || g_GizmoCaptureKeyboard;
 }
 
 + (bool)viewportIsHovered {

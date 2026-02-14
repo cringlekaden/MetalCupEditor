@@ -310,6 +310,159 @@ public func MCEEditorSetTransform(_ entityId: UnsafePointer<CChar>?,
     EditorLogCenter.shared.logInfo("Transform updated: \(entity.id.uuidString)", category: .scene)
 }
 
+@_cdecl("MCEEditorSetTransformNoLog")
+public func MCEEditorSetTransformNoLog(_ entityId: UnsafePointer<CChar>?,
+                                       _ px: Float, _ py: Float, _ pz: Float,
+                                       _ rx: Float, _ ry: Float, _ rz: Float,
+                                       _ sx: Float, _ sy: Float, _ sz: Float) {
+    guard !SceneManager.isPlaying, let ecs = editorECS(), let entity = entity(from: entityId) else { return }
+    let transform = TransformComponent(
+        position: SIMD3<Float>(px, py, pz),
+        rotation: SIMD3<Float>(rx, ry, rz),
+        scale: SIMD3<Float>(sx, sy, sz)
+    )
+    ecs.add(transform, to: entity)
+    EditorProjectManager.shared.markSceneDirty()
+}
+
+@_cdecl("MCEEditorSetTransformFromMatrix")
+public func MCEEditorSetTransformFromMatrix(_ entityId: UnsafePointer<CChar>?, _ matrix: UnsafePointer<Float>?) -> UInt32 {
+    guard !SceneManager.isPlaying,
+          let ecs = editorECS(),
+          let entity = entity(from: entityId),
+          let matrix else { return 0 }
+
+    let col0 = SIMD3<Float>(matrix[0], matrix[1], matrix[2])
+    let col1 = SIMD3<Float>(matrix[4], matrix[5], matrix[6])
+    let col2 = SIMD3<Float>(matrix[8], matrix[9], matrix[10])
+    let translation = SIMD3<Float>(matrix[12], matrix[13], matrix[14])
+
+    var axisX = col0
+    var axisY = col1
+    var axisZ = col2
+
+    var scaleX = simd_length(axisX)
+    var scaleY = simd_length(axisY)
+    var scaleZ = simd_length(axisZ)
+    if scaleX <= 0.000001 || scaleY <= 0.000001 || scaleZ <= 0.000001 {
+        return 0
+    }
+
+    axisX /= scaleX
+    axisY /= scaleY
+    axisZ /= scaleZ
+
+    let determinant = simd_dot(axisX, simd_cross(axisY, axisZ))
+    if determinant < 0 {
+        scaleZ = -scaleZ
+        axisZ = -axisZ
+    }
+
+    let m00 = axisX.x
+    let m01 = axisY.x
+    let m02 = axisZ.x
+    let m10 = axisX.y
+    let m11 = axisY.y
+    let m12 = axisZ.y
+    let m22 = axisZ.z
+
+    var rotationX: Float = 0
+    var rotationY: Float = 0
+    var rotationZ: Float = 0
+
+    if m02 < 1 {
+        if m02 > -1 {
+            rotationY = asinf(m02)
+            rotationX = atan2f(-m12, m22)
+            rotationZ = atan2f(-m01, m00)
+        } else {
+            rotationY = -Float.pi * 0.5
+            rotationX = -atan2f(m10, m11)
+            rotationZ = 0
+        }
+    } else {
+        rotationY = Float.pi * 0.5
+        rotationX = atan2f(m10, m11)
+        rotationZ = 0
+    }
+
+    let transform = TransformComponent(
+        position: translation,
+        rotation: SIMD3<Float>(rotationX, rotationY, rotationZ),
+        scale: SIMD3<Float>(scaleX, scaleY, scaleZ)
+    )
+    ecs.add(transform, to: entity)
+    EditorProjectManager.shared.markSceneDirty()
+    return 1
+}
+
+@_cdecl("MCEEditorGetModelMatrix")
+public func MCEEditorGetModelMatrix(_ entityId: UnsafePointer<CChar>?, _ matrixOut: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let ecs = editorECS(),
+          let entity = entity(from: entityId),
+          let transform = ecs.get(TransformComponent.self, for: entity),
+          let matrixOut else { return 0 }
+
+    let matrix = buildModelMatrix(
+        position: transform.position,
+        rotation: transform.rotation,
+        scale: transform.scale
+    )
+    withUnsafeBytes(of: matrix) { bytes in
+        memcpy(matrixOut, bytes.baseAddress, MemoryLayout<Float>.size * 16)
+    }
+
+    return 1
+}
+
+private func buildModelMatrix(position: SIMD3<Float>, rotation: SIMD3<Float>, scale: SIMD3<Float>) -> matrix_float4x4 {
+    let tx = position.x
+    let ty = position.y
+    let tz = position.z
+
+    let sx = sin(rotation.x)
+    let cx = cos(rotation.x)
+    let sy = sin(rotation.y)
+    let cy = cos(rotation.y)
+    let sz = sin(rotation.z)
+    let cz = cos(rotation.z)
+
+    let m00 = cy * cz
+    let m01 = -cy * sz
+    let m02 = sy
+    let m10 = sx * sy * cz + cx * sz
+    let m11 = -sx * sy * sz + cx * cz
+    let m12 = -sx * cy
+    let m20 = -cx * sy * cz + sx * sz
+    let m21 = cx * sy * sz + sx * cz
+    let m22 = cx * cy
+
+    return matrix_float4x4(columns: (
+        SIMD4<Float>(m00 * scale.x, m10 * scale.x, m20 * scale.x, 0.0),
+        SIMD4<Float>(m01 * scale.y, m11 * scale.y, m21 * scale.y, 0.0),
+        SIMD4<Float>(m02 * scale.z, m12 * scale.z, m22 * scale.z, 0.0),
+        SIMD4<Float>(tx, ty, tz, 1.0)
+    ))
+}
+
+@_cdecl("MCEEditorGetEditorCameraMatrices")
+public func MCEEditorGetEditorCameraMatrices(_ viewOut: UnsafeMutablePointer<Float>?,
+                                             _ projectionOut: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let scene = SceneManager.getEditorScene() else { return 0 }
+    let matrices = scene.cameraMatrices()
+    if let viewOut {
+        withUnsafeBytes(of: matrices.view) { bytes in
+            memcpy(viewOut, bytes.baseAddress, MemoryLayout<Float>.size * 16)
+        }
+    }
+    if let projectionOut {
+        withUnsafeBytes(of: matrices.projection) { bytes in
+            memcpy(projectionOut, bytes.baseAddress, MemoryLayout<Float>.size * 16)
+        }
+    }
+    return 1
+}
+
 @_cdecl("MCEEditorGetMeshRenderer")
 public func MCEEditorGetMeshRenderer(_ entityId: UnsafePointer<CChar>?,
                                      _ meshHandle: UnsafeMutablePointer<CChar>?, _ meshHandleSize: Int32,

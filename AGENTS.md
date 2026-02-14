@@ -9,10 +9,21 @@ This file defines how automated agents (Codex/LLMs) must operate in this codebas
 
 ---
 
-## Reference Docs
-- `ARCHITECTURE.md` (repo root): source of truth for boundaries and data flow.
-- `MetalCupEditor/MetalCupEditor/README.md`: editor features + high-level structure.
-- `MetalCupEngine/README.md`: engine features + high-level structure.
+## Where to Find Things (critical paths)
+- **Engine runtime (Swift):** `MetalCupEngine/MetalCupEngine/`
+- **Editor app (Swift/ObjC++):** `MetalCupEditor/MetalCupEditor/`
+- **ImGui + ImGuizmo integration:** `MetalCupEditor/MetalCupEditor/EditorCore/ImGui/` and `MetalCupEditor/MetalCupEditor/EditorUI/`
+- **ImGui panels:** `MetalCupEditor/MetalCupEditor/EditorUI/Panels/`
+- **Shared ImGui widgets:** `MetalCupEditor/MetalCupEditor/EditorUI/Widgets/`
+- **Editor↔Engine bridges:** `MetalCupEditor/MetalCupEditor/EditorCore/Bridge/` and `MetalCupEngine/MetalCupEngine/Bridge/`
+- **Engine rendering core:** `MetalCupEngine/MetalCupEngine/Core/` and `MetalCupEngine/MetalCupEngine/Graphics/`
+- **Scene + ECS:** `MetalCupEngine/MetalCupEngine/Game/`
+- **Project assets (per-project only):** `MetalCupEditor/MetalCupEditor/Projects/<ProjectName>/Assets/`
+- **Shaders (per-project assets):**
+  - `MetalCupEditor/MetalCupEditor/Projects/Sandbox/Assets/Shaders/`
+  - `MetalCupEditor/MetalCupEditor/Projects/Test/Assets/Shaders/`
+- **Scenes (per-project assets):** `MetalCupEditor/MetalCupEditor/Projects/<ProjectName>/Assets/Scenes/`
+- **Materials (per-project assets):** `MetalCupEditor/MetalCupEditor/Projects/<ProjectName>/Assets/Materials/`
 
 ---
 
@@ -120,6 +131,7 @@ At the end of a change:
 - Note any migrations performed.
 - Mention any discovered issues not fixed.
 
+
 ---
 
 ## What NOT to do
@@ -128,11 +140,3 @@ At the end of a change:
 - Do not introduce a new project layout.
 - Do not add third-party dependencies without explicit approval.
 - Do not change serialization formats unless asked.
-
----
-
-## Quick Glossary
-- **Project**: top-level container (assets + scenes + settings).
-- **Scene**: serialized ECS world.
-- **Material**: serialized `.mcmat` document editable via material editor window.
-- **Asset handle/UUID**: internal stable identity; must not be exposed as the primary UX for selection.
