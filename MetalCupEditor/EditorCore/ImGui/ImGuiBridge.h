@@ -31,6 +31,10 @@ NS_ASSUME_NONNULL_BEGIN
 + (bool)viewportIsFocused;
 + (CGSize)viewportContentSize;
 + (CGPoint)viewportContentOrigin;
++ (CGPoint)viewportImageOrigin;
++ (CGSize)viewportImageSize;
++ (CGPoint)mousePosition;
++ (void)setSelectedEntityId:(NSString *)value;
 
 @end
 

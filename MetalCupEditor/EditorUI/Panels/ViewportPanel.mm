@@ -17,7 +17,9 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
                             bool *hovered,
                             bool *focused,
                             CGSize *contentSize,
-                            CGPoint *contentOrigin) {
+                            CGPoint *contentOrigin,
+                            CGPoint *imageOrigin,
+                            CGSize *imageSize) {
     if (!EditorUI::BeginPanel("Viewport")) {
         EditorUI::EndPanel();
         return;
@@ -63,6 +65,15 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
         ImGui::SetWindowFocus();
     }
 
+    ImVec2 imageMin = ImGui::GetItemRectMin();
+    ImVec2 imageMax = ImGui::GetItemRectMax();
+    if (imageOrigin) {
+        *imageOrigin = CGPointMake(imageMin.x, imageMin.y);
+    }
+    if (imageSize) {
+        *imageSize = CGSizeMake(imageMax.x - imageMin.x, imageMax.y - imageMin.y);
+    }
+
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
@@ -76,8 +87,6 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
         ImGui::EndDragDropTarget();
     }
 
-    ImVec2 imageMin = ImGui::GetItemRectMin();
-    ImVec2 imageMax = ImGui::GetItemRectMax();
     if (imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
         const float toolbarPadding = 10.0f;
         ImVec2 playLabel = ImGui::CalcTextSize("Play");

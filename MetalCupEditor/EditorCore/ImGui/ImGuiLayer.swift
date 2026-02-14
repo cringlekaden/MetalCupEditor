@@ -15,8 +15,8 @@ final class ImGuiLayer: Layer {
     }
 
     nonisolated override func onUpdate() {
-        let viewportSize = ImGuiBridge.viewportContentSize()
-        let viewportOrigin = ImGuiBridge.viewportContentOrigin()
+        let viewportSize = ImGuiBridge.viewportImageSize()
+        let viewportOrigin = ImGuiBridge.viewportImageOrigin()
         if viewportSize.width > 1, viewportSize.height > 1 {
             SceneManager.updateViewportSize(SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height)))
             Mouse.SetViewportRect(
@@ -25,6 +25,16 @@ final class ImGuiLayer: Layer {
             )
         }
         SceneManager.update()
+        if let result = SceneManager.consumePickResult() {
+            switch result {
+            case .none:
+                SceneManager.setSelectedEntityId("")
+                ImGuiBridge.setSelectedEntityId("")
+            case .entity(let entity):
+                SceneManager.setSelectedEntityId(entity.id.uuidString)
+                ImGuiBridge.setSelectedEntityId(entity.id.uuidString)
+            }
+        }
     }
 
     nonisolated override func onRender(encoder: MTLRenderCommandEncoder) {
@@ -42,6 +52,38 @@ final class ImGuiLayer: Layer {
     }
     
     nonisolated override func onEvent(_ event: Event) {
+        if let mouseEvent = event as? MouseButtonPressedEvent,
+           mouseEvent.button == MouseCodes.left.rawValue {
+            let wantsMouse = ImGuiBridge.wantsCaptureMouse()
+            let viewportHovered = ImGuiBridge.viewportIsHovered()
+            if viewportHovered && !wantsMouse {
+                SceneManager.setSelectedEntityId("")
+                ImGuiBridge.setSelectedEntityId("")
+                let viewportOrigin = ImGuiBridge.viewportImageOrigin()
+                let viewportImageSize = ImGuiBridge.viewportImageSize()
+                let pickTexture = AssetManager.texture(handle: BuiltinAssets.pickIdRender)
+                let textureWidth = Float(pickTexture?.width ?? 0)
+                let textureHeight = Float(pickTexture?.height ?? 0)
+                let mousePos = ImGuiBridge.mousePosition()
+                let local = SIMD2<Float>(Float(mousePos.x - viewportOrigin.x),
+                                         Float(mousePos.y - viewportOrigin.y))
+                if local.x < 0 || local.y < 0
+                    || local.x >= Float(viewportImageSize.width)
+                    || local.y >= Float(viewportImageSize.height) {
+                    SceneManager.setSelectedEntityId("")
+                    ImGuiBridge.setSelectedEntityId("")
+                    return
+                }
+                if textureWidth > 1, textureHeight > 1,
+                   viewportImageSize.width > 1, viewportImageSize.height > 1 {
+                    let scaleX = textureWidth / Float(viewportImageSize.width)
+                    let scaleY = textureHeight / Float(viewportImageSize.height)
+                    let x = Int(local.x * scaleX)
+                    let y = Int(local.y * scaleY)
+                    SceneManager.requestPick(at: SIMD2<Int>(x, y))
+                }
+            }
+        }
         if shouldCaptureEvent(event) {
             event.handled = true
             return

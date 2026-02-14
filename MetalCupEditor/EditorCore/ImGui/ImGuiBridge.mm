@@ -66,6 +66,7 @@ extern "C" int32_t MCEEditorLogCount(void);
 extern "C" uint32_t MCEEditorLogEntryAt(int32_t index, int32_t *levelOut, int32_t *categoryOut, double *timestampOut, char *messageBuffer, int32_t messageBufferSize);
 extern "C" uint64_t MCEEditorLogRevision(void);
 extern "C" void MCEEditorLogClear(void);
+extern "C" void MCEEditorLogSelection(const char *entityId);
 extern "C" void MCEEditorRequestQuit(void);
 
 static bool g_ImGuiInitialized = false;
@@ -73,6 +74,8 @@ static bool g_ViewportHovered = false;
 static bool g_ViewportFocused = false;
 static CGSize g_ViewportContentSize = {0, 0};
 static CGPoint g_ViewportContentOrigin = {0, 0};
+static CGPoint g_ViewportImageOrigin = {0, 0};
+static CGSize g_ViewportImageSize = {0, 0};
 static bool g_ShowRendererPanel = true;
 static bool g_ShowSceneHierarchyPanel = true;
 static bool g_ShowInspectorPanel = true;
@@ -885,7 +888,9 @@ static void EnsureImGuiKeyResponder(NSView *view) {
                                &g_ViewportHovered,
                                &g_ViewportFocused,
                                &g_ViewportContentSize,
-                               &g_ViewportContentOrigin);
+                               &g_ViewportContentOrigin,
+                               &g_ViewportImageOrigin,
+                               &g_ViewportImageSize);
     }
 
     ImGui::End(); // DockSpaceHost
@@ -938,6 +943,31 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
 + (CGPoint)viewportContentOrigin {
     return g_ViewportContentOrigin;
+}
+
++ (CGPoint)viewportImageOrigin {
+    return g_ViewportImageOrigin;
+}
+
++ (CGSize)viewportImageSize {
+    return g_ViewportImageSize;
+}
+
++ (CGPoint)mousePosition {
+    if (!g_ImGuiInitialized) { return CGPointZero; }
+    ImVec2 mousePos = ImGui::GetMousePos();
+    return CGPointMake(mousePos.x, mousePos.y);
+}
+
++ (void)setSelectedEntityId:(NSString *)value {
+    const char *utf8 = value != nil ? value.UTF8String : "";
+    if (!utf8) { utf8 = ""; }
+    strncpy(g_SelectedEntityId, utf8, sizeof(g_SelectedEntityId) - 1);
+    g_SelectedEntityId[sizeof(g_SelectedEntityId) - 1] = 0;
+    MCEEditorSetLastSelectedEntityId(g_SelectedEntityId);
+    if (g_SelectedEntityId[0] != 0) {
+        MCEEditorLogSelection(g_SelectedEntityId);
+    }
 }
 
 @end

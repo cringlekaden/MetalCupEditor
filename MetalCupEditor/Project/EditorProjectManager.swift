@@ -925,7 +925,9 @@ public func MCEEditorGetLastSelectedEntityId(_ buffer: UnsafeMutablePointer<CCha
 @_cdecl("MCEEditorSetLastSelectedEntityId")
 public func MCEEditorSetLastSelectedEntityId(_ value: UnsafePointer<CChar>?) {
     guard let value else { return }
-    EditorProjectManager.shared.setLastSelectedEntityId(String(cString: value))
+    let idString = String(cString: value)
+    EditorProjectManager.shared.setLastSelectedEntityId(idString)
+    SceneManager.setSelectedEntityId(idString)
     EditorProjectManager.shared.saveSettings()
 }
 

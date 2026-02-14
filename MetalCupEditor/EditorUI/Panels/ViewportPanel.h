@@ -15,7 +15,9 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
                             bool *hovered,
                             bool *focused,
                             CGSize *contentSize,
-                            CGPoint *contentOrigin);
+                            CGPoint *contentOrigin,
+                            CGPoint *imageOrigin,
+                            CGSize *imageSize);
 
 #ifdef __cplusplus
 }
