@@ -131,6 +131,7 @@ namespace {
         case AssetModel: return "MCE_ASSET_MODEL";
         case AssetEnvironment: return "MCE_ASSET_ENVIRONMENT";
         case AssetScene: return "MCE_ASSET_SCENE";
+        case AssetPrefab: return "MCE_ASSET_PREFAB";
         default: return "MCE_ASSET_GENERIC";
         }
     }
@@ -166,12 +167,6 @@ namespace {
             }
             candidate = sanitizedBase + " " + std::to_string(++suffix);
         }
-    }
-
-    std::string TruncateLabel(const std::string &label, size_t maxChars) {
-        if (label.size() <= maxChars) { return label; }
-        if (maxChars <= 3) { return label.substr(0, maxChars); }
-        return label.substr(0, maxChars - 3) + "...";
     }
 
     std::string TruncateLabelToWidth(const std::string &label, float maxWidth) {
@@ -753,7 +748,6 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
                     if (MCEEditorCreateFolder(g_CurrentPath.empty() ? nullptr : g_CurrentPath.c_str(), uniqueName.c_str()) == 0) {
                         LogAssetError("Failed to create folder.");
                     } else {
-                        MCEEditorRefreshAssets();
                         g_SelectedPath = g_CurrentPath.empty() ? uniqueName : g_CurrentPath + "/" + uniqueName;
                         g_SelectedHandle.clear();
                         g_SelectedType = AssetUnknown;
@@ -771,7 +765,6 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
                         if (g_CurrentPath.empty()) {
                             NavigateTo(targetPath);
                         }
-                        MCEEditorRefreshAssets();
                         g_SelectedPath = targetPath + "/" + uniqueName + ".mcmat";
                         g_SelectedHandle = outHandle;
                         g_SelectedType = AssetMaterial;
@@ -788,16 +781,28 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
                         if (g_CurrentPath.empty()) {
                             NavigateTo(targetPath);
                         }
-                        MCEEditorRefreshAssets();
                         g_SelectedPath = targetPath + "/" + uniqueName + ".mcscene";
                         g_SelectedHandle.clear();
                         g_SelectedType = AssetScene;
                         g_SelectedIsDirectory = false;
                     }
                 }
-                ImGui::BeginDisabled();
-                ImGui::MenuItem("Prefab (TODO)");
-                ImGui::EndDisabled();
+                if (ImGui::MenuItem("Prefab")) {
+                    const std::string targetPath = g_CurrentPath.empty() ? "Prefabs" : g_CurrentPath;
+                    const auto &entries = GetDirectoryEntries(targetPath);
+                    const std::string uniqueName = MakeUniqueName(entries, "NewPrefab", false, "prefab");
+                    if (MCEEditorCreatePrefab(targetPath.c_str(), uniqueName.c_str()) == 0) {
+                        LogAssetError("Failed to create prefab.");
+                    } else {
+                        if (g_CurrentPath.empty()) {
+                            NavigateTo(targetPath);
+                        }
+                        g_SelectedPath = targetPath + "/" + uniqueName + ".prefab";
+                        g_SelectedHandle.clear();
+                        g_SelectedType = AssetPrefab;
+                        g_SelectedIsDirectory = false;
+                    }
+                }
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Refresh")) {
@@ -810,57 +815,47 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
         ImGui::EndTable();
     }
 
-    if (g_DeletePendingOpen) {
-        ImGui::OpenPopup("Confirm Delete");
-        g_DeletePendingOpen = false;
+    std::string deleteMessage;
+    if (!g_DeleteLabel.empty()) {
+        if (g_DeleteIsDirectory) {
+            deleteMessage = "Delete folder \"" + g_DeleteLabel + "\" and all contents?";
+        } else {
+            deleteMessage = "Delete \"" + g_DeleteLabel + "\"?";
+        }
     }
 
-    if (ImGui::BeginPopupModal("Confirm Delete", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        if (g_DeleteIsDirectory) {
-            ImGui::TextWrapped("Delete folder \"%s\" and all contents?", g_DeleteLabel.c_str());
-        } else {
-            ImGui::TextWrapped("Delete \"%s\"?", g_DeleteLabel.c_str());
-        }
-        if (ImGui::Button("Delete")) {
-            bool deleted = false;
-            if (!g_DeletePath.empty()) {
-                if (g_DeleteType == AssetMaterial && !g_DeleteHandle.empty()) {
-                    deleted = MCEEditorDeleteMaterial(g_DeleteHandle.c_str()) != 0;
-                    if (!deleted) {
-                        deleted = MCEEditorDeleteAsset(g_DeletePath.c_str()) != 0;
-                    }
-                } else {
+    EditorUI::ConfirmModal("Confirm Delete", &g_DeletePendingOpen, deleteMessage.c_str(), "Delete", "Cancel", [&]() {
+        bool deleted = false;
+        if (!g_DeletePath.empty()) {
+            if (g_DeleteType == AssetMaterial && !g_DeleteHandle.empty()) {
+                deleted = MCEEditorDeleteMaterial(g_DeleteHandle.c_str()) != 0;
+                if (!deleted) {
                     deleted = MCEEditorDeleteAsset(g_DeletePath.c_str()) != 0;
                 }
-            }
-            if (deleted) {
-                if (g_DeleteType == AssetMaterial && !g_DeletePath.empty()) {
-                    std::string message = "Deleted material: " + g_DeletePath;
-                    MCEEditorLogMessage(1, 3, message.c_str());
-                }
-                MCEEditorRefreshAssets();
-                if (g_SelectedPath == g_DeletePath) {
-                    g_SelectedPath.clear();
-                    g_SelectedHandle.clear();
-                    g_SelectedType = AssetUnknown;
-                    g_SelectedIsDirectory = false;
-                }
             } else {
-                LogAssetError("Delete failed.");
+                deleted = MCEEditorDeleteAsset(g_DeletePath.c_str()) != 0;
             }
-            g_DeletePath.clear();
-            g_DeleteLabel.clear();
-            g_DeleteIsDirectory = false;
-            g_DeleteType = AssetUnknown;
-            g_DeleteHandle.clear();
-            ImGui::CloseCurrentPopup();
         }
-        ImGui::SameLine();
-        if (ImGui::Button("Cancel")) {
-            ImGui::CloseCurrentPopup();
+        if (deleted) {
+            if (g_DeleteType == AssetMaterial && !g_DeletePath.empty()) {
+                std::string message = "Deleted material: " + g_DeletePath;
+                MCEEditorLogMessage(1, 3, message.c_str());
+            }
+            if (g_SelectedPath == g_DeletePath) {
+                g_SelectedPath.clear();
+                g_SelectedHandle.clear();
+                g_SelectedType = AssetUnknown;
+                g_SelectedIsDirectory = false;
+            }
+        } else {
+            LogAssetError("Delete failed.");
         }
-        ImGui::EndPopup();
-    }
+        g_DeletePath.clear();
+        g_DeleteLabel.clear();
+        g_DeleteIsDirectory = false;
+        g_DeleteType = AssetUnknown;
+        g_DeleteHandle.clear();
+    });
 
     ImGui::PopStyleVar();
     ImGui::EndChild();

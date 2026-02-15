@@ -120,7 +120,8 @@ final class EditorProjectManager {
             cacheDirectory: "Cache",
             intermediateDirectory: "Intermediate",
             savedDirectory: "Saved",
-            startScene: startScenePath
+            startScene: startScenePath,
+            layerNames: settingsStore.layerNames
         )
 
         let projectURL = projectFolder.appendingPathComponent("Project.mcp")
@@ -277,6 +278,8 @@ final class EditorProjectManager {
             projectURL = resolvedProjectURL
             projectRootURL = resolvedRootURL
             activeProjectPath = resolvedRootURL
+            LayerCatalog.shared.setNames(migrated.layerNames)
+            settingsStore.setLayerNames(migrated.layerNames)
 
             let paths = ProjectPaths(projectRoot: resolvedRootURL, document: migrated)
             paths.ensureDirectoriesExist()
@@ -320,6 +323,8 @@ final class EditorProjectManager {
             self?.assetRevision &+= 1
             AssetManager.clearCache()
             AssetManager.preload(from: registry)
+            let prefabHandles = registry.allMetadata().filter { $0.type == .prefab }.map { $0.handle }
+            PrefabSystem.shared.markAllDirty(handles: prefabHandles)
             EditorLogCenter.shared.logInfo("Assets reloaded.", category: .assets)
         }
         assetRegistry = registry
@@ -436,6 +441,10 @@ final class EditorProjectManager {
     func refreshAssets() {
         assetRevision &+= 1
         assetRegistry?.refresh()
+        if let registry = assetRegistry {
+            let prefabHandles = registry.allMetadata().filter { $0.type == .prefab }.map { $0.handle }
+            PrefabSystem.shared.markAllDirty(handles: prefabHandles)
+        }
     }
 
     func performAssetMutation(_ operation: () throws -> Bool) -> Bool {
@@ -451,6 +460,10 @@ final class EditorProjectManager {
             EditorAlertCenter.shared.enqueueError("Asset operation failed: \(error.localizedDescription)")
             return false
         }
+    }
+
+    func notifySceneMutation() {
+        markSceneDirty()
     }
 
     func markSceneDirty() {
@@ -551,7 +564,8 @@ final class EditorProjectManager {
                 cacheDirectory: "Cache",
                 intermediateDirectory: "Intermediate",
                 savedDirectory: "Saved",
-                startScene: legacy.defaultScenePath
+                startScene: legacy.defaultScenePath,
+                layerNames: LayerCatalog.defaultNames()
             )
         }
         throw NSError(
@@ -572,6 +586,7 @@ final class EditorProjectManager {
     }
 
     private func setEmptyScene() {
+        LayerCatalog.shared.setNames(settingsStore.layerNames)
         let document = SceneDocument(id: UUID(), name: "Untitled", entities: [])
         let scene = SerializedScene(document: document)
         SceneManager.setScene(scene)

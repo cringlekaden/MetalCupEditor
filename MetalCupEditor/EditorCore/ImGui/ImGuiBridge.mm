@@ -629,7 +629,8 @@ static void EnsureImGuiKeyResponder(NSView *view) {
     ImGui::NewFrame();
 }
 
-+ (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture {
++ (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture
+                 previewTexture:(id<MTLTexture> _Nullable)previewTexture {
     static char g_AlertMessage[512] = {0};
     g_GizmoCaptureMouse = false;
     g_GizmoCaptureKeyboard = false;
@@ -737,9 +738,6 @@ static void EnsureImGuiKeyResponder(NSView *view) {
     }
     if (ImGui::BeginPopupModal("Create or Open Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted("Select a project to get started.");
-        int32_t recentCount = MCEProjectRecentCount();
-        char recentPath[512] = {0};
-        bool hasRecent = recentCount > 0 && MCEProjectRecentPathAt(0, recentPath, sizeof(recentPath)) > 0;
         if (MCEProjectHasOpen() != 0) {
             if (ImGui::Button("Continue with Loaded Project")) {
                 MCEProjectDismissModal();
@@ -759,6 +757,7 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
         static int32_t g_SelectedProjectIndex = -1;
         static char g_SelectedProjectPath[512] = {0};
+        static bool g_ConfirmDeleteProjectOpen = false;
 
         ImGui::TextUnformatted("Projects");
         if (ImGui::BeginChild("ProjectList", ImVec2(520, 240), true)) {
@@ -816,23 +815,19 @@ static void EnsureImGuiKeyResponder(NSView *view) {
         ImGui::SameLine();
         ImGui::BeginDisabled(!hasSelection);
         if (ImGui::Button("Delete")) {
-            ImGui::OpenPopup("Confirm Delete Project");
+            g_ConfirmDeleteProjectOpen = true;
         }
         ImGui::EndDisabled();
-        if (ImGui::BeginPopupModal("Confirm Delete Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-            ImGui::TextWrapped("Delete the selected project? This will remove it from disk.");
-            if (ImGui::Button("Delete")) {
-                MCEProjectDeleteAtPath(g_SelectedProjectPath);
-                g_SelectedProjectIndex = -1;
-                g_SelectedProjectPath[0] = 0;
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::SameLine();
-            if (ImGui::Button("Cancel")) {
-                ImGui::CloseCurrentPopup();
-            }
-            ImGui::EndPopup();
-        }
+        EditorUI::ConfirmModal("Confirm Delete Project",
+                               &g_ConfirmDeleteProjectOpen,
+                               "Delete the selected project? This will remove it from disk.",
+                               "Delete",
+                               "Cancel",
+                               [&]() {
+            MCEProjectDeleteAtPath(g_SelectedProjectPath);
+            g_SelectedProjectIndex = -1;
+            g_SelectedProjectPath[0] = 0;
+        });
 
         ImGui::EndPopup();
     }
@@ -894,6 +889,7 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
     if (g_ShowViewportPanel) {
         ImGuiViewportPanelDraw(sceneTexture,
+                               previewTexture,
                                g_SelectedEntityId,
                                &g_ViewportHovered,
                                &g_ViewportFocused,

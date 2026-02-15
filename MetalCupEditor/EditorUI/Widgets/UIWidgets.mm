@@ -218,6 +218,53 @@ namespace EditorUI {
         return open;
     }
 
+    bool BeginSectionWithContext(const char *label,
+                                 const char *stateId,
+                                 const char *contextId,
+                                 const std::function<void()> &contextBody,
+                                 bool defaultOpen) {
+        const bool open = BeginSection(label, stateId, defaultOpen);
+        if (ImGui::BeginPopupContextItem(contextId)) {
+            contextBody();
+            ImGui::EndPopup();
+        }
+        return open;
+    }
+
+    bool BeginModal(const char *title, bool *requestOpen, bool *open, ImGuiWindowFlags flags) {
+        if (requestOpen && *requestOpen) {
+            ImGui::OpenPopup(title);
+            *requestOpen = false;
+        }
+        return ImGui::BeginPopupModal(title, open, flags);
+    }
+
+    bool ConfirmModal(const char *title,
+                      bool *requestOpen,
+                      const char *message,
+                      const char *confirmLabel,
+                      const char *cancelLabel,
+                      const std::function<void()> &onConfirm) {
+        if (!BeginModal(title, requestOpen, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+            return false;
+        }
+        if (message && message[0] != 0) {
+            ImGui::TextWrapped("%s", message);
+        }
+        bool confirmed = false;
+        if (ImGui::Button(confirmLabel)) {
+            onConfirm();
+            ImGui::CloseCurrentPopup();
+            confirmed = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(cancelLabel)) {
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+        return confirmed;
+    }
+
     std::string ToLower(const std::string &value) {
         std::string output = value;
         std::transform(output.begin(), output.end(), output.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });

@@ -12,13 +12,14 @@ extern "C" {
 #endif
 
 void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
-                            const char *selectedEntityId,
-                            bool *hovered,
-                            bool *focused,
-                            CGSize *contentSize,
-                            CGPoint *contentOrigin,
-                            CGPoint *imageOrigin,
-                            CGSize *imageSize);
+                            id<MTLTexture> _Nullable previewTexture,
+                            const char * _Nullable selectedEntityId,
+                            bool * _Nullable hovered,
+                            bool * _Nullable focused,
+                            CGSize * _Nullable contentSize,
+                            CGPoint * _Nullable contentOrigin,
+                            CGPoint * _Nullable imageOrigin,
+                            CGSize * _Nullable imageSize);
 
 #ifdef __cplusplus
 }

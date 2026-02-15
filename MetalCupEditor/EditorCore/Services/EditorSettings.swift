@@ -3,6 +3,7 @@
 /// Created by Kaden Cringle.
 
 import Foundation
+import MetalCupEngine
 
 struct EditorSettingsDocument: Codable {
     var schemaVersion: Int
@@ -11,19 +12,22 @@ struct EditorSettingsDocument: Codable {
     var headerStates: [String: Bool]
     var lastSelectedEntityId: String
     var lastContentBrowserPath: String
+    var layerNames: [String]
 
     init(schemaVersion: Int = 1,
          recentProjects: [String] = [],
          panelVisibility: [String: Bool] = [:],
          headerStates: [String: Bool] = [:],
          lastSelectedEntityId: String = "",
-         lastContentBrowserPath: String = "") {
+         lastContentBrowserPath: String = "",
+         layerNames: [String] = LayerCatalog.defaultNames()) {
         self.schemaVersion = schemaVersion
         self.recentProjects = recentProjects
         self.panelVisibility = panelVisibility
         self.headerStates = headerStates
         self.lastSelectedEntityId = lastSelectedEntityId
         self.lastContentBrowserPath = lastContentBrowserPath
+        self.layerNames = LayerCatalog.normalizedNames(layerNames)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -33,6 +37,7 @@ struct EditorSettingsDocument: Codable {
         case headerStates
         case lastSelectedEntityId
         case lastContentBrowserPath
+        case layerNames
     }
 
     init(from decoder: Decoder) throws {
@@ -43,6 +48,8 @@ struct EditorSettingsDocument: Codable {
         headerStates = try container.decodeIfPresent([String: Bool].self, forKey: .headerStates) ?? [:]
         lastSelectedEntityId = try container.decodeIfPresent(String.self, forKey: .lastSelectedEntityId) ?? ""
         lastContentBrowserPath = try container.decodeIfPresent(String.self, forKey: .lastContentBrowserPath) ?? ""
+        let decodedNames = try container.decodeIfPresent([String].self, forKey: .layerNames) ?? LayerCatalog.defaultNames()
+        layerNames = LayerCatalog.normalizedNames(decodedNames)
     }
 }
 
@@ -53,6 +60,7 @@ final class EditorSettingsStore {
     private(set) var headerStates: [String: Bool] = [:]
     private(set) var lastSelectedEntityId: String = ""
     private(set) var lastContentBrowserPath: String = ""
+    private(set) var layerNames: [String] = LayerCatalog.defaultNames()
 
     private init() {}
 
@@ -66,6 +74,7 @@ final class EditorSettingsStore {
             headerStates = document.headerStates
             lastSelectedEntityId = document.lastSelectedEntityId
             lastContentBrowserPath = document.lastContentBrowserPath
+            layerNames = document.layerNames
         }
     }
 
@@ -78,7 +87,8 @@ final class EditorSettingsStore {
             panelVisibility: panelVisibility,
             headerStates: headerStates,
             lastSelectedEntityId: lastSelectedEntityId,
-            lastContentBrowserPath: lastContentBrowserPath
+            lastContentBrowserPath: lastContentBrowserPath,
+            layerNames: layerNames
         )
         if let data = try? encoder.encode(document) {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -131,6 +141,10 @@ final class EditorSettingsStore {
 
     func setLastContentBrowserPath(_ path: String) {
         lastContentBrowserPath = path
+    }
+
+    func setLayerNames(_ names: [String]) {
+        layerNames = LayerCatalog.normalizedNames(names)
     }
 
     private func settingsURL() -> URL {

@@ -17,12 +17,21 @@ extern "C" int32_t MCEEditorCreateEntity(const char *name, char *outId, int32_t 
 extern "C" int32_t MCEEditorCreateMeshEntity(int32_t meshType, char *outId, int32_t outIdSize);
 extern "C" int32_t MCEEditorCreateLightEntity(int32_t lightType, char *outId, int32_t outIdSize);
 extern "C" int32_t MCEEditorCreateSkyEntity(char *outId, int32_t outIdSize);
+extern "C" int32_t MCEEditorCreateCameraEntity(char *outId, int32_t outIdSize);
 extern "C" uint32_t MCEEditorSetActiveSky(const char *entityId);
 extern "C" void MCEEditorLogSelection(const char *entityId);
 extern "C" void MCEEditorDestroyEntity(const char *entityId);
 extern "C" void MCEEditorAssignMaterialToEntity(const char *entityId, const char *materialHandle);
 extern "C" int32_t MCEEditorCreateMeshEntityFromHandle(const char *meshHandle, char *outId, int32_t outIdSize);
+extern "C" int32_t MCEEditorInstantiatePrefabFromHandle(const char *prefabHandle, char *outId, int32_t outIdSize);
+extern "C" uint32_t MCEEditorCreatePrefabFromEntity(const char *entityId, char *outPath, int32_t outPathSize);
 extern "C" void MCEEditorSetLastSelectedEntityId(const char *value);
+extern "C" int32_t MCEEditorGetAssetCount(void);
+extern "C" uint32_t MCEEditorGetAssetAt(int32_t index,
+                                        char *handleBuffer, int32_t handleBufferSize,
+                                        int32_t *typeOut,
+                                        char *pathBuffer, int32_t pathBufferSize,
+                                        char *nameBuffer, int32_t nameBufferSize);
 
 static void AssignSelection(char *selectedEntityId, size_t selectedEntityIdSize, const char *newId) {
     if (!selectedEntityId || selectedEntityIdSize == 0) { return; }
@@ -35,6 +44,73 @@ static void AssignSelection(char *selectedEntityId, size_t selectedEntityIdSize,
     selectedEntityId[length] = 0;
 }
 
+static void DrawPrefabPicker(bool *open, char *selectedEntityId, size_t selectedEntityIdSize) {
+    if (!open || !*open) { return; }
+    ImGui::SetNextWindowSize(ImVec2(420.0f, 320.0f), ImGuiCond_Once);
+    if (ImGui::BeginPopupModal("PrefabPicker", open, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted("Select Prefab");
+        ImGui::Separator();
+        static char filter[64] = {0};
+        ImGui::InputTextWithHint("##PrefabFilter", "Search prefabs...", filter, sizeof(filter));
+        ImGui::Separator();
+
+        static std::string g_SelectedPrefabHandle;
+        if (ImGui::IsWindowAppearing()) {
+            g_SelectedPrefabHandle.clear();
+        }
+
+        const int32_t count = MCEEditorGetAssetCount();
+        std::string filterText = EditorUI::ToLower(std::string(filter));
+        for (int32_t i = 0; i < count; ++i) {
+            char handleBuffer[64] = {0};
+            int32_t type = 0;
+            char pathBuffer[512] = {0};
+            char nameBuffer[128] = {0};
+            if (MCEEditorGetAssetAt(i, handleBuffer, sizeof(handleBuffer), &type, pathBuffer, sizeof(pathBuffer), nameBuffer, sizeof(nameBuffer)) == 0) {
+                continue;
+            }
+            if (type != 5) { continue; }
+            if (handleBuffer[0] == 0) { continue; }
+            const char *label = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            if (!filterText.empty() && EditorUI::ToLower(label).find(filterText) == std::string::npos) {
+                continue;
+            }
+            const bool isSelected = (g_SelectedPrefabHandle == handleBuffer);
+            if (ImGui::Selectable(label, isSelected, ImGuiSelectableFlags_DontClosePopups)) {
+                g_SelectedPrefabHandle = handleBuffer;
+            }
+        }
+
+        if (count == 0) {
+            ImGui::TextDisabled("No prefab assets found.");
+        }
+
+        ImGui::Spacing();
+        const bool canCreate = !g_SelectedPrefabHandle.empty();
+        if (!canCreate) {
+            ImGui::BeginDisabled();
+        }
+        if (ImGui::Button("Create")) {
+            char createdId[64] = {0};
+            if (MCEEditorInstantiatePrefabFromHandle(g_SelectedPrefabHandle.c_str(), createdId, sizeof(createdId)) > 0) {
+                AssignSelection(selectedEntityId, selectedEntityIdSize, createdId);
+                MCEEditorSetLastSelectedEntityId(createdId);
+            }
+            *open = false;
+            ImGui::CloseCurrentPopup();
+        }
+        if (!canCreate) {
+            ImGui::EndDisabled();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Close")) {
+            *open = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::EndPopup();
+    }
+}
+
 void ImGuiSceneHierarchyPanelDraw(bool *isOpen, char *selectedEntityId, size_t selectedEntityIdSize) {
     if (!isOpen || !*isOpen) { return; }
     if (!EditorUI::BeginPanel("Scene Hierarchy", isOpen)) {
@@ -44,6 +120,8 @@ void ImGuiSceneHierarchyPanelDraw(bool *isOpen, char *selectedEntityId, size_t s
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 2.0f));
     ImGui::BeginChild("SceneHierarchyScroll", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    static bool g_ShowPrefabPicker = false;
+    static bool g_RequestPrefabPickerOpen = false;
 
     const int32_t entityCount = MCEEditorGetEntityCount();
     const float rowHeight = ImGui::GetTextLineHeight() + 10.0f;
@@ -95,12 +173,27 @@ void ImGuiSceneHierarchyPanelDraw(bool *isOpen, char *selectedEntityId, size_t s
                         AssignSelection(selectedEntityId, selectedEntityIdSize, createdId);
                     }
                 }
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
+                    const char *payloadText = static_cast<const char *>(payload->Data);
+                    char createdId[64] = {0};
+                    if (MCEEditorInstantiatePrefabFromHandle(payloadText, createdId, sizeof(createdId)) > 0) {
+                        AssignSelection(selectedEntityId, selectedEntityIdSize, createdId);
+                        MCEEditorSetLastSelectedEntityId(createdId);
+                    }
+                }
                 ImGui::EndDragDropTarget();
             }
             if (ImGui::BeginPopupContextItem()) {
                 if (MCEEditorEntityHasComponent(idBuffer, 4) != 0) {
                     if (ImGui::MenuItem("Set as Active Sky")) {
                         MCEEditorSetActiveSky(idBuffer);
+                    }
+                    ImGui::Separator();
+                }
+                if (isSelected) {
+                    if (ImGui::MenuItem("Create Prefab from Selected")) {
+                        char pathBuffer[512] = {0};
+                        MCEEditorCreatePrefabFromEntity(idBuffer, pathBuffer, sizeof(pathBuffer));
                     }
                     ImGui::Separator();
                 }
@@ -117,7 +210,7 @@ void ImGuiSceneHierarchyPanelDraw(bool *isOpen, char *selectedEntityId, size_t s
         }
     }
 
-    if (ImGui::BeginPopupContextWindow("SceneHierarchyContext", ImGuiPopupFlags_MouseButtonRight)) {
+    if (ImGui::BeginPopupContextWindow("SceneHierarchyContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
         if (ImGui::MenuItem("Create Empty Entity")) {
             char createdId[64] = {0};
             if (MCEEditorCreateEntity("Empty Entity", createdId, sizeof(createdId)) > 0) {
@@ -148,6 +241,17 @@ void ImGuiSceneHierarchyPanelDraw(bool *isOpen, char *selectedEntityId, size_t s
                 }
             }
             ImGui::EndMenu();
+        }
+        if (ImGui::MenuItem("Create Camera")) {
+            char createdId[64] = {0};
+            if (MCEEditorCreateCameraEntity(createdId, sizeof(createdId)) > 0) {
+                AssignSelection(selectedEntityId, selectedEntityIdSize, createdId);
+                MCEEditorSetLastSelectedEntityId(createdId);
+            }
+        }
+        if (ImGui::MenuItem("Create Prefab...")) {
+            g_ShowPrefabPicker = true;
+            g_RequestPrefabPickerOpen = true;
         }
         if (ImGui::BeginMenu("Create Light")) {
             if (ImGui::MenuItem("Point Light")) {
@@ -189,6 +293,12 @@ void ImGuiSceneHierarchyPanelDraw(bool *isOpen, char *selectedEntityId, size_t s
         }
         ImGui::EndPopup();
     }
+
+    if (g_RequestPrefabPickerOpen) {
+        ImGui::OpenPopup("PrefabPicker");
+        g_RequestPrefabPickerOpen = false;
+    }
+    DrawPrefabPicker(&g_ShowPrefabPicker, selectedEntityId, selectedEntityIdSize);
 
     ImGui::EndChild();
     ImGui::PopStyleVar(2);

@@ -13,6 +13,7 @@ private enum EditorComponentType: Int32 {
     case light = 3
     case skyLight = 4
     case material = 5
+    case camera = 6
 }
 
 private func editorECS() -> SceneECS? {
@@ -43,6 +44,78 @@ private func handleFromString(_ string: String) -> AssetHandle? {
     return AssetHandle(rawValue: uuid)
 }
 
+private func prefabURL(from handleString: String) -> URL? {
+    guard let handle = handleFromString(handleString) else { return nil }
+    return EditorProjectManager.shared.assetURL(for: handle)
+}
+
+private func componentsDocument(for entity: Entity, ecs: SceneECS) -> ComponentsDocument {
+    return ComponentsDocument(
+        name: ecs.get(NameComponent.self, for: entity).map { NameComponentDTO(name: $0.name) },
+        transform: ecs.get(TransformComponent.self, for: entity).map { component in
+            TransformComponentDTO(
+                position: Vector3DTO(component.position),
+                rotation: Vector3DTO(component.rotation),
+                scale: Vector3DTO(component.scale)
+            )
+        },
+        layer: ecs.get(LayerComponent.self, for: entity).map { component in
+            LayerComponentDTO(layerIndex: component.index)
+        },
+        meshRenderer: ecs.get(MeshRendererComponent.self, for: entity).map { component in
+            MeshRendererComponentDTO(
+                meshHandle: component.meshHandle,
+                materialHandle: component.materialHandle,
+                material: component.material.map { MaterialDTO(material: $0) },
+                albedoMapHandle: component.albedoMapHandle,
+                normalMapHandle: component.normalMapHandle,
+                metallicMapHandle: component.metallicMapHandle,
+                roughnessMapHandle: component.roughnessMapHandle,
+                mrMapHandle: component.mrMapHandle,
+                aoMapHandle: component.aoMapHandle,
+                emissiveMapHandle: component.emissiveMapHandle
+            )
+        },
+        materialComponent: ecs.get(MaterialComponent.self, for: entity).map { component in
+            MaterialComponentDTO(materialHandle: component.materialHandle)
+        },
+        light: ecs.get(LightComponent.self, for: entity).map { component in
+            LightComponentDTO(
+                type: LightTypeDTO(from: component.type),
+                data: LightDataDTO(from: component.data),
+                direction: Vector3DTO(component.direction),
+                range: component.range,
+                innerConeCos: component.innerConeCos,
+                outerConeCos: component.outerConeCos
+            )
+        },
+        lightOrbit: ecs.get(LightOrbitComponent.self, for: entity).map { component in
+            LightOrbitComponentDTO(component: component)
+        },
+        camera: ecs.get(CameraComponent.self, for: entity).map { component in
+            CameraComponentDTO(component: component)
+        },
+        sky: ecs.get(SkyComponent.self, for: entity).map { component in
+            SkyComponentDTO(environmentMapHandle: component.environmentMapHandle)
+        },
+        skyLight: ecs.get(SkyLightComponent.self, for: entity).map { component in
+            SkyLightComponentDTO(
+                mode: component.mode.rawValue,
+                enabled: component.enabled,
+                intensity: component.intensity,
+                skyTint: Vector3DTO(component.skyTint),
+                turbidity: component.turbidity,
+                azimuthDegrees: component.azimuthDegrees,
+                elevationDegrees: component.elevationDegrees,
+                hdriHandle: component.hdriHandle,
+                realtimeUpdate: component.realtimeUpdate
+            )
+        },
+        skyLightTag: ecs.get(SkyLightTag.self, for: entity).map { _ in TagComponentDTO() },
+        skySunTag: ecs.get(SkySunTag.self, for: entity).map { _ in TagComponentDTO() }
+    )
+}
+
 private func allSkyEntities(ecs: SceneECS) -> [Entity] {
     return ecs.allEntities().filter { ecs.get(SkyLightComponent.self, for: $0) != nil }
 }
@@ -71,6 +144,39 @@ private func setActiveSky(ecs: SceneECS, entity: Entity) {
         EditorLogCenter.shared.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
     EditorLogCenter.shared.logInfo("Sky active set: \(entity.id.uuidString)", category: .scene)
+}
+
+private func findEditorCamera(ecs: SceneECS) -> (Entity, TransformComponent, CameraComponent)? {
+    var result: (Entity, TransformComponent, CameraComponent)?
+    ecs.viewCameras { entity, transform, camera in
+        if result != nil { return }
+        guard camera.isEditor, let transform else { return }
+        result = (entity, transform, camera)
+    }
+    return result
+}
+
+private func hasPrimaryRuntimeCamera(ecs: SceneECS) -> Bool {
+    var hasPrimary = false
+    ecs.viewCameras { _, _, camera in
+        if camera.isEditor { return }
+        if camera.isPrimary { hasPrimary = true }
+    }
+    return hasPrimary
+}
+
+private func setPrimaryCamera(ecs: SceneECS, entity: Entity) {
+    ecs.viewCameras { otherEntity, _, camera in
+        var updated = camera
+        if otherEntity == entity {
+            updated.isPrimary = true
+        } else if !camera.isEditor {
+            updated.isPrimary = false
+        } else {
+            return
+        }
+        ecs.add(updated, to: otherEntity)
+    }
 }
 
 @_cdecl("MCEEditorGetEntityCount")
@@ -113,7 +219,7 @@ public func MCEEditorSetEntityName(_ entityId: UnsafePointer<CChar>?, _ name: Un
     guard !SceneManager.isPlaying, let ecs = editorECS(), let entity = entity(from: entityId), let name else { return }
     let newName = String(cString: name)
     ecs.add(NameComponent(name: newName), to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     EditorLogCenter.shared.logInfo("Entity renamed: \(entity.id.uuidString) \(newName)", category: .scene)
 }
 
@@ -122,7 +228,7 @@ public func MCEEditorCreateEntity(_ name: UnsafePointer<CChar>?, _ outId: Unsafe
     guard !SceneManager.isPlaying, let ecs = editorECS() else { return 0 }
     let entityName = name != nil ? String(cString: name!) : "Entity"
     let entity = ecs.createEntity(name: entityName)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
 }
 
@@ -149,7 +255,7 @@ public func MCEEditorCreateMeshEntity(_ meshType: Int32, _ outId: UnsafeMutableP
 
     ecs.add(TransformComponent(), to: entity)
     ecs.add(MeshRendererComponent(meshHandle: meshHandle), to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
 }
 
@@ -161,8 +267,41 @@ public func MCEEditorCreateMeshEntityFromHandle(_ meshHandle: UnsafePointer<CCha
     let entity = ecs.createEntity(name: "Mesh")
     ecs.add(TransformComponent(), to: entity)
     ecs.add(MeshRendererComponent(meshHandle: meshHandleValue), to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
+}
+
+@_cdecl("MCEEditorInstantiatePrefabFromHandle")
+public func MCEEditorInstantiatePrefabFromHandle(_ prefabHandle: UnsafePointer<CChar>?, _ outId: UnsafeMutablePointer<CChar>?, _ outIdSize: Int32) -> Int32 {
+    guard !SceneManager.isPlaying, editorECS() != nil, let prefabHandle else { return 0 }
+    let handleString = String(cString: prefabHandle)
+    guard let url = prefabURL(from: handleString) else { return 0 }
+    guard let prefabHandleValue = handleFromString(handleString) else { return 0 }
+    do {
+        let prefab = try PrefabSerializer.load(from: url)
+        guard let scene = SceneManager.getEditorScene() else { return 0 }
+        let created = scene.instantiate(prefab: prefab, prefabHandle: prefabHandleValue)
+        EditorProjectManager.shared.notifySceneMutation()
+        if let first = created.first {
+            return writeCString(first.id.uuidString, to: outId, max: outIdSize)
+        }
+        return 0
+    } catch {
+        EditorAlertCenter.shared.enqueueError("Failed to instantiate prefab: \(error.localizedDescription)")
+        return 0
+    }
+}
+
+@_cdecl("MCEEditorCreatePrefabFromEntity")
+public func MCEEditorCreatePrefabFromEntity(_ entityId: UnsafePointer<CChar>?, _ outPath: UnsafeMutablePointer<CChar>?, _ outPathSize: Int32) -> UInt32 {
+    guard !SceneManager.isPlaying, let entity = entity(from: entityId), let scene = SceneManager.getEditorScene() else { return 0 }
+    let name = scene.ecs.get(NameComponent.self, for: entity)?.name ?? "Prefab"
+    let components = componentsDocument(for: entity, ecs: scene.ecs)
+    let prefabEntity = PrefabEntityDocument(localId: entity.id, parentLocalId: nil, components: components)
+    let prefab = PrefabDocument(name: name, entities: [prefabEntity])
+    guard let relativePath = AssetOps.createPrefab(prefab: prefab, relativePath: "Prefabs", name: name) else { return 0 }
+    _ = writeCString(relativePath, to: outPath, max: outPathSize)
+    return 1
 }
 
 @_cdecl("MCEEditorCreateLightEntity")
@@ -186,7 +325,7 @@ public func MCEEditorCreateLightEntity(_ lightType: Int32, _ outId: UnsafeMutabl
     let entity = ecs.createEntity(name: entityName)
     ecs.add(TransformComponent(), to: entity)
     ecs.add(LightComponent(type: lightTypeValue), to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
 }
 
@@ -199,7 +338,35 @@ public func MCEEditorCreateSkyEntity(_ outId: UnsafeMutablePointer<CChar>?, _ ou
     sky.needsRegenerate = true
     ecs.add(sky, to: entity)
     setActiveSky(ecs: ecs, entity: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
+    return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
+}
+
+@_cdecl("MCEEditorCreateCameraEntity")
+public func MCEEditorCreateCameraEntity(_ outId: UnsafeMutablePointer<CChar>?, _ outIdSize: Int32) -> Int32 {
+    guard !SceneManager.isPlaying, let ecs = editorECS() else { return 0 }
+    let entity = ecs.createEntity(name: "Camera")
+    var component = CameraComponent(isPrimary: false, isEditor: false)
+    if !hasPrimaryRuntimeCamera(ecs: ecs) {
+        component.isPrimary = true
+    }
+    ecs.add(component, to: entity)
+    EditorProjectManager.shared.notifySceneMutation()
+    return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
+}
+
+@_cdecl("MCEEditorCreateCameraFromView")
+public func MCEEditorCreateCameraFromView(_ outId: UnsafeMutablePointer<CChar>?, _ outIdSize: Int32) -> Int32 {
+    guard !SceneManager.isPlaying, let ecs = editorECS() else { return 0 }
+    let entity = ecs.createEntity(name: "Camera")
+    if let editorCamera = findEditorCamera(ecs: ecs) {
+        ecs.add(editorCamera.1, to: entity)
+    }
+    var component = findEditorCamera(ecs: ecs)?.2 ?? CameraComponent()
+    component.isEditor = false
+    component.isPrimary = !hasPrimaryRuntimeCamera(ecs: ecs)
+    ecs.add(component, to: entity)
+    EditorProjectManager.shared.notifySceneMutation()
     return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
 }
 
@@ -207,7 +374,7 @@ public func MCEEditorCreateSkyEntity(_ outId: UnsafeMutablePointer<CChar>?, _ ou
 public func MCEEditorDestroyEntity(_ entityId: UnsafePointer<CChar>?) {
     guard !SceneManager.isPlaying, let ecs = editorECS(), let entity = entity(from: entityId) else { return }
     ecs.destroyEntity(entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
 }
 
 @_cdecl("MCEEditorEntityHasComponent")
@@ -226,6 +393,8 @@ public func MCEEditorEntityHasComponent(_ entityId: UnsafePointer<CChar>?, _ com
         return ecs.has(SkyLightComponent.self, entity) ? 1 : 0
     case .material:
         return ecs.has(MaterialComponent.self, entity) ? 1 : 0
+    case .camera:
+        return ecs.has(CameraComponent.self, entity) ? 1 : 0
     }
 }
 
@@ -249,8 +418,14 @@ public func MCEEditorAddComponent(_ entityId: UnsafePointer<CChar>?, _ component
         ecs.add(SkyLightTag(), to: entity)
     case .material:
         ecs.add(MaterialComponent(materialHandle: nil), to: entity)
+    case .camera:
+        var component = CameraComponent(isPrimary: false, isEditor: false)
+        if !hasPrimaryRuntimeCamera(ecs: ecs) {
+            component.isPrimary = true
+        }
+        ecs.add(component, to: entity)
     }
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     return 1
 }
 
@@ -271,8 +446,10 @@ public func MCEEditorRemoveComponent(_ entityId: UnsafePointer<CChar>?, _ compon
         ecs.remove(SkyLightTag.self, from: entity)
     case .material:
         ecs.remove(MaterialComponent.self, from: entity)
+    case .camera:
+        ecs.remove(CameraComponent.self, from: entity)
     }
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     return 1
 }
 
@@ -306,7 +483,7 @@ public func MCEEditorSetTransform(_ entityId: UnsafePointer<CChar>?,
         scale: SIMD3<Float>(sx, sy, sz)
     )
     ecs.add(transform, to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     EditorLogCenter.shared.logInfo("Transform updated: \(entity.id.uuidString)", category: .scene)
 }
 
@@ -322,7 +499,56 @@ public func MCEEditorSetTransformNoLog(_ entityId: UnsafePointer<CChar>?,
         scale: SIMD3<Float>(sx, sy, sz)
     )
     ecs.add(transform, to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetCamera")
+public func MCEEditorGetCamera(_ entityId: UnsafePointer<CChar>?,
+                               _ projectionType: UnsafeMutablePointer<Int32>?,
+                               _ fovDegrees: UnsafeMutablePointer<Float>?,
+                               _ orthoSize: UnsafeMutablePointer<Float>?,
+                               _ nearPlane: UnsafeMutablePointer<Float>?,
+                               _ farPlane: UnsafeMutablePointer<Float>?,
+                               _ isPrimary: UnsafeMutablePointer<UInt32>?,
+                               _ isEditor: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let ecs = editorECS(), let entity = entity(from: entityId),
+          let camera = ecs.get(CameraComponent.self, for: entity) else { return 0 }
+    projectionType?.pointee = Int32(camera.projectionType.rawValue)
+    fovDegrees?.pointee = camera.fovDegrees
+    orthoSize?.pointee = camera.orthoSize
+    nearPlane?.pointee = camera.nearPlane
+    farPlane?.pointee = camera.farPlane
+    isPrimary?.pointee = camera.isPrimary ? 1 : 0
+    isEditor?.pointee = camera.isEditor ? 1 : 0
+    return 1
+}
+
+@_cdecl("MCEEditorSetCamera")
+public func MCEEditorSetCamera(_ entityId: UnsafePointer<CChar>?,
+                               _ projectionType: Int32,
+                               _ fovDegrees: Float,
+                               _ orthoSize: Float,
+                               _ nearPlane: Float,
+                               _ farPlane: Float,
+                               _ isPrimary: UInt32) {
+    guard !SceneManager.isPlaying, let ecs = editorECS(),
+          let entity = entity(from: entityId),
+          var camera = ecs.get(CameraComponent.self, for: entity) else { return }
+
+    camera.projectionType = ProjectionType(rawValue: UInt32(projectionType)) ?? .perspective
+    camera.fovDegrees = fovDegrees
+    camera.orthoSize = orthoSize
+    camera.nearPlane = nearPlane
+    camera.farPlane = farPlane
+    camera.isPrimary = isPrimary != 0
+
+    if camera.isPrimary && !camera.isEditor {
+        setPrimaryCamera(ecs: ecs, entity: entity)
+    } else {
+        ecs.add(camera, to: entity)
+    }
+    EditorProjectManager.shared.notifySceneMutation()
+    EditorLogCenter.shared.logInfo("Camera updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorSetTransformFromMatrix")
@@ -392,7 +618,7 @@ public func MCEEditorSetTransformFromMatrix(_ entityId: UnsafePointer<CChar>?, _
         scale: SIMD3<Float>(scaleX, scaleY, scaleZ)
     )
     ecs.add(transform, to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     return 1
 }
 
@@ -484,7 +710,7 @@ public func MCEEditorSetMeshRenderer(_ entityId: UnsafePointer<CChar>?, _ meshHa
     component.meshHandle = handleFromString(meshString)
     component.materialHandle = handleFromString(materialString)
     ecs.add(component, to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     EditorLogCenter.shared.logInfo("Mesh updated: \(entity.id.uuidString)", category: .scene)
 }
 
@@ -506,7 +732,7 @@ public func MCEEditorAssignMaterialToEntity(_ entityId: UnsafePointer<CChar>?, _
         ecs.remove(MaterialComponent.self, from: entity)
     }
 
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     EditorLogCenter.shared.logInfo("Material updated: \(entity.id.uuidString)", category: .scene)
 }
 
@@ -525,7 +751,7 @@ public func MCEEditorSetMaterialComponent(_ entityId: UnsafePointer<CChar>?, _ m
     var component = ecs.get(MaterialComponent.self, for: entity) ?? MaterialComponent(materialHandle: nil)
     component.materialHandle = handleFromString(materialString)
     ecs.add(component, to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     EditorLogCenter.shared.logInfo("Material updated: \(entity.id.uuidString)", category: .scene)
 }
 
@@ -577,7 +803,7 @@ public func MCEEditorSetLight(_ entityId: UnsafePointer<CChar>?, _ type: Int32,
     light.outerConeCos = outerCos
     light.direction = SIMD3<Float>(dirX, dirY, dirZ)
     ecs.add(light, to: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     EditorLogCenter.shared.logInfo("Light updated: \(entity.id.uuidString)", category: .scene)
 }
 
@@ -626,7 +852,7 @@ public func MCEEditorSetSkyLight(_ entityId: UnsafePointer<CChar>?, _ mode: Int3
     if sky.needsRegenerate {
         EditorLogCenter.shared.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
 }
 
 @_cdecl("MCEEditorSkyEntityCount")
@@ -646,7 +872,7 @@ public func MCEEditorGetActiveSkyId(_ buffer: UnsafeMutablePointer<CChar>?, _ bu
 public func MCEEditorSetActiveSky(_ entityId: UnsafePointer<CChar>?) -> UInt32 {
     guard !SceneManager.isPlaying, let ecs = editorECS(), let entity = entity(from: entityId) else { return 0 }
     setActiveSky(ecs: ecs, entity: entity)
-    EditorProjectManager.shared.markSceneDirty()
+    EditorProjectManager.shared.notifySceneMutation()
     return 1
 }
 

@@ -56,9 +56,9 @@ enum AssetIO {
 
     static func updateMaterialNameIfNeeded(url: URL, newName: String) {
         guard url.pathExtension.lowercased() == "mcmat" else { return }
-        if var material = MaterialAssetSerializer.load(from: url, fallbackHandle: nil) {
+        if var material = MaterialSerializer.load(from: url, fallbackHandle: nil) {
             material.name = newName
-            _ = MaterialAssetSerializer.save(material, to: url)
+            _ = MaterialSerializer.save(material, to: url)
         }
     }
 

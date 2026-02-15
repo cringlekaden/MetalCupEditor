@@ -31,6 +31,21 @@ extern "C" uint32_t MCEEditorGetTransform(const char *entityId, float *px, float
 extern "C" void MCEEditorSetTransform(const char *entityId, float px, float py, float pz,
                                       float rx, float ry, float rz,
                                       float sx, float sy, float sz);
+extern "C" uint32_t MCEEditorGetCamera(const char *entityId,
+                                       int32_t *projectionType,
+                                       float *fovDegrees,
+                                       float *orthoSize,
+                                       float *nearPlane,
+                                       float *farPlane,
+                                       uint32_t *isPrimary,
+                                       uint32_t *isEditor);
+extern "C" void MCEEditorSetCamera(const char *entityId,
+                                   int32_t projectionType,
+                                   float fovDegrees,
+                                   float orthoSize,
+                                   float nearPlane,
+                                   float farPlane,
+                                   uint32_t isPrimary);
 
 extern "C" uint32_t MCEEditorGetMeshRenderer(const char *entityId, char *meshHandle, int32_t meshHandleSize,
                                              char *materialHandle, int32_t materialHandleSize);
@@ -107,7 +122,8 @@ enum ComponentType : int32_t {
     ComponentMeshRenderer = 2,
     ComponentLight = 3,
     ComponentSkyLight = 4,
-    ComponentMaterial = 5
+    ComponentMaterial = 5,
+    ComponentCamera = 6
 };
 
 namespace {
@@ -140,7 +156,7 @@ namespace {
         if (!materialHandle || materialHandle[0] == 0) { return false; }
         uint32_t doubleSided = 0;
         uint32_t unlit = 0;
-        return MCEEditorGetMaterialAsset(
+        const bool loaded = MCEEditorGetMaterialAsset(
             materialHandle,
             state.name, sizeof(state.name),
             &state.version,
@@ -156,14 +172,43 @@ namespace {
             state.metallicHandle, sizeof(state.metallicHandle),
             state.roughnessHandle, sizeof(state.roughnessHandle),
             state.aoHandle, sizeof(state.aoHandle),
-            state.emissiveHandle, sizeof(state.emissiveHandle)) != 0
-            ? (state.doubleSided = (doubleSided != 0), state.unlit = (unlit != 0), true)
-            : false;
+            state.emissiveHandle, sizeof(state.emissiveHandle)) != 0;
+        if (!loaded) {
+            return false;
+        }
+        state.doubleSided = (doubleSided != 0);
+        state.unlit = (unlit != 0);
+        return true;
     }
 
     void GetAssetName(const char *handle, char *buffer, size_t bufferSize) {
         if (!handle || handle[0] == 0) {
             strncpy(buffer, "None", bufferSize - 1);
+            buffer[bufferSize - 1] = 0;
+            return;
+        }
+        if (strcmp(handle, "00000000-0000-0000-0000-000000000002") == 0) {
+            strncpy(buffer, "Cube", bufferSize - 1);
+            buffer[bufferSize - 1] = 0;
+            return;
+        }
+        if (strcmp(handle, "00000000-0000-0000-0000-000000000006") == 0) {
+            strncpy(buffer, "Plane", bufferSize - 1);
+            buffer[bufferSize - 1] = 0;
+            return;
+        }
+        if (strcmp(handle, "00000000-0000-0000-0000-000000000003") == 0) {
+            strncpy(buffer, "Cubemap", bufferSize - 1);
+            buffer[bufferSize - 1] = 0;
+            return;
+        }
+        if (strcmp(handle, "00000000-0000-0000-0000-000000000004") == 0) {
+            strncpy(buffer, "Skybox", bufferSize - 1);
+            buffer[bufferSize - 1] = 0;
+            return;
+        }
+        if (strcmp(handle, "00000000-0000-0000-0000-000000000005") == 0) {
+            strncpy(buffer, "Fullscreen Quad", bufferSize - 1);
             buffer[bufferSize - 1] = 0;
             return;
         }
@@ -205,6 +250,35 @@ namespace {
 
     EnvironmentPickerState &GetEnvironmentPickerState() {
         static EnvironmentPickerState state;
+        return state;
+    }
+
+    struct MeshPickerState {
+        bool open = false;
+        bool requestOpen = false;
+        char title[64] = {0};
+        char filter[64] = {0};
+        char entityId[64] = {0};
+        char materialHandle[64] = {0};
+    };
+
+    MeshPickerState &GetMeshPickerState() {
+        static MeshPickerState state;
+        return state;
+    }
+
+    struct MaterialPickerState {
+        bool open = false;
+        bool requestOpen = false;
+        char title[64] = {0};
+        char filter[64] = {0};
+        char entityId[64] = {0};
+        char meshHandle[64] = {0};
+        bool usesMeshRenderer = false;
+    };
+
+    MaterialPickerState &GetMaterialPickerState() {
+        static MaterialPickerState state;
         return state;
     }
 
@@ -264,6 +338,67 @@ namespace {
         });
     }
 
+    void LoadMeshOptions(std::vector<AssetOption> &options) {
+        options.clear();
+        const int32_t count = MCEEditorGetAssetCount();
+        options.reserve(count);
+        for (int32_t i = 0; i < count; ++i) {
+            char handleBuffer[64] = {0};
+            int32_t type = 0;
+            char pathBuffer[512] = {0};
+            char nameBuffer[128] = {0};
+            if (MCEEditorGetAssetAt(i,
+                                    handleBuffer, sizeof(handleBuffer),
+                                    &type,
+                                    pathBuffer, sizeof(pathBuffer),
+                                    nameBuffer, sizeof(nameBuffer)) == 0) {
+                continue;
+            }
+            if (type != 1) { continue; }
+            if (handleBuffer[0] == 0) { continue; }
+            AssetOption option;
+            option.handle = handleBuffer;
+            option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            options.push_back(option);
+        }
+        options.push_back({"00000000-0000-0000-0000-000000000002", "Cube"});
+        options.push_back({"00000000-0000-0000-0000-000000000006", "Plane"});
+        options.push_back({"00000000-0000-0000-0000-000000000003", "Cubemap"});
+        options.push_back({"00000000-0000-0000-0000-000000000004", "Skybox"});
+        options.push_back({"00000000-0000-0000-0000-000000000005", "Fullscreen Quad"});
+        std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
+            return a.name < b.name;
+        });
+    }
+
+    void LoadMaterialOptions(std::vector<AssetOption> &options) {
+        options.clear();
+        const int32_t count = MCEEditorGetAssetCount();
+        options.reserve(count);
+        for (int32_t i = 0; i < count; ++i) {
+            char handleBuffer[64] = {0};
+            int32_t type = 0;
+            char pathBuffer[512] = {0};
+            char nameBuffer[128] = {0};
+            if (MCEEditorGetAssetAt(i,
+                                    handleBuffer, sizeof(handleBuffer),
+                                    &type,
+                                    pathBuffer, sizeof(pathBuffer),
+                                    nameBuffer, sizeof(nameBuffer)) == 0) {
+                continue;
+            }
+            if (type != 2) { continue; }
+            if (handleBuffer[0] == 0) { continue; }
+            AssetOption option;
+            option.handle = handleBuffer;
+            option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            options.push_back(option);
+        }
+        std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
+            return a.name < b.name;
+        });
+    }
+
     void OpenTexturePicker(const char *label, char *target, const char *materialHandle) {
         auto &state = GetTexturePickerState();
         state.open = true;
@@ -291,6 +426,47 @@ namespace {
             state.entityId[sizeof(state.entityId) - 1] = 0;
         } else {
             state.entityId[0] = 0;
+        }
+    }
+
+    void OpenMeshPicker(const char *label, const char *entityId, const char *materialHandle) {
+        auto &state = GetMeshPickerState();
+        state.open = true;
+        state.requestOpen = true;
+        snprintf(state.title, sizeof(state.title), "Select Mesh: %s", label);
+        state.filter[0] = 0;
+        if (entityId) {
+            strncpy(state.entityId, entityId, sizeof(state.entityId) - 1);
+            state.entityId[sizeof(state.entityId) - 1] = 0;
+        } else {
+            state.entityId[0] = 0;
+        }
+        if (materialHandle) {
+            strncpy(state.materialHandle, materialHandle, sizeof(state.materialHandle) - 1);
+            state.materialHandle[sizeof(state.materialHandle) - 1] = 0;
+        } else {
+            state.materialHandle[0] = 0;
+        }
+    }
+
+    void OpenMaterialPicker(const char *label, const char *entityId, const char *meshHandle, bool usesMeshRenderer) {
+        auto &state = GetMaterialPickerState();
+        state.open = true;
+        state.requestOpen = true;
+        snprintf(state.title, sizeof(state.title), "Select Material: %s", label);
+        state.filter[0] = 0;
+        state.usesMeshRenderer = usesMeshRenderer;
+        if (entityId) {
+            strncpy(state.entityId, entityId, sizeof(state.entityId) - 1);
+            state.entityId[sizeof(state.entityId) - 1] = 0;
+        } else {
+            state.entityId[0] = 0;
+        }
+        if (meshHandle) {
+            strncpy(state.meshHandle, meshHandle, sizeof(state.meshHandle) - 1);
+            state.meshHandle[sizeof(state.meshHandle) - 1] = 0;
+        } else {
+            state.meshHandle[0] = 0;
         }
     }
 
@@ -363,6 +539,87 @@ namespace {
             OpenEnvironmentPicker(label, handleBuffer, entityId);
         }
         ImGui::SameLine();
+        if (ImGui::Button("Clear")) {
+            handleBuffer[0] = 0;
+            changed = true;
+        }
+        ImGui::PopID();
+        return changed;
+    }
+
+    bool DrawMeshHandleRow(const char *label,
+                           char *handleBuffer,
+                           size_t handleBufferSize,
+                           const char *payloadType,
+                           const char *entityId,
+                           const char *materialHandle) {
+        bool changed = false;
+        EditorUI::PropertyLabel(label);
+        ImGui::PushID(label);
+        char displayName[128] = {0};
+        GetAssetName(handleBuffer, displayName, sizeof(displayName));
+        const float wrapPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 120.0f;
+        ImGui::PushTextWrapPos(wrapPos);
+        ImGui::TextUnformatted(displayName);
+        ImGui::PopTextWrapPos();
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType)) {
+                const char *payloadText = static_cast<const char *>(payload->Data);
+                strncpy(handleBuffer, payloadText, handleBufferSize - 1);
+                handleBuffer[handleBufferSize - 1] = 0;
+                changed = true;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Select...")) {
+            OpenMeshPicker(label, entityId, materialHandle);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear")) {
+            handleBuffer[0] = 0;
+            changed = true;
+        }
+        ImGui::PopID();
+        return changed;
+    }
+
+    bool DrawMaterialHandleRow(const char *label,
+                               char *handleBuffer,
+                               size_t handleBufferSize,
+                               const char *payloadType,
+                               const char *entityId,
+                               const char *meshHandle,
+                               bool usesMeshRenderer) {
+        bool changed = false;
+        EditorUI::PropertyLabel(label);
+        ImGui::PushID(label);
+        char displayName[128] = {0};
+        GetAssetName(handleBuffer, displayName, sizeof(displayName));
+        const float wrapPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 120.0f;
+        ImGui::PushTextWrapPos(wrapPos);
+        ImGui::TextUnformatted(displayName);
+        ImGui::PopTextWrapPos();
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType)) {
+                const char *payloadText = static_cast<const char *>(payload->Data);
+                strncpy(handleBuffer, payloadText, handleBufferSize - 1);
+                handleBuffer[handleBufferSize - 1] = 0;
+                changed = true;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Select...")) {
+            OpenMaterialPicker(label, entityId, meshHandle, usesMeshRenderer);
+        }
+        ImGui::SameLine();
+        if (handleBuffer[0] != 0) {
+            if (ImGui::Button("Edit")) {
+                MCEEditorOpenMaterialEditor(handleBuffer);
+            }
+            ImGui::SameLine();
+        }
         if (ImGui::Button("Clear")) {
             handleBuffer[0] = 0;
             changed = true;
@@ -622,57 +879,118 @@ void ImGuiInspectorPanelDraw(bool *isOpen, const char *selectedEntityId) {
         }
     }
 
+    const bool hasCamera = hasValidEntity && MCEEditorEntityHasComponent(selectedEntityId, ComponentCamera) != 0;
+    if (hasCamera) {
+        bool cameraOpen = EditorUI::BeginSectionWithContext(
+            "Camera",
+            "Inspector.Camera",
+            "CameraContext",
+            [&]() {
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(selectedEntityId, ComponentCamera);
+                }
+            },
+            true);
+        if (cameraOpen) {
+            int32_t projectionType = 0;
+            float fovDegrees = 45.0f;
+            float orthoSize = 10.0f;
+            float nearPlane = 0.1f;
+            float farPlane = 1000.0f;
+            uint32_t isPrimary = 0;
+            uint32_t isEditor = 0;
+            if (MCEEditorGetCamera(selectedEntityId,
+                                   &projectionType,
+                                   &fovDegrees,
+                                   &orthoSize,
+                                   &nearPlane,
+                                   &farPlane,
+                                   &isPrimary,
+                                   &isEditor) != 0) {
+                const char *projectionItems[] = {"Perspective", "Orthographic"};
+                int projectionIndex = projectionType;
+                bool dirty = false;
+                bool primaryDirty = false;
+                if (EditorUI::BeginPropertyTable("CameraProps")) {
+                    dirty |= EditorUI::PropertyCombo("Projection", &projectionIndex, projectionItems, 2);
+                    if (projectionIndex == 0) {
+                        dirty |= EditorUI::PropertyFloat("FOV (deg)", &fovDegrees, 0.1f, 1.0f, 179.0f, "%.1f", true);
+                    } else {
+                        dirty |= EditorUI::PropertyFloat("Ortho Size", &orthoSize, 0.05f, 0.01f, 10000.0f, "%.2f", true);
+                    }
+                    dirty |= EditorUI::PropertyFloat("Near", &nearPlane, 0.01f, 0.01f, 10000.0f, "%.3f", true);
+                    dirty |= EditorUI::PropertyFloat("Far", &farPlane, 1.0f, 0.1f, 100000.0f, "%.1f", true);
+                    bool primary = isPrimary != 0;
+                    if (isEditor != 0) {
+                        ImGui::BeginDisabled();
+                    }
+                    primaryDirty = EditorUI::PropertyBool("Primary", &primary);
+                    if (isEditor != 0) {
+                        ImGui::EndDisabled();
+                    }
+                    EditorUI::EndPropertyTable();
+
+                    if (dirty || primaryDirty) {
+                        const uint32_t primaryValue = (primary ? 1u : 0u);
+                        MCEEditorSetCamera(selectedEntityId,
+                                           projectionIndex,
+                                           fovDegrees,
+                                           orthoSize,
+                                           nearPlane,
+                                           farPlane,
+                                           primaryValue);
+                    }
+                }
+                if (isEditor != 0) {
+                    ImGui::TextDisabled("Editor Camera");
+                }
+                if (isEditor != 0) {
+                    ImGui::BeginDisabled();
+                }
+                if (ImGui::Button("Remove Camera")) {
+                    MCEEditorRemoveComponent(selectedEntityId, ComponentCamera);
+                }
+                if (isEditor != 0) {
+                    ImGui::EndDisabled();
+                }
+            }
+        }
+    }
+
     const bool hasMeshRenderer = hasValidEntity && MCEEditorEntityHasComponent(selectedEntityId, ComponentMeshRenderer) != 0;
     if (hasMeshRenderer) {
-        bool meshOpen = EditorUI::BeginSection("Mesh Renderer", "Inspector.MeshRenderer", true);
-        if (ImGui::BeginPopupContextItem("MeshRendererContext")) {
-            if (ImGui::MenuItem("Reset")) {
-                const char *empty = "";
-                MCEEditorSetMeshRenderer(selectedEntityId, empty, empty);
-                MCEEditorSetMaterialComponent(selectedEntityId, empty);
-            }
-            if (ImGui::MenuItem("Remove")) {
-                MCEEditorRemoveComponent(selectedEntityId, ComponentMeshRenderer);
-            }
-            ImGui::EndPopup();
-        }
+        bool meshOpen = EditorUI::BeginSectionWithContext(
+            "Mesh Renderer",
+            "Inspector.MeshRenderer",
+            "MeshRendererContext",
+            [&]() {
+                if (ImGui::MenuItem("Reset")) {
+                    const char *empty = "";
+                    MCEEditorSetMeshRenderer(selectedEntityId, empty, empty);
+                    MCEEditorSetMaterialComponent(selectedEntityId, empty);
+                }
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(selectedEntityId, ComponentMeshRenderer);
+                }
+            },
+            true);
         if (meshOpen) {
             char meshHandle[64] = {0};
             char materialHandle[64] = {0};
             MCEEditorGetMeshRenderer(selectedEntityId, meshHandle, sizeof(meshHandle), materialHandle, sizeof(materialHandle));
 
-            char meshName[128] = {0};
-            GetAssetName(meshHandle, meshName, sizeof(meshName));
-            char materialName[128] = {0};
-            GetAssetName(materialHandle, materialName, sizeof(materialName));
             if (EditorUI::BeginPropertyTable("MeshRendererProps")) {
-                EditorUI::PropertyLabel("Mesh");
-                ImGui::TextUnformatted(meshName);
-                EditorUI::PropertyLabel("Material");
-                ImGui::TextUnformatted(materialName);
-                if (ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MATERIAL")) {
-                        const char *payloadText = static_cast<const char *>(payload->Data);
-                        strncpy(materialHandle, payloadText, sizeof(materialHandle) - 1);
-                        materialHandle[sizeof(materialHandle) - 1] = 0;
-                        MCEEditorSetMeshRenderer(selectedEntityId, meshHandle, materialHandle);
-                        MCEEditorSetMaterialComponent(selectedEntityId, materialHandle);
-                    }
-                    ImGui::EndDragDropTarget();
+                if (DrawMeshHandleRow("Mesh", meshHandle, sizeof(meshHandle), "MCE_ASSET_MODEL", selectedEntityId, materialHandle)) {
+                    MCEEditorSetMeshRenderer(selectedEntityId, meshHandle, materialHandle);
+                }
+                if (DrawMaterialHandleRow("Material", materialHandle, sizeof(materialHandle), "MCE_ASSET_MATERIAL", selectedEntityId, meshHandle, true)) {
+                    MCEEditorSetMeshRenderer(selectedEntityId, meshHandle, materialHandle);
+                    MCEEditorSetMaterialComponent(selectedEntityId, materialHandle);
                 }
                 EditorUI::EndPropertyTable();
             }
 
             if (materialHandle[0] != 0) {
-                if (ImGui::Button("Edit Material")) {
-                    MCEEditorOpenMaterialEditor(materialHandle);
-                }
-                ImGui::SameLine();
-                if (ImGui::Button("Clear Material")) {
-                    materialHandle[0] = 0;
-                    MCEEditorSetMeshRenderer(selectedEntityId, meshHandle, materialHandle);
-                    MCEEditorSetMaterialComponent(selectedEntityId, materialHandle);
-                }
                 if (MaterialEditorState *textureState = GetInspectorMaterialState(materialHandle)) {
                     bool texturesDirty = DrawMaterialTextureInspector(*textureState, materialHandle);
                     TexturePickerState &picker = GetTexturePickerState();
@@ -738,39 +1056,38 @@ void ImGuiInspectorPanelDraw(bool *isOpen, const char *selectedEntityId) {
             strncpy(materialHandle, selectedMaterial, sizeof(materialHandle) - 1);
         }
 
-        bool materialOpen = EditorUI::BeginSection("Material", "Inspector.Material", true);
-        if (ImGui::BeginPopupContextItem("MaterialContext")) {
-            if (hasValidEntity && ImGui::MenuItem("Clear Material")) {
-                const char *empty = "";
-                MCEEditorSetMeshRenderer(selectedEntityId, empty, empty);
-                MCEEditorSetMaterialComponent(selectedEntityId, empty);
-            }
-            if (hasValidEntity && ImGui::MenuItem("Remove Component")) {
-                MCEEditorRemoveComponent(selectedEntityId, ComponentMaterial);
-            }
-            ImGui::EndPopup();
-        }
+        bool materialOpen = EditorUI::BeginSectionWithContext(
+            "Material",
+            "Inspector.Material",
+            "MaterialContext",
+            [&]() {
+                if (hasValidEntity && ImGui::MenuItem("Clear Material")) {
+                    const char *empty = "";
+                    MCEEditorSetMeshRenderer(selectedEntityId, empty, empty);
+                    MCEEditorSetMaterialComponent(selectedEntityId, empty);
+                }
+                if (hasValidEntity && ImGui::MenuItem("Remove Component")) {
+                    MCEEditorRemoveComponent(selectedEntityId, ComponentMaterial);
+                }
+            },
+            true);
         if (materialOpen) {
             if (materialHandle[0] == 0) {
                 ImGui::TextUnformatted("Assign a material asset.");
-                if (hasValidEntity && ImGui::BeginDragDropTarget()) {
-                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MATERIAL")) {
-                        const char *payloadText = static_cast<const char *>(payload->Data);
-                        strncpy(materialHandle, payloadText, sizeof(materialHandle) - 1);
-                        MCEEditorAssignMaterialToEntity(selectedEntityId, materialHandle);
+                if (hasValidEntity) {
+                    if (EditorUI::BeginPropertyTable("MaterialSelection")) {
+                        if (DrawMaterialHandleRow("Material", materialHandle, sizeof(materialHandle), "MCE_ASSET_MATERIAL", selectedEntityId, nullptr, false)) {
+                            MCEEditorAssignMaterialToEntity(selectedEntityId, materialHandle);
+                        }
+                        EditorUI::EndPropertyTable();
                     }
-                    ImGui::EndDragDropTarget();
                 }
             } else {
-                char materialName[128] = {0};
-                GetAssetName(materialHandle, materialName, sizeof(materialName));
                 if (EditorUI::BeginPropertyTable("MaterialSelection")) {
-                    EditorUI::PropertyLabel("Material");
-                    ImGui::TextUnformatted(materialName);
+                    if (DrawMaterialHandleRow("Material", materialHandle, sizeof(materialHandle), "MCE_ASSET_MATERIAL", selectedEntityId, nullptr, false)) {
+                        MCEEditorAssignMaterialToEntity(selectedEntityId, materialHandle);
+                    }
                     EditorUI::EndPropertyTable();
-                }
-                if (ImGui::Button("Edit Material")) {
-                    MCEEditorOpenMaterialEditor(materialHandle);
                 }
 
                 if (MaterialEditorState *textureState = GetInspectorMaterialState(materialHandle)) {
@@ -806,16 +1123,19 @@ void ImGuiInspectorPanelDraw(bool *isOpen, const char *selectedEntityId) {
     }
 
     if (hasValidEntity && MCEEditorEntityHasComponent(selectedEntityId, ComponentLight) != 0) {
-        bool lightOpen = EditorUI::BeginSection("Light", "Inspector.Light", true);
-        if (ImGui::BeginPopupContextItem("LightContext")) {
-            if (ImGui::MenuItem("Reset")) {
-                MCEEditorSetLight(selectedEntityId, 0, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.95f, 0.9f, 0.0f, -1.0f, 0.0f);
-            }
-            if (ImGui::MenuItem("Remove")) {
-                MCEEditorRemoveComponent(selectedEntityId, ComponentLight);
-            }
-            ImGui::EndPopup();
-        }
+        bool lightOpen = EditorUI::BeginSectionWithContext(
+            "Light",
+            "Inspector.Light",
+            "LightContext",
+            [&]() {
+                if (ImGui::MenuItem("Reset")) {
+                    MCEEditorSetLight(selectedEntityId, 0, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.95f, 0.9f, 0.0f, -1.0f, 0.0f);
+                }
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(selectedEntityId, ComponentLight);
+                }
+            },
+            true);
         if (lightOpen) {
             int32_t type = 0;
             float colorX = 1, colorY = 1, colorZ = 1;
@@ -851,17 +1171,20 @@ void ImGuiInspectorPanelDraw(bool *isOpen, const char *selectedEntityId) {
     }
 
     if (hasValidEntity && MCEEditorEntityHasComponent(selectedEntityId, ComponentSkyLight) != 0) {
-        bool skyOpen = EditorUI::BeginSection("Sky", "Inspector.Sky", true);
-        if (ImGui::BeginPopupContextItem("SkyContext")) {
-            if (ImGui::MenuItem("Reset")) {
-                const char *empty = "";
-                MCEEditorSetSkyLight(selectedEntityId, 0, 1, 1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 0.0f, 30.0f, empty);
-            }
-            if (ImGui::MenuItem("Remove")) {
-                MCEEditorRemoveComponent(selectedEntityId, ComponentSkyLight);
-            }
-            ImGui::EndPopup();
-        }
+        bool skyOpen = EditorUI::BeginSectionWithContext(
+            "Sky",
+            "Inspector.Sky",
+            "SkyContext",
+            [&]() {
+                if (ImGui::MenuItem("Reset")) {
+                    const char *empty = "";
+                    MCEEditorSetSkyLight(selectedEntityId, 0, 1, 1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 0.0f, 30.0f, empty);
+                }
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(selectedEntityId, ComponentSkyLight);
+                }
+            },
+            true);
         if (skyOpen) {
             int32_t skyCount = MCEEditorSkyEntityCount();
             if (skyCount > 1) {
@@ -1060,6 +1383,11 @@ void ImGuiInspectorPanelDraw(bool *isOpen, const char *selectedEntityId) {
                 MCEEditorAddComponent(selectedEntityId, ComponentMaterial);
             }
         }
+        if (MCEEditorEntityHasComponent(selectedEntityId, ComponentCamera) == 0) {
+            if (ImGui::MenuItem("Camera")) {
+                MCEEditorAddComponent(selectedEntityId, ComponentCamera);
+            }
+        }
         if (MCEEditorEntityHasComponent(selectedEntityId, ComponentLight) == 0) {
             if (ImGui::MenuItem("Light")) {
                 MCEEditorAddComponent(selectedEntityId, ComponentLight);
@@ -1208,6 +1536,99 @@ void ImGuiInspectorPanelDraw(bool *isOpen, const char *selectedEntityId) {
             ImGui::Spacing();
             if (ImGui::Button("Close")) {
                 envPicker.open = false;
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
+    MeshPickerState &meshPicker = GetMeshPickerState();
+    if (meshPicker.requestOpen) {
+        ImGui::OpenPopup("MeshPicker");
+        meshPicker.requestOpen = false;
+    }
+    if (meshPicker.open) {
+        ImGui::SetNextWindowSize(ImVec2(420.0f, 320.0f), ImGuiCond_Once);
+        if (ImGui::BeginPopupModal("MeshPicker", &meshPicker.open, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted(meshPicker.title);
+            ImGui::Separator();
+            ImGui::InputTextWithHint("##MeshFilter", "Search meshes...", meshPicker.filter, sizeof(meshPicker.filter));
+            ImGui::Separator();
+
+            std::vector<AssetOption> options;
+            LoadMeshOptions(options);
+            const std::string filterText = EditorUI::ToLower(std::string(meshPicker.filter));
+            for (const auto &option : options) {
+                if (!filterText.empty() && EditorUI::ToLower(option.name).find(filterText) == std::string::npos) {
+                    continue;
+                }
+                if (ImGui::Selectable(option.name.c_str())) {
+                    if (meshPicker.entityId[0] != 0) {
+                        MCEEditorSetMeshRenderer(meshPicker.entityId, option.handle.c_str(), meshPicker.materialHandle);
+                    }
+                    meshPicker.open = false;
+                    ImGui::CloseCurrentPopup();
+                    break;
+                }
+            }
+
+            if (options.empty()) {
+                ImGui::TextDisabled("No mesh assets found.");
+            }
+
+            ImGui::Spacing();
+            if (ImGui::Button("Close")) {
+                meshPicker.open = false;
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
+    MaterialPickerState &materialPicker = GetMaterialPickerState();
+    if (materialPicker.requestOpen) {
+        ImGui::OpenPopup("MaterialPicker");
+        materialPicker.requestOpen = false;
+    }
+    if (materialPicker.open) {
+        ImGui::SetNextWindowSize(ImVec2(420.0f, 320.0f), ImGuiCond_Once);
+        if (ImGui::BeginPopupModal("MaterialPicker", &materialPicker.open, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted(materialPicker.title);
+            ImGui::Separator();
+            ImGui::InputTextWithHint("##MaterialFilter", "Search materials...", materialPicker.filter, sizeof(materialPicker.filter));
+            ImGui::Separator();
+
+            std::vector<AssetOption> options;
+            LoadMaterialOptions(options);
+            const std::string filterText = EditorUI::ToLower(std::string(materialPicker.filter));
+            for (const auto &option : options) {
+                if (!filterText.empty() && EditorUI::ToLower(option.name).find(filterText) == std::string::npos) {
+                    continue;
+                }
+                if (ImGui::Selectable(option.name.c_str())) {
+                    if (materialPicker.entityId[0] != 0) {
+                        if (materialPicker.usesMeshRenderer) {
+                            MCEEditorSetMeshRenderer(materialPicker.entityId, materialPicker.meshHandle, option.handle.c_str());
+                            MCEEditorSetMaterialComponent(materialPicker.entityId, option.handle.c_str());
+                        } else {
+                            MCEEditorAssignMaterialToEntity(materialPicker.entityId, option.handle.c_str());
+                        }
+                    }
+                    materialPicker.open = false;
+                    ImGui::CloseCurrentPopup();
+                    break;
+                }
+            }
+
+            if (options.empty()) {
+                ImGui::TextDisabled("No material assets found.");
+            }
+
+            ImGui::Spacing();
+            if (ImGui::Button("Close")) {
+                materialPicker.open = false;
                 ImGui::CloseCurrentPopup();
             }
 

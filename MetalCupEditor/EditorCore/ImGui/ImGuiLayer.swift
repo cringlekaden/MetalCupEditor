@@ -4,11 +4,22 @@
 
 import MetalKit
 import MetalCupEngine
+import simd
 #if canImport(GameController)
 import GameController
 #endif
 
 final class ImGuiLayer: Layer {
+
+    private var previewTexture: MTLTexture?
+    private var previewDepthTexture: MTLTexture?
+    private var previewSelectedEntityId: UUID?
+    private var previewLastTransform = TransformComponent()
+    private var previewLastCamera = CameraComponent()
+    private var previewFrameCounter: UInt64 = 0
+    private var previewLastUpdateFrame: UInt64 = 0
+    private let previewUpdateInterval: UInt64 = 8
+    private let previewTextureSize = SIMD2<Int>(256, 256)
     
     nonisolated override init(name: String) {
         super.init(name: name)
@@ -25,14 +36,16 @@ final class ImGuiLayer: Layer {
             )
         }
         SceneManager.update()
-        if let result = SceneManager.consumePickResult() {
-            switch result {
-            case .none:
-                SceneManager.setSelectedEntityId("")
-                ImGuiBridge.setSelectedEntityId("")
-            case .entity(let entity):
-                SceneManager.setSelectedEntityId(entity.id.uuidString)
-                ImGuiBridge.setSelectedEntityId(entity.id.uuidString)
+        if !SceneManager.isPlaying {
+            if let result = SceneManager.consumePickResult() {
+                switch result {
+                case .none:
+                    SceneManager.setSelectedEntityId("")
+                    ImGuiBridge.setSelectedEntityId("")
+                case .entity(let entity):
+                    SceneManager.setSelectedEntityId(entity.id.uuidString)
+                    ImGuiBridge.setSelectedEntityId(entity.id.uuidString)
+                }
             }
         }
     }
@@ -43,16 +56,18 @@ final class ImGuiLayer: Layer {
     
     nonisolated override func onOverlayRender(view: MTKView, commandBuffer: MTLCommandBuffer) {
         ImGuiBridge.setup(with: view)
-        ImGuiBridge.newFrame(with: view, deltaTime: GameTime.DeltaTime)
+        ImGuiBridge.newFrame(with: view, deltaTime: Time.DeltaTime)
         let sceneTex = AssetManager.texture(handle: BuiltinAssets.finalColorRender)
-        ImGuiBridge.buildUI(withSceneTexture: sceneTex)
+        let previewTex = updateCameraPreviewIfNeeded(view: view, commandBuffer: commandBuffer)
+        ImGuiBridge.buildUI(withSceneTexture: sceneTex, previewTexture: previewTex)
         if let rpd = view.currentRenderPassDescriptor {
             ImGuiBridge.render(with: commandBuffer, renderPassDescriptor: rpd)
         }
     }
     
     nonisolated override func onEvent(_ event: Event) {
-        if let mouseEvent = event as? MouseButtonPressedEvent,
+        if !SceneManager.isPlaying,
+           let mouseEvent = event as? MouseButtonPressedEvent,
            mouseEvent.button == MouseCodes.left.rawValue {
             let wantsMouse = ImGuiBridge.wantsCaptureMouse()
             let viewportHovered = ImGuiBridge.viewportIsHovered()
@@ -105,5 +120,111 @@ final class ImGuiLayer: Layer {
         default:
             return false
         }
+    }
+
+    private func updateCameraPreviewIfNeeded(view: MTKView,
+                                             commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+        previewFrameCounter &+= 1
+        guard let scene = SceneManager.getEditorScene(),
+              let selectedId = SceneManager.selectedEntityUUID(),
+              let entity = scene.ecs.entity(with: selectedId),
+              let camera = scene.ecs.get(CameraComponent.self, for: entity),
+              let transform = scene.ecs.get(TransformComponent.self, for: entity) else {
+            previewSelectedEntityId = nil
+            return nil
+        }
+
+        ensurePreviewTextures(device: view.device!)
+        guard let previewTexture, let previewDepthTexture else { return nil }
+
+        let shouldUpdate = previewNeedsUpdate(selectedId: selectedId, transform: transform, camera: camera)
+        if shouldUpdate {
+            let pass = MTLRenderPassDescriptor()
+            pass.colorAttachments[0].texture = previewTexture
+            pass.colorAttachments[0].loadAction = .clear
+            pass.colorAttachments[0].storeAction = .store
+            pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
+            pass.depthAttachment.texture = previewDepthTexture
+            pass.depthAttachment.loadAction = .clear
+            pass.depthAttachment.storeAction = .store
+            pass.depthAttachment.clearDepth = 1.0
+
+            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
+                scene.renderPreview(
+                    encoder: encoder,
+                    cameraEntity: entity,
+                    viewportSize: SIMD2<Float>(Float(previewTextureSize.x), Float(previewTextureSize.y))
+                )
+                encoder.endEncoding()
+            }
+
+            previewSelectedEntityId = selectedId
+            previewLastTransform = transform
+            previewLastCamera = camera
+            previewLastUpdateFrame = previewFrameCounter
+        }
+
+        return previewTexture
+    }
+
+    private func ensurePreviewTextures(device: MTLDevice) {
+        let size = previewTextureSize
+        if previewTexture?.width != size.x
+            || previewTexture?.height != size.y
+            || previewTexture?.pixelFormat != .rgba16Float {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .rgba16Float,
+                width: size.x,
+                height: size.y,
+                mipmapped: false
+            )
+            descriptor.usage = [.renderTarget, .shaderRead]
+            previewTexture = device.makeTexture(descriptor: descriptor)
+        }
+
+        if previewDepthTexture?.width != size.x || previewDepthTexture?.height != size.y {
+            let depthDescriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: .depth32Float,
+                width: size.x,
+                height: size.y,
+                mipmapped: false
+            )
+            depthDescriptor.usage = [.renderTarget]
+            previewDepthTexture = device.makeTexture(descriptor: depthDescriptor)
+        }
+    }
+
+    private func previewNeedsUpdate(selectedId: UUID, transform: TransformComponent, camera: CameraComponent) -> Bool {
+        if previewSelectedEntityId != selectedId {
+            return true
+        }
+        if previewFrameCounter - previewLastUpdateFrame >= previewUpdateInterval {
+            return true
+        }
+        if !transformApproximatelyEqual(lhs: transform, rhs: previewLastTransform) {
+            return true
+        }
+        if !cameraApproximatelyEqual(lhs: camera, rhs: previewLastCamera) {
+            return true
+        }
+        return false
+    }
+
+    private func transformApproximatelyEqual(lhs: TransformComponent, rhs: TransformComponent) -> Bool {
+        let epsilon: Float = 0.0001
+        return simd_distance_squared(lhs.position, rhs.position) < epsilon
+            && simd_distance_squared(lhs.rotation, rhs.rotation) < epsilon
+            && simd_distance_squared(lhs.scale, rhs.scale) < epsilon
+    }
+
+    private func cameraApproximatelyEqual(lhs: CameraComponent, rhs: CameraComponent) -> Bool {
+        let epsilon: Float = 0.0001
+        return abs(lhs.fovDegrees - rhs.fovDegrees) < epsilon
+            && abs(lhs.orthoSize - rhs.orthoSize) < epsilon
+            && abs(lhs.nearPlane - rhs.nearPlane) < epsilon
+            && abs(lhs.farPlane - rhs.farPlane) < epsilon
+            && lhs.projectionType == rhs.projectionType
+            && lhs.isPrimary == rhs.isPrimary
+            && lhs.isEditor == rhs.isEditor
     }
 }

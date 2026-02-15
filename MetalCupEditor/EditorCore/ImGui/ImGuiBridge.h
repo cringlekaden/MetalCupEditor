@@ -18,7 +18,8 @@ NS_ASSUME_NONNULL_BEGIN
 
 /// Build your ImGui panels here (call every frame after newFrame).
 /// Pass the scene texture you want to show in the viewport (can be nil).
-+ (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture;
++ (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture
+                 previewTexture:(id<MTLTexture> _Nullable)previewTexture;
 
 /// Render the ImGui draw data into the given render pass.
 /// This call creates its own render command encoder.

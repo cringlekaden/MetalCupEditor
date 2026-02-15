@@ -3,6 +3,7 @@
 /// Created by Kaden Cringle.
 
 import Foundation
+import MetalCupEngine
 
 // Canonical project layout:
 // Projects/
@@ -89,6 +90,7 @@ enum ProjectMigration {
         if updated.intermediateDirectory.isEmpty { updated.intermediateDirectory = "Intermediate" }
         if updated.savedDirectory.isEmpty { updated.savedDirectory = "Saved" }
         if updated.startScene.isEmpty { updated.startScene = "Assets/Scenes/Default.mcscene" }
+        updated.layerNames = LayerCatalog.normalizedNames(updated.layerNames)
 
         if isAbsolutePath(updated.startScene) {
             if let rel = PathUtils.relativePath(from: projectRoot, to: URL(fileURLWithPath: updated.startScene)) {

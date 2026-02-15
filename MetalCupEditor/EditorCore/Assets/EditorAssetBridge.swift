@@ -207,14 +207,18 @@ public func MCEEditorSetMaterialAsset(
     material.textures.emissive = handleFromCString(emissiveHandle)
     material.textures.enforceMetalRoughnessRule()
 
-    if !MaterialAssetSerializer.save(material, to: assetURL) {
-        EditorAlertCenter.shared.enqueueError("Failed to save material file.")
-        return 0
+    let ok = EditorProjectManager.shared.performAssetMutation {
+        if !MaterialSerializer.save(material, to: assetURL) {
+            EditorAlertCenter.shared.enqueueError("Failed to save material file.")
+            return false
+        }
+        return true
     }
-
-    EditorProjectManager.shared.refreshAssets()
-    EditorLogCenter.shared.logInfo("Saved material: \(material.name)", category: .assets)
-    return 1
+    if ok {
+        EditorLogCenter.shared.logInfo("Saved material: \(material.name)", category: .assets)
+        return 1
+    }
+    return 0
 }
 
 private struct DirectoryEntrySnapshot {

@@ -12,9 +12,14 @@
 
 extern "C" void MCEScenePlay(void);
 extern "C" void MCESceneStop(void);
+extern "C" void MCEScenePause(void);
+extern "C" void MCESceneResume(void);
 extern "C" uint32_t MCESceneIsPlaying(void);
+extern "C" uint32_t MCESceneIsPaused(void);
 extern "C" int32_t MCEEditorCreateMeshEntityFromHandle(const char *meshHandle, char *outId, int32_t outIdSize);
+extern "C" int32_t MCEEditorInstantiatePrefabFromHandle(const char *prefabHandle, char *outId, int32_t outIdSize);
 extern "C" uint32_t MCEEditorOpenSceneAtPath(const char *relativePath);
+extern "C" int32_t MCEEditorCreateCameraFromView(char *outId, int32_t outIdSize);
 extern "C" uint32_t MCEEditorGetTransform(const char *entityId,
                                           float *px, float *py, float *pz,
                                           float *rx, float *ry, float *rz,
@@ -30,10 +35,6 @@ extern "C" uint32_t MCEEditorSetTransformFromMatrix(const char *entityId, const 
 extern "C" uint32_t MCEEditorGetModelMatrix(const char *entityId, float *matrixOut);
 
 namespace {
-    constexpr float kPi = 3.14159265358979323846f;
-    constexpr float kDegToRad = 0.0174532925f;
-    constexpr float kRadToDeg = 57.2957795f;
-
     enum class GizmoOperation : uint8_t {
         None,
         Translate,
@@ -64,14 +65,6 @@ namespace {
         default:
             return ImGuizmo::TRANSLATE;
         }
-    }
-
-    float WrapAngle(float value) {
-        float wrapped = fmodf(value + kPi, kPi * 2.0f);
-        if (wrapped < 0) {
-            wrapped += kPi * 2.0f;
-        }
-        return wrapped - kPi;
     }
 
     bool GetModelMatrix(const char *entityId, float *outMatrix) {
@@ -148,6 +141,7 @@ namespace {
 }
 
 void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
+                            id<MTLTexture> _Nullable previewTexture,
                             const char *selectedEntityId,
                             bool *hovered,
                             bool *focused,
@@ -217,6 +211,11 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
             char createdId[64] = {0};
             MCEEditorCreateMeshEntityFromHandle(payloadText, createdId, sizeof(createdId));
         }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
+            const char *payloadText = static_cast<const char *>(payload->Data);
+            char createdId[64] = {0};
+            MCEEditorInstantiatePrefabFromHandle(payloadText, createdId, sizeof(createdId));
+        }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_SCENE_PATH")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
             MCEEditorOpenSceneAtPath(payloadText);
@@ -228,29 +227,69 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
         const float toolbarPadding = 10.0f;
         ImVec2 playLabel = ImGui::CalcTextSize("Play");
         ImVec2 stopLabel = ImGui::CalcTextSize("Stop");
+        ImVec2 pauseLabel = ImGui::CalcTextSize("Pause");
+        ImVec2 resumeLabel = ImGui::CalcTextSize("Resume");
+        ImVec2 cameraLabel = ImGui::CalcTextSize("Camera");
         ImVec2 padding = ImGui::GetStyle().FramePadding;
         float playWidth = playLabel.x + padding.x * 2.0f;
         float stopWidth = stopLabel.x + padding.x * 2.0f;
+        float pauseWidth = std::max(pauseLabel.x, resumeLabel.x) + padding.x * 2.0f;
+        float cameraWidth = cameraLabel.x + padding.x * 2.0f;
         float spacing = ImGui::GetStyle().ItemSpacing.x;
-        float toolbarWidth = playWidth + spacing + stopWidth;
+        float toolbarWidth = playWidth + spacing + pauseWidth + spacing + stopWidth + spacing + cameraWidth;
         float toolbarHeight = (playLabel.y > stopLabel.y ? playLabel.y : stopLabel.y) + padding.y * 2.0f;
         float centerX = imageMin.x + (imageMax.x - imageMin.x - toolbarWidth) * 0.5f;
         ImGui::SetCursorScreenPos(ImVec2(centerX, imageMin.y + toolbarPadding));
         ImGui::BeginChild("ViewportToolbar", ImVec2(toolbarWidth, toolbarHeight), false,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
         bool playing = MCESceneIsPlaying() != 0;
+        bool paused = MCESceneIsPaused() != 0;
         if (EditorUI::ToolbarButton("Play", !playing)) {
             MCEScenePlay();
+        }
+        ImGui::SameLine();
+        if (EditorUI::ToolbarButton(paused ? "Resume" : "Pause", playing)) {
+            if (paused) {
+                MCESceneResume();
+            } else {
+                MCEScenePause();
+            }
         }
         ImGui::SameLine();
         if (EditorUI::ToolbarButton("Stop", playing)) {
             MCESceneStop();
         }
+        ImGui::SameLine();
+        if (EditorUI::ToolbarButton("Camera", !playing)) {
+            char createdId[64] = {0};
+            MCEEditorCreateCameraFromView(createdId, sizeof(createdId));
+        }
         ImGui::EndChild();
     }
 
-    if (imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
+    bool playing = MCESceneIsPlaying() != 0;
+    if (!playing && imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
         DrawGizmoToolbar(imageMin, imageMax);
+    }
+
+    if (previewTexture && imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
+        const float padding = 10.0f;
+        float maxWidth = imageMax.x - imageMin.x;
+        float maxHeight = imageMax.y - imageMin.y;
+        float size = std::min(256.0f, std::min(maxWidth, maxHeight) * 0.35f);
+        if (size >= 64.0f) {
+            ImVec2 previewPos = ImVec2(imageMax.x - padding - size, imageMin.y + padding);
+            ImGui::SetCursorScreenPos(previewPos);
+            ImGui::BeginChild("CameraPreview",
+                              ImVec2(size, size),
+                              true,
+                              ImGuiWindowFlags_NoScrollbar |
+                                  ImGuiWindowFlags_NoScrollWithMouse |
+                                  ImGuiWindowFlags_NoBackground |
+                                  ImGuiWindowFlags_NoInputs);
+            ImGui::Image((ImTextureID)previewTexture, ImVec2(size, size), ImVec2(0.0f, 0.0f), ImVec2(1.0f, 1.0f));
+            ImGui::EndChild();
+        }
     }
 
     ImGuiIO& io = ImGui::GetIO();
@@ -262,7 +301,7 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
             io.MouseDown[ImGuiMouseButton_Right]
         );
     const bool canHandleShortcuts = viewportActive && !(io.WantCaptureKeyboard || io.WantTextInput);
-    if (canHandleShortcuts && !cameraControlsActive) {
+    if (!playing && canHandleShortcuts && !cameraControlsActive) {
         if (ImGui::IsKeyPressed(ImGuiKey_Q)) {
             g_GizmoState.operation = GizmoOperation::None;
         }
@@ -279,7 +318,8 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
 
     bool gizmoCapturesMouse = false;
     bool gizmoCapturesKeyboard = false;
-    if (!cameraControlsActive
+    if (!playing
+        && !cameraControlsActive
         && g_GizmoState.operation != GizmoOperation::None
         && selectedEntityId && selectedEntityId[0] != 0
         && imageMax.x > imageMin.x && imageMax.y > imageMin.y) {

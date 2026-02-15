@@ -6,7 +6,7 @@ import Foundation
 import MetalCupEngine
 
 enum ProjectSchema {
-    static let currentVersion: Int = 3
+    static let currentVersion: Int = 4
 }
 
 struct ProjectDocument: Codable {
@@ -20,6 +20,7 @@ struct ProjectDocument: Codable {
     var intermediateDirectory: String
     var savedDirectory: String
     var startScene: String
+    var layerNames: [String]
 
     init(
         schemaVersion: Int = ProjectSchema.currentVersion,
@@ -31,7 +32,8 @@ struct ProjectDocument: Codable {
         cacheDirectory: String,
         intermediateDirectory: String,
         savedDirectory: String,
-        startScene: String
+        startScene: String,
+        layerNames: [String] = LayerCatalog.defaultNames()
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -43,6 +45,7 @@ struct ProjectDocument: Codable {
         self.intermediateDirectory = intermediateDirectory
         self.savedDirectory = savedDirectory
         self.startScene = startScene
+        self.layerNames = LayerCatalog.normalizedNames(layerNames)
     }
 
     enum CodingKeys: String, CodingKey {
@@ -56,6 +59,7 @@ struct ProjectDocument: Codable {
         case intermediateDirectory
         case savedDirectory
         case startScene
+        case layerNames
     }
 
     init(from decoder: Decoder) throws {
@@ -70,6 +74,8 @@ struct ProjectDocument: Codable {
         intermediateDirectory = try container.decodeIfPresent(String.self, forKey: .intermediateDirectory) ?? "Intermediate"
         savedDirectory = try container.decodeIfPresent(String.self, forKey: .savedDirectory) ?? "Saved"
         startScene = try container.decodeIfPresent(String.self, forKey: .startScene) ?? "Assets/Scenes/Default.mcscene"
+        let decodedNames = try container.decodeIfPresent([String].self, forKey: .layerNames) ?? LayerCatalog.defaultNames()
+        layerNames = LayerCatalog.normalizedNames(decodedNames)
     }
 }
 

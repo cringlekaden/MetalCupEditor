@@ -5,6 +5,7 @@
 #pragma once
 
 #include "../../ImGui/imgui.h"
+#include <functional>
 #include <string>
 
 namespace EditorUI {
@@ -29,6 +30,21 @@ namespace EditorUI {
     bool PropertyVec3(const char *label, float *values, float resetValue = 0.0f, float speed = 0.1f, float minValue = 0.0f, float maxValue = 0.0f, const char *format = "%.3f", bool clampValue = false, bool enableReset = false);
 
     bool BeginSection(const char *label, const char *stateId, bool defaultOpen = true);
+    bool BeginSectionWithContext(const char *label,
+                                 const char *stateId,
+                                 const char *contextId,
+                                 const std::function<void()> &contextBody,
+                                 bool defaultOpen = true);
+    bool BeginModal(const char *title,
+                    bool *requestOpen = nullptr,
+                    bool *open = nullptr,
+                    ImGuiWindowFlags flags = ImGuiWindowFlags_AlwaysAutoResize);
+    bool ConfirmModal(const char *title,
+                      bool *requestOpen,
+                      const char *message,
+                      const char *confirmLabel,
+                      const char *cancelLabel,
+                      const std::function<void()> &onConfirm);
     std::string ToLower(const std::string &value);
     void PushMenuBarStyle();
     void PopMenuBarStyle();
