@@ -3,6 +3,7 @@
 /// Created by Kaden Cringle.
 
 import MetalKit
+import Foundation
 import MetalCupEngine
 import simd
 #if canImport(GameController)
@@ -11,6 +12,7 @@ import GameController
 
 final class ImGuiLayer: Layer {
 
+    private let sceneContext = EditorSceneContext()
     private var previewTexture: MTLTexture?
     private var previewDepthTexture: MTLTexture?
     private var previewSelectedEntityId: UUID?
@@ -20,12 +22,36 @@ final class ImGuiLayer: Layer {
     private var previewLastUpdateFrame: UInt64 = 0
     private let previewUpdateInterval: UInt64 = 8
     private let previewTextureSize = SIMD2<Int>(256, 256)
+
+    private enum MCLog {
+        static var onceKeys = Set<String>()
+
+        static func once(_ key: String, _ message: String) {
+            if onceKeys.contains(key) { return }
+            onceKeys.insert(key)
+            NSLog("[MC] \(message)")
+        }
+
+        static func trace(_ message: String) {
+            NSLog("[MC] \(message)")
+        }
+    }
     
     nonisolated override init(name: String) {
         super.init(name: name)
     }
 
     nonisolated override func onUpdate() {
+        MCLog.once("EDITOR_LOOP", "Editor loop running (ImGuiLayer.onUpdate reached)")
+        DebugDraw.beginFrame()
+        sceneContext.editorScene = SceneManager.getEditorScene()
+        sceneContext.runtimeScene = SceneManager.isPlaying ? SceneManager.currentScene : sceneContext.runtimeScene
+        sceneContext.isPlaying = SceneManager.isPlaying
+        sceneContext.isPaused = SceneManager.isPaused
+        if let activeScene = sceneContext.activeScene {
+            MCLog.once("SCENE_ACTIVE", "Active scene id/name = \(activeScene.id)/\(activeScene.name)")
+        }
+
         let viewportSize = ImGuiBridge.viewportImageSize()
         let viewportOrigin = ImGuiBridge.viewportImageOrigin()
         if viewportSize.width > 1, viewportSize.height > 1 {
@@ -35,23 +61,37 @@ final class ImGuiLayer: Layer {
                 size: SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
             )
         }
+        sceneContext.viewportOrigin = SIMD2<Float>(Float(viewportOrigin.x), Float(viewportOrigin.y))
+        sceneContext.viewportSize = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
         SceneManager.update()
         if !SceneManager.isPlaying {
-            if let result = SceneManager.consumePickResult() {
-                switch result {
-                case .none:
-                    SceneManager.setSelectedEntityId("")
-                    ImGuiBridge.setSelectedEntityId("")
-                case .entity(let entity):
-                    SceneManager.setSelectedEntityId(entity.id.uuidString)
-                    ImGuiBridge.setSelectedEntityId(entity.id.uuidString)
-                }
+            DebugDraw.submitGridXZ(SceneRenderer.gridParams(scene: SceneManager.currentScene))
+        }
+        DebugDraw.endFrame()
+
+        if let selected = SceneManager.selectedEntityUUID() {
+            if sceneContext.selectedEntityIds.first != selected {
+                sceneContext.selectedEntityIds = [selected]
             }
+        } else if !sceneContext.selectedEntityIds.isEmpty {
+            sceneContext.selectedEntityIds = []
+        }
+
+        if let activeScene = sceneContext.activeScene,
+           let selectedId = sceneContext.selectedEntityIds.first,
+           activeScene.ecs.entity(with: selectedId) == nil {
+            sceneContext.selectedEntityIds = []
+            SceneManager.setSelectedEntityId("")
+            ImGuiBridge.setSelectedEntityId("")
+        } else if let selectedId = sceneContext.selectedEntityIds.first {
+            ImGuiBridge.setSelectedEntityId(selectedId.uuidString)
+        } else {
+            ImGuiBridge.setSelectedEntityId("")
         }
     }
 
     nonisolated override func onRender(encoder: MTLRenderCommandEncoder) {
-        SceneManager.render(renderCommandEncoder: encoder)
+        sceneContext.activeScene?.onRender(encoder: encoder)
     }
     
     nonisolated override func onOverlayRender(view: MTKView, commandBuffer: MTLCommandBuffer) {
@@ -72,8 +112,6 @@ final class ImGuiLayer: Layer {
             let wantsMouse = ImGuiBridge.wantsCaptureMouse()
             let viewportHovered = ImGuiBridge.viewportIsHovered()
             if viewportHovered && !wantsMouse {
-                SceneManager.setSelectedEntityId("")
-                ImGuiBridge.setSelectedEntityId("")
                 let viewportOrigin = ImGuiBridge.viewportImageOrigin()
                 let viewportImageSize = ImGuiBridge.viewportImageSize()
                 let pickTexture = AssetManager.texture(handle: BuiltinAssets.pickIdRender)
@@ -85,17 +123,29 @@ final class ImGuiLayer: Layer {
                 if local.x < 0 || local.y < 0
                     || local.x >= Float(viewportImageSize.width)
                     || local.y >= Float(viewportImageSize.height) {
-                    SceneManager.setSelectedEntityId("")
-                    ImGuiBridge.setSelectedEntityId("")
                     return
                 }
                 if textureWidth > 1, textureHeight > 1,
                    viewportImageSize.width > 1, viewportImageSize.height > 1 {
-                    let scaleX = textureWidth / Float(viewportImageSize.width)
-                    let scaleY = textureHeight / Float(viewportImageSize.height)
-                    let x = Int(local.x * scaleX)
-                    let y = Int(local.y * scaleY)
-                    SceneManager.requestPick(at: SIMD2<Int>(x, y))
+                    let viewportSize = SIMD2<Float>(
+                        max(1.0, Float(viewportImageSize.width)),
+                        max(1.0, Float(viewportImageSize.height))
+                    )
+                    var uv = local / viewportSize
+                    uv.x = max(0.0, min(uv.x, 1.0))
+                    uv.y = max(0.0, min(uv.y, 1.0))
+                    let pixelX = Int(uv.x * textureWidth)
+                    let pixelY = Int((1.0 - uv.y) * textureHeight)
+                    let clampedX = max(0, min(pixelX, Int(textureWidth) - 1))
+                    let clampedY = max(0, min(pixelY, Int(textureHeight) - 1))
+
+                    MCLog.trace("PICK_REQ mouse=\(mousePos.x),\(mousePos.y) viewport=[\(viewportOrigin.x),\(viewportOrigin.y)]..[" +
+                        "\(viewportOrigin.x + viewportImageSize.width),\(viewportOrigin.y + viewportImageSize.height)] " +
+                        "local=\(local.x),\(local.y) uv=\(uv.x),\(uv.y) " +
+                        "pixel=\(clampedX),\(clampedY) tex=\(Int(textureWidth))x\(Int(textureHeight))")
+
+                    sceneContext.pendingPickRequest = SIMD2<Int>(clampedX, clampedY)
+                    PickingSystem.requestPick(pixel: SIMD2<Int>(clampedX, clampedY), mask: .all)
                 }
             }
         }
@@ -104,6 +154,74 @@ final class ImGuiLayer: Layer {
             return
         }
         SceneManager.currentScene.onEvent(event)
+    }
+
+    func activeScene() -> EngineScene? {
+        sceneContext.activeScene
+    }
+
+    func buildSceneView() -> SceneView {
+        let viewportSize: SIMD2<Float> = {
+            if sceneContext.viewportSize.x > 1, sceneContext.viewportSize.y > 1 {
+                return sceneContext.viewportSize
+            }
+            let fallback = (Renderer.DrawableSize.x > 1 && Renderer.DrawableSize.y > 1)
+                ? Renderer.DrawableSize
+                : Renderer.ViewportSize
+            return SIMD2<Float>(max(1, fallback.x), max(1, fallback.y))
+        }()
+        let activeScene = sceneContext.activeScene
+        let matrices = activeScene.map { SceneRenderer.cameraMatrices(scene: $0) }
+        let cameraPosition = activeScene.map { SceneRenderer.cameraPosition(scene: $0) } ?? .zero
+        if let scene = activeScene,
+           let camera = scene.ecs.activeCamera(allowEditor: true, preferEditor: !sceneContext.isPlaying) {
+            MCLog.once(
+                "SCENEVIEW",
+                "SceneView camera=\(camera.0.id) viewRow0=\(matrices?.view.columns.0 ?? SIMD4<Float>(0,0,0,0)) " +
+                    "projRow0=\(matrices?.projection.columns.0 ?? SIMD4<Float>(0,0,0,0)) " +
+                    "camPos=\(cameraPosition) viewport=\(viewportSize)"
+            )
+        }
+
+        return SceneView(
+            viewMatrix: matrices?.view ?? matrix_identity_float4x4,
+            projectionMatrix: matrices?.projection ?? matrix_identity_float4x4,
+            cameraPosition: cameraPosition,
+            viewportSize: viewportSize,
+            viewportOrigin: sceneContext.viewportOrigin,
+            mousePositionInViewport: nil,
+            requestPick: sceneContext.pendingPickRequest != nil,
+            exposure: 1.0,
+            layerMask: .all,
+            selectedEntityIds: sceneContext.selectedEntityIds,
+            debugFlags: 0,
+            isEditorView: !sceneContext.isPlaying
+        )
+    }
+
+    func handlePickResult(_ result: PickResult) {
+        sceneContext.pendingPickRequest = nil
+        MCLog.trace("PICK_RESULT pickedId=\(result.pickedId)")
+        guard let scene = sceneContext.activeScene else { return }
+        if result.pickedId == 0 {
+            sceneContext.selectedEntityIds = []
+            sceneContext.lastPickResult = nil
+            SceneManager.setSelectedEntityId("")
+            ImGuiBridge.setSelectedEntityId("")
+            return
+        }
+        if let entity = PickingSystem.entity(for: result.pickedId),
+           let hit = scene.raycast(hitEntity: entity, mask: result.mask) {
+            sceneContext.selectedEntityIds = [hit.id]
+            sceneContext.lastPickResult = hit.id
+            SceneManager.setSelectedEntityId(hit.id.uuidString)
+            ImGuiBridge.setSelectedEntityId(hit.id.uuidString)
+        } else {
+            sceneContext.selectedEntityIds = []
+            sceneContext.lastPickResult = nil
+            SceneManager.setSelectedEntityId("")
+            ImGuiBridge.setSelectedEntityId("")
+        }
     }
 
     private func shouldCaptureEvent(_ event: Event) -> Bool {
@@ -226,5 +344,25 @@ final class ImGuiLayer: Layer {
             && lhs.projectionType == rhs.projectionType
             && lhs.isPrimary == rhs.isPrimary
             && lhs.isEditor == rhs.isEditor
+    }
+}
+final class EditorSceneContext {
+    var editorScene: EngineScene?
+    var runtimeScene: EngineScene?
+    var isPlaying: Bool = false
+    var isPaused: Bool = false
+
+    var viewportOrigin: SIMD2<Float> = .zero
+    var viewportSize: SIMD2<Float> = .zero
+
+    var selectedEntityIds: [UUID] = []
+    var pendingPickRequest: SIMD2<Int>?
+    var lastPickResult: UUID?
+
+    var activeScene: EngineScene? {
+        if isPlaying {
+            return runtimeScene
+        }
+        return editorScene
     }
 }

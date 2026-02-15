@@ -675,7 +675,7 @@ private func buildModelMatrix(position: SIMD3<Float>, rotation: SIMD3<Float>, sc
 public func MCEEditorGetEditorCameraMatrices(_ viewOut: UnsafeMutablePointer<Float>?,
                                              _ projectionOut: UnsafeMutablePointer<Float>?) -> UInt32 {
     guard let scene = SceneManager.getEditorScene() else { return 0 }
-    let matrices = scene.cameraMatrices()
+    let matrices = SceneRenderer.cameraMatrices(scene: scene)
     if let viewOut {
         withUnsafeBytes(of: matrices.view) { bytes in
             memcpy(viewOut, bytes.baseAddress, MemoryLayout<Float>.size * 16)

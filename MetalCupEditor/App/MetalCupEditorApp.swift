@@ -23,9 +23,11 @@ struct MetalCupEditorApp: App {
             assetsRootURL: nil
         )
         self.engineApp = EditorApplication(specification: spec)
+        let appId = ObjectIdentifier(engineApp)
+        NSLog("[MC] MetalCupEditorApp.init engineApp=\(appId)")
     }
     
-    var body: some Scene {
+    var body: some SwiftUI.Scene {
         WindowGroup {
             RootView()
         }

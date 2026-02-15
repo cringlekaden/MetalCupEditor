@@ -8,6 +8,7 @@ import MetalKit
 
 final class EditorApplication: Application, NSWindowDelegate {
     private var isShuttingDown = false
+    private var editorLayer: ImGuiLayer?
 
     nonisolated override init(specification: ApplicationSpecification) {
         super.init(specification: specification)
@@ -21,11 +22,32 @@ final class EditorApplication: Application, NSWindowDelegate {
     }
     
     nonisolated override func didCreateWindow() {
-        layerStack.pushLayer(ImGuiLayer(name: "Sandbox"))
+        let layer = ImGuiLayer(name: "Sandbox")
+        editorLayer = layer
+        layerStack.pushLayer(layer)
+        let appId = ObjectIdentifier(self)
+        let layerId = ObjectIdentifier(layer)
+        let stackId = ObjectIdentifier(layerStack)
+        NSLog("[MC] EditorApplication.didCreateWindow app=\(appId) layer=\(layerId) layerStack=\(stackId)")
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.mainWindow.nsWindow.delegate = self
         }
+    }
+
+    nonisolated override func activeScene() -> EngineScene? {
+        let scene = editorLayer?.activeScene()
+        let sceneId = scene.map { ObjectIdentifier($0) }
+        let sceneInfo = scene.map { "\($0.id)/\($0.name)" } ?? "nil"
+        return scene
+    }
+
+    nonisolated override func buildSceneView() -> SceneView {
+        return editorLayer?.buildSceneView() ?? SceneView(viewportSize: Renderer.ViewportSize)
+    }
+
+    nonisolated override func handlePickResult(_ result: PickResult) {
+        editorLayer?.handlePickResult(result)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
