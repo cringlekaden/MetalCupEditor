@@ -235,7 +235,7 @@ public func MCEEditorSetMaterialAsset(
         return true
     }
     if ok {
-        context.editorLogCenter.logInfo("Saved material: \(material.name)", category: .assets)
+        context.engineContext.log.logInfo("Saved material: \(material.name)", category: .assets)
         return 1
     }
     return 0
@@ -367,7 +367,7 @@ public func MCEEditorOpenSceneAtPath(_ contextPtr: UnsafeRawPointer?, _ relative
     }
     do {
         try context.editorSceneController.loadScene(from: url)
-        context.editorLogCenter.logInfo("Opened scene.", category: .scene)
+        context.engineContext.log.logInfo("Opened scene.", category: .scene)
         return 1
     } catch {
         context.editorAlertCenter.enqueueError("Failed to open scene: \(error.localizedDescription)")

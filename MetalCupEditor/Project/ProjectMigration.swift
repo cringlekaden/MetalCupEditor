@@ -30,7 +30,7 @@ enum ProjectMigration {
 
     static func migrateRecentProjects(_ paths: [String],
                                       projectsRoot: URL,
-                                      logCenter: EditorLogCenter,
+                                      logCenter: EngineLogger,
                                       alertCenter: EditorAlertCenter) -> [String] {
         var updated: [String] = []
         for path in paths {
@@ -44,7 +44,7 @@ enum ProjectMigration {
 
     static func migrateProjectIfNeeded(url: URL,
                                        projectsRoot: URL,
-                                       logCenter: EditorLogCenter,
+                                       logCenter: EngineLogger,
                                        alertCenter: EditorAlertCenter) -> URL? {
         let standardized = url.standardizedFileURL
         let projectsRootPath = projectsRoot.standardizedFileURL.path
@@ -85,7 +85,7 @@ enum ProjectMigration {
     static func migrateDocumentIfNeeded(_ project: ProjectDocument,
                                         projectURL: URL,
                                         projectsRoot: URL,
-                                        logCenter: EditorLogCenter,
+                                        logCenter: EngineLogger,
                                         alertCenter: EditorAlertCenter) -> ProjectDocument {
         var updated = project
         let projectRoot = projectURL.deletingLastPathComponent().standardizedFileURL
@@ -122,7 +122,7 @@ enum ProjectMigration {
 
     private static func migrateScenesToAssetsIfNeeded(projectRoot: URL,
                                                       project: inout ProjectDocument,
-                                                      logCenter: EditorLogCenter,
+                                                      logCenter: EngineLogger,
                                                       alertCenter: EditorAlertCenter) {
         let desiredScenesRel = "Assets/Scenes"
         let currentScenesRel = project.scenesDirectory.isEmpty ? "Scenes" : project.scenesDirectory
@@ -168,7 +168,7 @@ enum ProjectMigration {
     }
 
     private static func migrateLooseAssetsIfNeeded(projectRoot: URL,
-                                                   logCenter: EditorLogCenter,
+                                                   logCenter: EngineLogger,
                                                    alertCenter: EditorAlertCenter) {
         let assetsRoot = projectRoot.appendingPathComponent("Assets", isDirectory: true)
         if !FileManager.default.fileExists(atPath: assetsRoot.path) {
@@ -197,7 +197,7 @@ enum ProjectMigration {
     }
 
     private static func migrateNestedAssetsIfNeeded(projectRoot: URL,
-                                                    logCenter: EditorLogCenter,
+                                                    logCenter: EngineLogger,
                                                     alertCenter: EditorAlertCenter) {
         let assetsRoot = projectRoot.appendingPathComponent("Assets", isDirectory: true)
         let nestedRoot = assetsRoot.appendingPathComponent("Assets", isDirectory: true)

@@ -106,7 +106,7 @@ final class EditorApplication: Application, NSWindowDelegate {
         mainWindow.mtkView.delegate = nil
         mainWindow.nsWindow.delegate = nil
 
-        context?.editorLogCenter.logInfo("Editor exiting.", category: .editor)
+        context?.engineContext.log.logInfo("Editor exiting.", category: .editor)
         if let contextPtr {
             MCEContextDestroy(contextPtr)
             self.contextPtr = nil

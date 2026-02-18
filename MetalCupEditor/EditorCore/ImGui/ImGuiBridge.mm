@@ -75,6 +75,17 @@ extern "C" uint32_t MCEEditorLogEntryAt(MCE_CTX,  int32_t index, int32_t *levelO
 extern "C" uint64_t MCEEditorLogRevision(MCE_CTX);
 extern "C" void MCEEditorLogClear(MCE_CTX);
 extern "C" void MCEEditorRequestQuit(MCE_CTX);
+extern bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view);
+
+extern "C" bool MCEImGuiHandleEvent(void *event, void *view) {
+    if (!event || !view) { return false; }
+    return ImGui_ImplOSX_HandleEvent((__bridge NSEvent *)event, (__bridge NSView *)view);
+}
+
+extern "C" bool MCEImGuiWantsCaptureKeyboard(void) {
+    ImGuiIO& io = ImGui::GetIO();
+    return io.WantCaptureKeyboard || io.WantTextInput;
+}
 
 struct LogEntrySnapshot {
     int32_t level = 0;
@@ -571,6 +582,59 @@ static void EnsureImGuiKeyResponder(NSView *view) {
     }
 }
 
+static ImGuiKey MapKeyCode(uint16_t keyCode) {
+    switch (keyCode) {
+        case 0x31: return ImGuiKey_Space;
+        case 0x30: return ImGuiKey_Tab;
+        case 0x24: return ImGuiKey_Enter;
+        case 0x4C: return ImGuiKey_KeypadEnter;
+        case 0x35: return ImGuiKey_Escape;
+        case 0x33: return ImGuiKey_Backspace;
+        case 0x75: return ImGuiKey_Delete;
+        case 0x7B: return ImGuiKey_LeftArrow;
+        case 0x7C: return ImGuiKey_RightArrow;
+        case 0x7D: return ImGuiKey_DownArrow;
+        case 0x7E: return ImGuiKey_UpArrow;
+        case 0x00: return ImGuiKey_A;
+        case 0x0B: return ImGuiKey_B;
+        case 0x08: return ImGuiKey_C;
+        case 0x02: return ImGuiKey_D;
+        case 0x0E: return ImGuiKey_E;
+        case 0x03: return ImGuiKey_F;
+        case 0x05: return ImGuiKey_G;
+        case 0x04: return ImGuiKey_H;
+        case 0x22: return ImGuiKey_I;
+        case 0x26: return ImGuiKey_J;
+        case 0x28: return ImGuiKey_K;
+        case 0x25: return ImGuiKey_L;
+        case 0x2E: return ImGuiKey_M;
+        case 0x2D: return ImGuiKey_N;
+        case 0x1F: return ImGuiKey_O;
+        case 0x23: return ImGuiKey_P;
+        case 0x0C: return ImGuiKey_Q;
+        case 0x0F: return ImGuiKey_R;
+        case 0x01: return ImGuiKey_S;
+        case 0x11: return ImGuiKey_T;
+        case 0x20: return ImGuiKey_U;
+        case 0x09: return ImGuiKey_V;
+        case 0x0D: return ImGuiKey_W;
+        case 0x07: return ImGuiKey_X;
+        case 0x10: return ImGuiKey_Y;
+        case 0x06: return ImGuiKey_Z;
+        case 0x1D: return ImGuiKey_0;
+        case 0x12: return ImGuiKey_1;
+        case 0x13: return ImGuiKey_2;
+        case 0x14: return ImGuiKey_3;
+        case 0x15: return ImGuiKey_4;
+        case 0x17: return ImGuiKey_5;
+        case 0x16: return ImGuiKey_6;
+        case 0x1A: return ImGuiKey_7;
+        case 0x1C: return ImGuiKey_8;
+        case 0x19: return ImGuiKey_9;
+        default: return ImGuiKey_None;
+    }
+}
+
 @implementation ImGuiBridge
 
 - (instancetype)initWithContext:(void *)context {
@@ -676,6 +740,15 @@ static void EnsureImGuiKeyResponder(NSView *view) {
     ImGui_ImplMetal_NewFrame(view.currentRenderPassDescriptor);
     ImGui_ImplOSX_NewFrame(view);
     ImGui::NewFrame();
+}
+
+- (void)applyInputStateWithKeys:(const uint8_t *)keys
+                       keyCount:(int32_t)keyCount
+                       textUTF8:(const char *)textUTF8 {
+    ImGuiIO& io = ImGui::GetIO();
+    (void)keys;
+    (void)keyCount;
+    (void)textUTF8;
 }
 
 - (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture

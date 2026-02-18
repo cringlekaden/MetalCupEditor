@@ -19,7 +19,7 @@ enum AssetOps {
         guard let context = resolveContext(context) else { return false }
         let projectManager = context.editorProjectManager
         let alertCenter = context.editorAlertCenter
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL() else { return false }
         let rel = relativePath ?? ""
         let folderName = name ?? "New Folder"
@@ -44,7 +44,7 @@ enum AssetOps {
         guard let context = resolveContext(context) else { return false }
         let projectManager = context.editorProjectManager
         let alertCenter = context.editorAlertCenter
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL() else { return false }
         let rel = relativePath ?? ""
         let sceneName = name ?? "Untitled"
@@ -72,7 +72,7 @@ enum AssetOps {
         guard let context = resolveContext(context) else { return false }
         let projectManager = context.editorProjectManager
         let alertCenter = context.editorAlertCenter
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL() else { return false }
         let rel = (relativePath == nil || relativePath?.isEmpty == true) ? "Prefabs" : (relativePath ?? "")
         let prefabName = name ?? "Prefab"
@@ -99,7 +99,7 @@ enum AssetOps {
         guard let context = resolveContext(context) else { return nil }
         let projectManager = context.editorProjectManager
         let alertCenter = context.editorAlertCenter
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL() else { return nil }
         let rel = (relativePath == nil || relativePath?.isEmpty == true) ? "Prefabs" : (relativePath ?? "")
         let baseName = sanitizeName(name ?? prefab.name).isEmpty ? "Prefab" : sanitizeName(name ?? prefab.name)
@@ -129,7 +129,7 @@ enum AssetOps {
         guard let context = resolveContext(context) else { return nil }
         let projectManager = context.editorProjectManager
         let alertCenter = context.editorAlertCenter
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL() else { return nil }
         var rel = relativePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if rel.hasPrefix("Assets/") {
@@ -167,7 +167,7 @@ enum AssetOps {
         guard let context = resolveContext(context) else { return false }
         let projectManager = context.editorProjectManager
         let alertCenter = context.editorAlertCenter
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         let sanitized = sanitizeName(newName)
         guard !sanitized.isEmpty else { return false }
         guard let rootURL = projectManager.assetRootURL(),
@@ -224,7 +224,7 @@ enum AssetOps {
         guard let context = resolveContext(context) else { return nil }
         let projectManager = context.editorProjectManager
         let alertCenter = context.editorAlertCenter
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL(),
               let assetURL = projectManager.assetURL(for: handle) else { return nil }
         guard isProjectAssetURL(assetURL, rootURL: rootURL) else {
@@ -257,7 +257,7 @@ enum AssetOps {
         guard let context = resolveContext(context) else { return false }
         let projectManager = context.editorProjectManager
         let alertCenter = context.editorAlertCenter
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let metadata = metadata(projectManager: projectManager, for: handle),
               let assetURL = projectManager.assetURL(for: handle) else { return false }
         if let rootURL = projectManager.assetRootURL(),
@@ -286,7 +286,7 @@ enum AssetOps {
     static func renameAsset(context: UnsafeRawPointer?, relativePath: String, newName: String) -> URL? {
         guard let context = resolveContext(context) else { return nil }
         let projectManager = context.editorProjectManager
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL() else { return nil }
         guard let assetURL = resolveAssetURL(rootURL: rootURL, relativePath: relativePath) else { return nil }
 
@@ -334,7 +334,7 @@ enum AssetOps {
     static func deleteAsset(context: UnsafeRawPointer?, relativePath: String) -> Bool {
         guard let context = resolveContext(context) else { return false }
         let projectManager = context.editorProjectManager
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL() else { return false }
         guard let assetURL = resolveAssetURL(rootURL: rootURL, relativePath: relativePath) else { return false }
 
@@ -364,7 +364,7 @@ enum AssetOps {
     static func duplicateAsset(context: UnsafeRawPointer?, relativePath: String) -> URL? {
         guard let context = resolveContext(context) else { return nil }
         let projectManager = context.editorProjectManager
-        let logCenter = context.editorLogCenter
+        let logCenter = context.engineContext.log
         guard let rootURL = projectManager.assetRootURL() else { return nil }
         guard let assetURL = resolveAssetURL(rootURL: rootURL, relativePath: relativePath) else { return nil }
 

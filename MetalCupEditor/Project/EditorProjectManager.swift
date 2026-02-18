@@ -9,9 +9,10 @@ import MetalCupEngine
 final class EditorProjectManager {
     private let settingsStore: EditorSettingsStore
     private let uiState: EditorUIState
-    private let logCenter: EditorLogCenter
+    private let logCenter: EngineLogger
     private let alertCenter: EditorAlertCenter
     private let sceneController: EditorSceneController
+    private let layerCatalog: LayerCatalog
 
     private(set) var projectURL: URL?
     private(set) var projectRootURL: URL?
@@ -35,14 +36,16 @@ final class EditorProjectManager {
 
     init(settingsStore: EditorSettingsStore,
          uiState: EditorUIState,
-         logCenter: EditorLogCenter,
+         logCenter: EngineLogger,
          alertCenter: EditorAlertCenter,
-         sceneController: EditorSceneController) {
+         sceneController: EditorSceneController,
+         layerCatalog: LayerCatalog) {
         self.settingsStore = settingsStore
         self.uiState = uiState
         self.logCenter = logCenter
         self.alertCenter = alertCenter
         self.sceneController = sceneController
+        self.layerCatalog = layerCatalog
     }
 
     private struct ProjectListItem {
@@ -301,7 +304,7 @@ final class EditorProjectManager {
             projectURL = resolvedProjectURL
             projectRootURL = resolvedRootURL
             activeProjectPath = resolvedRootURL
-            LayerCatalog.shared.setNames(migrated.layerNames)
+            layerCatalog.setNames(migrated.layerNames)
             settingsStore.setLayerNames(migrated.layerNames)
 
             let paths = ProjectPaths(projectRoot: resolvedRootURL, document: migrated)
@@ -610,7 +613,7 @@ final class EditorProjectManager {
     }
 
     private func setEmptyScene() {
-        LayerCatalog.shared.setNames(settingsStore.layerNames)
+        layerCatalog.setNames(settingsStore.layerNames)
         let document = SceneDocument(id: UUID(), name: "Untitled", entities: [])
         let scene = SerializedScene(document: document)
         sceneController.setScene(scene)

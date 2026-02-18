@@ -46,11 +46,11 @@ final class MCEContext {
 
     init(engineContext: EngineContext) {
         self.engineContext = engineContext
-        self.editorLogCenter = EditorLogCenter(engineLog: engineContext.log)
+        self.editorLogCenter = EditorLogCenter(engineLogger: engineContext.log)
         self.editorSettingsStore = EditorSettingsStore()
         self.editorUIState = EditorUIState(settingsStore: editorSettingsStore)
         self.editorSelection = EditorSelection()
-        self.editorAlertCenter = EditorAlertCenter(logCenter: editorLogCenter)
+        self.editorAlertCenter = EditorAlertCenter(logCenter: engineContext.log)
         self.assetSnapshotStore = EditorAssetSnapshotStore()
         self.directorySnapshotStore = EditorDirectorySnapshotStore()
         self.panelState = MCEUIPanelStateCreate()
@@ -58,9 +58,10 @@ final class MCEContext {
         self.editorProjectManager = EditorProjectManager(
             settingsStore: editorSettingsStore,
             uiState: editorUIState,
-            logCenter: editorLogCenter,
+            logCenter: engineContext.log,
             alertCenter: editorAlertCenter,
-            sceneController: editorSceneController
+            sceneController: editorSceneController,
+            layerCatalog: engineContext.layerCatalog
         )
     }
 

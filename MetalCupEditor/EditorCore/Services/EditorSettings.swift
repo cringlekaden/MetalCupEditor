@@ -153,9 +153,9 @@ final class EditorSettingsStore {
 
 final class EditorAlertCenter {
     private var messages: [String] = []
-    private let logCenter: EditorLogCenter
+    private let logCenter: EngineLogger
 
-    init(logCenter: EditorLogCenter) {
+    init(logCenter: EngineLogger) {
         self.logCenter = logCenter
     }
 

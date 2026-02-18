@@ -25,6 +25,7 @@ final class ImGuiLayer: Layer {
     private var previewLastUpdateFrame: UInt64 = 0
     private let previewUpdateInterval: UInt64 = 8
     private let previewTextureSize = SIMD2<Int>(256, 256)
+    private var lastFrameTime: FrameTime?
 
     nonisolated override init(name: String) {
         fatalError("Use init(name:context:contextPtr:)")
@@ -39,8 +40,9 @@ final class ImGuiLayer: Layer {
         super.init(name: name)
     }
 
-    nonisolated override func onUpdate() {
+    nonisolated override func onUpdate(frame: FrameContext) {
         DebugDraw.beginFrame()
+        lastFrameTime = frame.time
         sceneContext.editorScene = context.editorSceneController.editorScene
         sceneContext.runtimeScene = context.editorSceneController.runtimeScene
         sceneContext.isPlaying = context.editorSceneController.isPlaying
@@ -50,14 +52,13 @@ final class ImGuiLayer: Layer {
         let viewportOrigin = imguiBridge.viewportImageOrigin()
         if viewportSize.width > 1, viewportSize.height > 1 {
             context.editorSceneController.updateViewportSize(SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height)))
-            Mouse.SetViewportRect(
-                origin: SIMD2<Float>(Float(viewportOrigin.x), Float(viewportOrigin.y)),
-                size: SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
-            )
+            let origin = SIMD2<Float>(Float(viewportOrigin.x), Float(viewportOrigin.y))
+            let size = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
+            Renderer.activeRenderer?.inputAccumulator?.setViewportRect(origin: origin, size: size)
         }
         sceneContext.viewportOrigin = SIMD2<Float>(Float(viewportOrigin.x), Float(viewportOrigin.y))
         sceneContext.viewportSize = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
-        context.editorSceneController.update()
+        context.editorSceneController.update(frame: frame)
         if !context.editorSceneController.isPlaying,
            let scene = sceneContext.activeScene {
             DebugDraw.submitGridXZ(SceneRenderer.gridParams(scene: scene))
@@ -87,15 +88,16 @@ final class ImGuiLayer: Layer {
         }
     }
 
-    nonisolated override func onRender(encoder: MTLRenderCommandEncoder) {
-        sceneContext.activeScene?.onRender(encoder: encoder)
+    nonisolated override func onRender(encoder: MTLRenderCommandEncoder, frameContext: RendererFrameContext) {
+        sceneContext.activeScene?.onRender(encoder: encoder, frameContext: frameContext)
     }
     
-    nonisolated override func onOverlayRender(view: MTKView, commandBuffer: MTLCommandBuffer) {
+    nonisolated override func onOverlayRender(view: MTKView, commandBuffer: MTLCommandBuffer, frameContext: RendererFrameContext) {
         imguiBridge.setup(with: view)
-        imguiBridge.newFrame(with: view, deltaTime: Time.DeltaTime)
+        let deltaTime = lastFrameTime?.deltaTime ?? 0.0
+        imguiBridge.newFrame(with: view, deltaTime: deltaTime)
         let sceneTex = AssetManager.texture(handle: BuiltinAssets.finalColorRender)
-        let previewTex = updateCameraPreviewIfNeeded(view: view, commandBuffer: commandBuffer)
+        let previewTex = updateCameraPreviewIfNeeded(view: view, commandBuffer: commandBuffer, frameContext: frameContext)
         imguiBridge.buildUI(withSceneTexture: sceneTex, previewTexture: previewTex)
         if let rpd = view.currentRenderPassDescriptor {
             imguiBridge.render(with: commandBuffer, renderPassDescriptor: rpd)
@@ -108,7 +110,8 @@ final class ImGuiLayer: Layer {
            mouseEvent.button == MouseCodes.left.rawValue {
             let viewportHovered = imguiBridge.viewportIsHovered()
             let viewportUIHovered = imguiBridge.viewportIsUIHovered()
-            if viewportHovered && !viewportUIHovered {
+            let wantsMouse = imguiBridge.wantsCaptureMouse()
+            if viewportHovered && !viewportUIHovered && !wantsMouse {
                 let viewportOrigin = imguiBridge.viewportImageOrigin()
                 let viewportImageSize = imguiBridge.viewportImageSize()
                 let pickTexture = AssetManager.texture(handle: BuiltinAssets.pickIdRender)
@@ -224,7 +227,8 @@ final class ImGuiLayer: Layer {
     }
 
     private func updateCameraPreviewIfNeeded(view: MTKView,
-                                             commandBuffer: MTLCommandBuffer) -> MTLTexture? {
+                                             commandBuffer: MTLCommandBuffer,
+                                             frameContext: RendererFrameContext) -> MTLTexture? {
         previewFrameCounter &+= 1
         guard let scene = context.editorSceneController.activeScene(),
               let selectedId = context.editorSceneController.selectedEntityUUID(),
@@ -254,7 +258,8 @@ final class ImGuiLayer: Layer {
                 scene.renderPreview(
                     encoder: encoder,
                     cameraEntity: entity,
-                    viewportSize: SIMD2<Float>(Float(previewTextureSize.x), Float(previewTextureSize.y))
+                    viewportSize: SIMD2<Float>(Float(previewTextureSize.x), Float(previewTextureSize.y)),
+                    frameContext: frameContext
                 )
                 encoder.endEncoding()
             }

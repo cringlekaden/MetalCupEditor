@@ -53,4 +53,13 @@ void MCEUIPanelStateDestroy(void *state);
 
 @end
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+bool MCEImGuiHandleEvent(void *event, void *view);
+bool MCEImGuiWantsCaptureKeyboard(void);
+#ifdef __cplusplus
+}
+#endif
+
 NS_ASSUME_NONNULL_END

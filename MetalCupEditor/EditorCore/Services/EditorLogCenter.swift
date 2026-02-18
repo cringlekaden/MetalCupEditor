@@ -9,38 +9,26 @@ typealias EditorLogLevel = MCLogLevel
 typealias EditorLogCategory = MCLogCategory
 
 final class EditorLogCenter {
-    private let engineLog: EngineLog
+    private let engineLogger: EngineLogger
 
-    init(engineLog: EngineLog) {
-        self.engineLog = engineLog
-    }
-
-    func log(_ message: String, level: EditorLogLevel, category: EditorLogCategory) {
-        engineLog.log(message, level: level, category: category)
-    }
-
-    func logTrace(_ message: String, category: EditorLogCategory) {
-        log(message, level: .debug, category: category)
-    }
-
-    func logInfo(_ message: String, category: EditorLogCategory) {
-        log(message, level: .info, category: category)
-    }
-
-    func logWarning(_ message: String, category: EditorLogCategory) {
-        log(message, level: .warning, category: category)
-    }
-
-    func logError(_ message: String, category: EditorLogCategory) {
-        log(message, level: .error, category: category)
+    init(engineLogger: EngineLogger) {
+        self.engineLogger = engineLogger
     }
 
     func revisionToken() -> UInt64 {
-        return engineLog.revisionToken()
+        return engineLogger.revisionToken()
     }
 
     func clear() {
-        engineLog.clear()
+        engineLogger.clear()
+    }
+
+    func entryCount() -> Int {
+        return engineLogger.entryCount()
+    }
+
+    func entry(at index: Int) -> MCLogEntry? {
+        return engineLogger.entry(at: index)
     }
 }
 
@@ -97,5 +85,5 @@ public func MCEEditorLogMessage(_ contextPtr: UnsafeMutableRawPointer,
     let resolvedLevel = EditorLogLevel(rawValue: level) ?? .info
     let resolvedCategory = EditorLogCategory(rawValue: category) ?? .editor
     let context = Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
-    context.editorLogCenter.log(value, level: resolvedLevel, category: resolvedCategory)
+    context.engineContext.log.log(value, level: resolvedLevel, category: resolvedCategory)
 }

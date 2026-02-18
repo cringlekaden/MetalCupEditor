@@ -11,14 +11,14 @@ import MetalCupEngine
 final class AssetRegistry: AssetDatabase {
     let assetRootURL: URL
     var onChange: (() -> Void)?
-    private let logCenter: EditorLogCenter
+    private let logCenter: EngineLogger
 
     private var metadataByHandle: [AssetHandle: AssetMetadata] = [:]
     private var metadataByPath: [String: AssetMetadata] = [:]
     private var watcher: DispatchSourceFileSystemObject?
     private var watcherDescriptor: Int32 = -1
 
-    init(projectAssetRootURL: URL, logCenter: EditorLogCenter) {
+    init(projectAssetRootURL: URL, logCenter: EngineLogger) {
         self.assetRootURL = projectAssetRootURL.standardizedFileURL
         self.logCenter = logCenter
         scanAssets()

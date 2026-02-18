@@ -157,18 +157,18 @@ private func allSkyEntities(ecs: SceneECS) -> [Entity] {
     return ecs.allEntities().filter { ecs.get(SkyLightComponent.self, for: $0) != nil }
 }
 
-private func ensureActiveSkyEntity(ecs: SceneECS, logCenter: EditorLogCenter) -> Entity? {
+private func ensureActiveSkyEntity(ecs: SceneECS, logger: EngineLogger) -> Entity? {
     if let active = ecs.activeSkyLight()?.0 {
         return active
     }
     let skyEntities = allSkyEntities(ecs: ecs)
     guard let first = skyEntities.first else { return nil }
     ecs.add(SkyLightTag(), to: first)
-    logCenter.logInfo("Sky active assigned: \(first.id.uuidString)", category: .scene)
+    logger.logInfo("Sky active assigned: \(first.id.uuidString)", category: .scene)
     return first
 }
 
-private func setActiveSky(ecs: SceneECS, entity: Entity, logCenter: EditorLogCenter) {
+private func setActiveSky(ecs: SceneECS, entity: Entity, logger: EngineLogger) {
     for skyEntity in allSkyEntities(ecs: ecs) {
         if skyEntity.id != entity.id {
             ecs.remove(SkyLightTag.self, from: skyEntity)
@@ -178,9 +178,9 @@ private func setActiveSky(ecs: SceneECS, entity: Entity, logCenter: EditorLogCen
     if var sky = ecs.get(SkyLightComponent.self, for: entity) {
         sky.needsRegenerate = true
         ecs.add(sky, to: entity)
-        logCenter.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
+        logger.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
-    logCenter.logInfo("Sky active set: \(entity.id.uuidString)", category: .scene)
+    logger.logInfo("Sky active set: \(entity.id.uuidString)", category: .scene)
 }
 
 private func findEditorCamera(ecs: SceneECS) -> (Entity, TransformComponent, CameraComponent)? {
@@ -275,7 +275,7 @@ public func MCEEditorSetEntityName(_ contextPtr: UnsafeRawPointer?,
     let newName = String(cString: name)
     ecs.add(NameComponent(name: newName), to: entity)
     context.editorProjectManager.notifySceneMutation()
-    context.editorLogCenter.logInfo("Entity renamed: \(entity.id.uuidString) \(newName)", category: .scene)
+    context.engineContext.log.logInfo("Entity renamed: \(entity.id.uuidString) \(newName)", category: .scene)
 }
 
 @_cdecl("MCEEditorCreateEntity")
@@ -428,7 +428,7 @@ public func MCEEditorCreateSkyEntity(_ contextPtr: UnsafeRawPointer?,
     sky.mode = .procedural
     sky.needsRegenerate = true
     ecs.add(sky, to: entity)
-    setActiveSky(ecs: ecs, entity: entity, logCenter: context.editorLogCenter)
+    setActiveSky(ecs: ecs, entity: entity, logger: context.engineContext.log)
     context.editorProjectManager.notifySceneMutation()
     return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
 }
@@ -611,7 +611,6 @@ public func MCEEditorSetTransform(_ contextPtr: UnsafeRawPointer?,
     )
     ecs.add(transform, to: entity)
     context.editorProjectManager.notifySceneMutation()
-    context.editorLogCenter.logInfo("Transform updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorSetTransformNoLog")
@@ -685,7 +684,6 @@ public func MCEEditorSetCamera(_ contextPtr: UnsafeRawPointer?,
         ecs.add(camera, to: entity)
     }
     context.editorProjectManager.notifySceneMutation()
-    context.editorLogCenter.logInfo("Camera updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorSetTransformFromMatrix")
@@ -866,7 +864,6 @@ public func MCEEditorSetMeshRenderer(_ contextPtr: UnsafeRawPointer?,
     component.materialHandle = handleFromString(materialString)
     ecs.add(component, to: entity)
     context.editorProjectManager.notifySceneMutation()
-    context.editorLogCenter.logInfo("Mesh updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorAssignMaterialToEntity")
@@ -893,7 +890,6 @@ public func MCEEditorAssignMaterialToEntity(_ contextPtr: UnsafeRawPointer?,
     }
 
     context.editorProjectManager.notifySceneMutation()
-    context.editorLogCenter.logInfo("Material updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorGetMaterialComponent")
@@ -923,7 +919,6 @@ public func MCEEditorSetMaterialComponent(_ contextPtr: UnsafeRawPointer?,
     component.materialHandle = handleFromString(materialString)
     ecs.add(component, to: entity)
     context.editorProjectManager.notifySceneMutation()
-    context.editorLogCenter.logInfo("Material updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorGetLight")
@@ -983,7 +978,6 @@ public func MCEEditorSetLight(_ contextPtr: UnsafeRawPointer?,
     light.direction = SIMD3<Float>(dirX, dirY, dirZ)
     ecs.add(light, to: entity)
     context.editorProjectManager.notifySceneMutation()
-    context.editorLogCenter.logInfo("Light updated: \(entity.id.uuidString)", category: .scene)
 }
 
 @_cdecl("MCEEditorGetSkyLight")
@@ -1037,7 +1031,7 @@ public func MCEEditorSetSkyLight(_ contextPtr: UnsafeRawPointer?,
     sky.needsRegenerate = true
     ecs.add(sky, to: entity)
     if sky.needsRegenerate {
-        context.editorLogCenter.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
+        context.engineContext.log.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
     context.editorProjectManager.notifySceneMutation()
 }
@@ -1055,7 +1049,7 @@ public func MCEEditorGetActiveSkyId(_ contextPtr: UnsafeRawPointer?,
                                    _ bufferSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           let ecs = editorECS(context) else { return 0 }
-    guard let active = ensureActiveSkyEntity(ecs: ecs, logCenter: context.editorLogCenter) else { return 0 }
+    guard let active = ensureActiveSkyEntity(ecs: ecs, logger: context.engineContext.log) else { return 0 }
     return writeCString(active.id.uuidString, to: buffer, max: bufferSize)
 }
 
@@ -1066,7 +1060,7 @@ public func MCEEditorSetActiveSky(_ contextPtr: UnsafeRawPointer?,
           !context.editorSceneController.isPlaying,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return 0 }
-    setActiveSky(ecs: ecs, entity: entity, logCenter: context.editorLogCenter)
+    setActiveSky(ecs: ecs, entity: entity, logger: context.engineContext.log)
     context.editorProjectManager.notifySceneMutation()
     return 1
 }

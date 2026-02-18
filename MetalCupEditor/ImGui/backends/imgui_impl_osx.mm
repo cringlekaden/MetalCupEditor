@@ -112,7 +112,7 @@ static void ImGui_ImplOSX_InitMultiViewportSupport();
 static void ImGui_ImplOSX_ShutdownMultiViewportSupport();
 static void ImGui_ImplOSX_UpdateMonitors();
 static void ImGui_ImplOSX_AddTrackingArea(NSView* _Nonnull view);
-static bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view);
+bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view);
 
 // Undocumented methods for creating cursors.
 @interface NSCursor()
@@ -703,7 +703,7 @@ static ImGuiMouseSource GetMouseSource(NSEvent* event)
     }
 }
 
-static bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view)
+bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view)
 {
     // Only process events from the window containing ImGui view
     if (!ImGui::FindViewportByPlatformHandle((__bridge void*)event.window))
