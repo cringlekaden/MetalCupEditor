@@ -11,14 +11,16 @@ import MetalCupEngine
 final class AssetRegistry: AssetDatabase {
     let assetRootURL: URL
     var onChange: (() -> Void)?
+    private let logCenter: EditorLogCenter
 
     private var metadataByHandle: [AssetHandle: AssetMetadata] = [:]
     private var metadataByPath: [String: AssetMetadata] = [:]
     private var watcher: DispatchSourceFileSystemObject?
     private var watcherDescriptor: Int32 = -1
 
-    init(projectAssetRootURL: URL) {
+    init(projectAssetRootURL: URL, logCenter: EditorLogCenter) {
         self.assetRootURL = projectAssetRootURL.standardizedFileURL
+        self.logCenter = logCenter
         scanAssets()
     }
 
@@ -87,7 +89,7 @@ final class AssetRegistry: AssetDatabase {
             let data = try encoder.encode(metadata)
             try data.write(to: url, options: [.atomic])
         } catch {
-            EditorLogCenter.shared.logWarning("Asset meta write failed: \(url.lastPathComponent) (\(error.localizedDescription))", category: .assets)
+            logCenter.logWarning("Asset meta write failed: \(url.lastPathComponent) (\(error.localizedDescription))", category: .assets)
         }
     }
 

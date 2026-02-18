@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "../../EditorCore/Bridge/MCEBridgeMacros.h"
 #include "../../ImGui/imgui.h"
 #include <functional>
 #include <string>
@@ -29,8 +30,9 @@ namespace EditorUI {
     bool PropertyInt(const char *label, int *value, int minValue, int maxValue);
     bool PropertyVec3(const char *label, float *values, float resetValue = 0.0f, float speed = 0.1f, float minValue = 0.0f, float maxValue = 0.0f, const char *format = "%.3f", bool clampValue = false, bool enableReset = false);
 
-    bool BeginSection(const char *label, const char *stateId, bool defaultOpen = true);
-    bool BeginSectionWithContext(const char *label,
+    bool BeginSection(void *context, const char *label, const char *stateId, bool defaultOpen = true);
+    bool BeginSectionWithContext(void *context,
+                                 const char *label,
                                  const char *stateId,
                                  const char *contextId,
                                  const std::function<void()> &contextBody,

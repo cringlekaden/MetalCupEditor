@@ -5,34 +5,37 @@
 import Foundation
 import MetalCupEngine
 
-private enum AssetSnapshotStore {
-    static var snapshot: [AssetMetadata] = []
-    static var revision: UInt64 = 0
+private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
+    guard let contextPtr else { return nil }
+    return Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
 }
 
-private func refreshAssetSnapshotIfNeeded() {
-    let revision = EditorProjectManager.shared.assetRevisionToken()
-    if revision == AssetSnapshotStore.revision { return }
-    let assets = EditorProjectManager.shared.assetMetadataSnapshot()
-    AssetSnapshotStore.snapshot = assets.sorted { $0.sourcePath < $1.sourcePath }
-    AssetSnapshotStore.revision = revision
+private func refreshAssetSnapshotIfNeeded(_ context: MCEContext) {
+    let revision = context.editorProjectManager.assetRevisionToken()
+    if revision == context.assetSnapshotStore.revision { return }
+    let assets = context.editorProjectManager.assetMetadataSnapshot()
+    context.assetSnapshotStore.snapshot = assets.sorted { $0.sourcePath < $1.sourcePath }
+    context.assetSnapshotStore.revision = revision
 }
 
 @_cdecl("MCEEditorGetAssetCount")
-public func MCEEditorGetAssetCount() -> Int32 {
-    refreshAssetSnapshotIfNeeded()
-    return Int32(AssetSnapshotStore.snapshot.count)
+public func MCEEditorGetAssetCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    refreshAssetSnapshotIfNeeded(context)
+    return Int32(context.assetSnapshotStore.snapshot.count)
 }
 
 @_cdecl("MCEEditorGetAssetAt")
-public func MCEEditorGetAssetAt(_ index: Int32,
+public func MCEEditorGetAssetAt(_ contextPtr: UnsafeRawPointer?,
+                                _ index: Int32,
                                 _ handleBuffer: UnsafeMutablePointer<CChar>?, _ handleBufferSize: Int32,
                                 _ typeOut: UnsafeMutablePointer<Int32>?,
                                 _ pathBuffer: UnsafeMutablePointer<CChar>?, _ pathBufferSize: Int32,
                                 _ nameBuffer: UnsafeMutablePointer<CChar>?, _ nameBufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     let idx = Int(index)
-    guard idx >= 0, idx < AssetSnapshotStore.snapshot.count else { return 0 }
-    let meta = AssetSnapshotStore.snapshot[idx]
+    guard idx >= 0, idx < context.assetSnapshotStore.snapshot.count else { return 0 }
+    let meta = context.assetSnapshotStore.snapshot[idx]
 
     _ = writeCString(meta.handle.rawValue.uuidString, to: handleBuffer, max: handleBufferSize)
     _ = writeCString(meta.sourcePath, to: pathBuffer, max: pathBufferSize)
@@ -45,13 +48,17 @@ public func MCEEditorGetAssetAt(_ index: Int32,
 }
 
 @_cdecl("MCEEditorGetAssetDisplayName")
-public func MCEEditorGetAssetDisplayName(_ handle: UnsafePointer<CChar>?, _ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorGetAssetDisplayName(_ contextPtr: UnsafeRawPointer?,
+                                         _ handle: UnsafePointer<CChar>?,
+                                         _ buffer: UnsafeMutablePointer<CChar>?,
+                                         _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     guard let handle, let buffer, bufferSize > 0 else { return 0 }
     let handleString = String(cString: handle)
     guard let uuid = UUID(uuidString: handleString) else { return 0 }
     let assetHandle = AssetHandle(rawValue: uuid)
-    refreshAssetSnapshotIfNeeded()
-    guard let metadata = AssetSnapshotStore.snapshot.first(where: { $0.handle == assetHandle }) else { return 0 }
+    refreshAssetSnapshotIfNeeded(context)
+    guard let metadata = context.assetSnapshotStore.snapshot.first(where: { $0.handle == assetHandle }) else { return 0 }
     let name = AssetIO.assetDisplayName(for: metadata)
     return name.withCString { ptr in
         let length = min(Int(bufferSize - 1), strlen(ptr))
@@ -62,48 +69,59 @@ public func MCEEditorGetAssetDisplayName(_ handle: UnsafePointer<CChar>?, _ buff
 }
 
 @_cdecl("MCEEditorCreateMaterial")
-public func MCEEditorCreateMaterial(_ relativePath: UnsafePointer<CChar>?,
+public func MCEEditorCreateMaterial(_ contextPtr: UnsafeRawPointer?,
+                                    _ relativePath: UnsafePointer<CChar>?,
                                     _ name: UnsafePointer<CChar>?,
                                     _ outHandle: UnsafeMutablePointer<CChar>?,
                                     _ outHandleSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     let nameString = name != nil ? String(cString: name!) : "Material"
     let rel = relativePath != nil ? String(cString: relativePath!) : nil
     guard let sanitized = AssetOps.sanitizeRelativePath(rel) else { return 0 }
     let targetPath = sanitized.isEmpty ? "Materials" : sanitized
-    guard let handle = AssetOps.createMaterial(named: nameString, relativePath: targetPath) else { return 0 }
+    guard let handle = AssetOps.createMaterial(context: contextPtr, named: nameString, relativePath: targetPath) else { return 0 }
     _ = writeCString(handle.rawValue.uuidString, to: outHandle, max: outHandleSize)
     return 1
 }
 
 @_cdecl("MCEEditorRenameMaterial")
-public func MCEEditorRenameMaterial(_ handle: UnsafePointer<CChar>?, _ newName: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEEditorRenameMaterial(_ contextPtr: UnsafeRawPointer?,
+                                    _ handle: UnsafePointer<CChar>?,
+                                    _ newName: UnsafePointer<CChar>?) -> UInt32 {
+    guard resolveContext(contextPtr) != nil else { return 0 }
     guard let handle, let newName else { return 0 }
     let handleString = String(cString: handle)
     guard let uuid = UUID(uuidString: handleString) else { return 0 }
-    let ok = AssetOps.renameMaterial(handle: AssetHandle(rawValue: uuid), newName: String(cString: newName))
+    let ok = AssetOps.renameMaterial(context: contextPtr, handle: AssetHandle(rawValue: uuid), newName: String(cString: newName))
     return ok ? 1 : 0
 }
 
 @_cdecl("MCEEditorDuplicateMaterial")
-public func MCEEditorDuplicateMaterial(_ handle: UnsafePointer<CChar>?, _ outHandle: UnsafeMutablePointer<CChar>?, _ outHandleSize: Int32) -> UInt32 {
+public func MCEEditorDuplicateMaterial(_ contextPtr: UnsafeRawPointer?,
+                                       _ handle: UnsafePointer<CChar>?,
+                                       _ outHandle: UnsafeMutablePointer<CChar>?,
+                                       _ outHandleSize: Int32) -> UInt32 {
+    guard resolveContext(contextPtr) != nil else { return 0 }
     guard let handle else { return 0 }
     let handleString = String(cString: handle)
     guard let uuid = UUID(uuidString: handleString) else { return 0 }
-    guard let newHandle = AssetOps.duplicateMaterial(handle: AssetHandle(rawValue: uuid)) else { return 0 }
+    guard let newHandle = AssetOps.duplicateMaterial(context: contextPtr, handle: AssetHandle(rawValue: uuid)) else { return 0 }
     _ = writeCString(newHandle.rawValue.uuidString, to: outHandle, max: outHandleSize)
     return 1
 }
 
 @_cdecl("MCEEditorDeleteMaterial")
-public func MCEEditorDeleteMaterial(_ handle: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEEditorDeleteMaterial(_ contextPtr: UnsafeRawPointer?, _ handle: UnsafePointer<CChar>?) -> UInt32 {
+    guard resolveContext(contextPtr) != nil else { return 0 }
     guard let handle else { return 0 }
     let handleString = String(cString: handle)
     guard let uuid = UUID(uuidString: handleString) else { return 0 }
-    return AssetOps.deleteMaterial(handle: AssetHandle(rawValue: uuid)) ? 1 : 0
+    return AssetOps.deleteMaterial(context: contextPtr, handle: AssetHandle(rawValue: uuid)) ? 1 : 0
 }
 
 @_cdecl("MCEEditorGetMaterialAsset")
 public func MCEEditorGetMaterialAsset(
+    _ contextPtr: UnsafeRawPointer?,
     _ handle: UnsafePointer<CChar>?,
     _ nameBuffer: UnsafeMutablePointer<CChar>?, _ nameBufferSize: Int32,
     _ version: UnsafeMutablePointer<Int32>?,
@@ -157,6 +175,7 @@ public func MCEEditorGetMaterialAsset(
 
 @_cdecl("MCEEditorSetMaterialAsset")
 public func MCEEditorSetMaterialAsset(
+    _ contextPtr: UnsafeRawPointer?,
     _ handle: UnsafePointer<CChar>?,
     _ name: UnsafePointer<CChar>?,
     _ version: Int32,
@@ -174,11 +193,12 @@ public func MCEEditorSetMaterialAsset(
     _ aoHandle: UnsafePointer<CChar>?,
     _ emissiveHandle: UnsafePointer<CChar>?
 ) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     guard let handle else { return 0 }
     let handleString = String(cString: handle)
     guard let uuid = UUID(uuidString: handleString) else { return 0 }
     let assetHandle = AssetHandle(rawValue: uuid)
-    guard let assetURL = EditorProjectManager.shared.assetURL(for: assetHandle) else { return 0 }
+    guard let assetURL = context.editorProjectManager.assetURL(for: assetHandle) else { return 0 }
 
     var material = AssetManager.material(handle: assetHandle)
         ?? MaterialAsset.default(handle: assetHandle, name: name != nil ? String(cString: name!) : "Material")
@@ -207,57 +227,48 @@ public func MCEEditorSetMaterialAsset(
     material.textures.emissive = handleFromCString(emissiveHandle)
     material.textures.enforceMetalRoughnessRule()
 
-    let ok = EditorProjectManager.shared.performAssetMutation {
+    let ok = context.editorProjectManager.performAssetMutation {
         if !MaterialSerializer.save(material, to: assetURL) {
-            EditorAlertCenter.shared.enqueueError("Failed to save material file.")
+            context.editorAlertCenter.enqueueError("Failed to save material file.")
             return false
         }
         return true
     }
     if ok {
-        EditorLogCenter.shared.logInfo("Saved material: \(material.name)", category: .assets)
+        context.editorLogCenter.logInfo("Saved material: \(material.name)", category: .assets)
         return 1
     }
     return 0
 }
 
-private struct DirectoryEntrySnapshot {
-    let name: String
-    let relativePath: String
-    let isDirectory: Bool
-    let assetType: Int32
-    let handle: String
-    let modifiedTime: TimeInterval
-}
-
-private enum DirectorySnapshotStore {
-    static var entries: [DirectoryEntrySnapshot] = []
-}
-
 @_cdecl("MCEEditorGetAssetsRootPath")
-public func MCEEditorGetAssetsRootPath(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorGetAssetsRootPath(_ contextPtr: UnsafeRawPointer?,
+                                       _ buffer: UnsafeMutablePointer<CChar>?,
+                                       _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     guard let buffer, bufferSize > 0 else { return 0 }
-    guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return 0 }
+    guard let rootURL = context.editorProjectManager.assetRootURL() else { return 0 }
     _ = writeCString(rootURL.standardizedFileURL.path, to: buffer, max: bufferSize)
     return 1
 }
 
 @_cdecl("MCEEditorListDirectory")
-public func MCEEditorListDirectory(_ relativePath: UnsafePointer<CChar>?) -> Int32 {
-    guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return 0 }
+public func MCEEditorListDirectory(_ contextPtr: UnsafeRawPointer?, _ relativePath: UnsafePointer<CChar>?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    guard let rootURL = context.editorProjectManager.assetRootURL() else { return 0 }
     let rel = relativePath != nil ? String(cString: relativePath!) : ""
     guard let targetURL = AssetOps.resolveDirectoryURL(rootURL: rootURL, relativePath: rel) else { return 0 }
 
     let fileManager = FileManager.default
     guard let items = try? fileManager.contentsOfDirectory(at: targetURL, includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey], options: [.skipsHiddenFiles]) else {
-        DirectorySnapshotStore.entries = []
+        context.directorySnapshotStore.entries = []
         return 0
     }
 
     var entries: [DirectoryEntrySnapshot] = []
     entries.reserveCapacity(items.count)
 
-    let metadataLookup = EditorProjectManager.shared.assetMetadataSnapshot()
+    let metadataLookup = context.editorProjectManager.assetMetadataSnapshot()
     for url in items {
         let name = url.lastPathComponent
         if name.hasPrefix(".") { continue }
@@ -283,21 +294,23 @@ public func MCEEditorListDirectory(_ relativePath: UnsafePointer<CChar>?) -> Int
         ))
     }
 
-    DirectorySnapshotStore.entries = entries
+    context.directorySnapshotStore.entries = entries
     return Int32(entries.count)
 }
 
 @_cdecl("MCEEditorGetDirectoryEntry")
-public func MCEEditorGetDirectoryEntry(_ index: Int32,
+public func MCEEditorGetDirectoryEntry(_ contextPtr: UnsafeRawPointer?,
+                                       _ index: Int32,
                                        _ nameBuffer: UnsafeMutablePointer<CChar>?, _ nameBufferSize: Int32,
                                        _ relativePathBuffer: UnsafeMutablePointer<CChar>?, _ relativePathBufferSize: Int32,
                                        _ isDirectoryOut: UnsafeMutablePointer<UInt32>?,
                                        _ typeOut: UnsafeMutablePointer<Int32>?,
                                        _ handleBuffer: UnsafeMutablePointer<CChar>?, _ handleBufferSize: Int32,
                                        _ modifiedOut: UnsafeMutablePointer<Double>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     let idx = Int(index)
-    guard idx >= 0, idx < DirectorySnapshotStore.entries.count else { return 0 }
-    let entry = DirectorySnapshotStore.entries[idx]
+    guard idx >= 0, idx < context.directorySnapshotStore.entries.count else { return 0 }
+    let entry = context.directorySnapshotStore.entries[idx]
 
     _ = writeCString(entry.name, to: nameBuffer, max: nameBufferSize)
     _ = writeCString(entry.relativePath, to: relativePathBuffer, max: relativePathBufferSize)
@@ -309,35 +322,42 @@ public func MCEEditorGetDirectoryEntry(_ index: Int32,
 }
 
 @_cdecl("MCEEditorCreateFolder")
-public func MCEEditorCreateFolder(_ relativePath: UnsafePointer<CChar>?, _ name: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEEditorCreateFolder(_ contextPtr: UnsafeRawPointer?,
+                                  _ relativePath: UnsafePointer<CChar>?,
+                                  _ name: UnsafePointer<CChar>?) -> UInt32 {
     let rel = relativePath != nil ? String(cString: relativePath!) : ""
     let folderName = name != nil ? String(cString: name!) : "New Folder"
-    return AssetOps.createFolder(relativePath: rel, name: folderName) ? 1 : 0
+    return AssetOps.createFolder(context: contextPtr, relativePath: rel, name: folderName) ? 1 : 0
 }
 
 @_cdecl("MCEEditorCreateScene")
-public func MCEEditorCreateScene(_ relativePath: UnsafePointer<CChar>?, _ name: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEEditorCreateScene(_ contextPtr: UnsafeRawPointer?,
+                                 _ relativePath: UnsafePointer<CChar>?,
+                                 _ name: UnsafePointer<CChar>?) -> UInt32 {
     let rel = relativePath != nil ? String(cString: relativePath!) : ""
     let sceneName = name != nil ? String(cString: name!) : "Untitled"
-    return AssetOps.createScene(relativePath: rel, name: sceneName) ? 1 : 0
+    return AssetOps.createScene(context: contextPtr, relativePath: rel, name: sceneName) ? 1 : 0
 }
 
 @_cdecl("MCEEditorCreatePrefab")
-public func MCEEditorCreatePrefab(_ relativePath: UnsafePointer<CChar>?, _ name: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEEditorCreatePrefab(_ contextPtr: UnsafeRawPointer?,
+                                  _ relativePath: UnsafePointer<CChar>?,
+                                  _ name: UnsafePointer<CChar>?) -> UInt32 {
     let rel = relativePath != nil ? String(cString: relativePath!) : ""
     let prefabName = name != nil ? String(cString: name!) : "Prefab"
-    return AssetOps.createPrefab(relativePath: rel, name: prefabName) ? 1 : 0
+    return AssetOps.createPrefab(context: contextPtr, relativePath: rel, name: prefabName) ? 1 : 0
 }
 
 
 @_cdecl("MCEEditorOpenSceneAtPath")
-public func MCEEditorOpenSceneAtPath(_ relativePath: UnsafePointer<CChar>?) -> UInt32 {
-    guard let rootURL = EditorProjectManager.shared.projectRootURL else { return 0 }
+public func MCEEditorOpenSceneAtPath(_ contextPtr: UnsafeRawPointer?, _ relativePath: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    guard let rootURL = context.editorProjectManager.projectRootURL else { return 0 }
     guard let relativePath else { return 0 }
     let rel = String(cString: relativePath)
     guard let sanitized = AssetOps.sanitizeRelativePath(rel) else { return 0 }
     var url = rootURL.appendingPathComponent(sanitized)
-    if let assetRoot = EditorProjectManager.shared.assetRootURL() {
+    if let assetRoot = context.editorProjectManager.assetRootURL() {
         if !sanitized.hasPrefix("Assets/") && !sanitized.hasPrefix("Assets") {
             let assetURL = assetRoot.appendingPathComponent(sanitized)
             if FileManager.default.fileExists(atPath: assetURL.path) {
@@ -346,62 +366,76 @@ public func MCEEditorOpenSceneAtPath(_ relativePath: UnsafePointer<CChar>?) -> U
         }
     }
     do {
-        try SceneManager.loadScene(from: url)
-        EditorLogCenter.shared.logInfo("Opened scene.", category: .scene)
+        try context.editorSceneController.loadScene(from: url)
+        context.editorLogCenter.logInfo("Opened scene.", category: .scene)
         return 1
     } catch {
-        EditorAlertCenter.shared.enqueueError("Failed to open scene: \(error.localizedDescription)")
+        context.editorAlertCenter.enqueueError("Failed to open scene: \(error.localizedDescription)")
         return 0
     }
 }
 
 @_cdecl("MCEEditorSetSelectedMaterial")
-public func MCEEditorSetSelectedMaterial(_ handle: UnsafePointer<CChar>?) {
-    EditorSelection.shared.setSelectedMaterial(handle: handle != nil ? String(cString: handle!) : nil)
+public func MCEEditorSetSelectedMaterial(_ contextPtr: UnsafeRawPointer?, _ handle: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr) else { return }
+    context.editorSelection.setSelectedMaterial(handle: handle != nil ? String(cString: handle!) : nil)
 }
 
 @_cdecl("MCEEditorGetSelectedMaterial")
-public func MCEEditorGetSelectedMaterial(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorGetSelectedMaterial(_ contextPtr: UnsafeRawPointer?,
+                                         _ buffer: UnsafeMutablePointer<CChar>?,
+                                         _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     guard let buffer, bufferSize > 0 else { return 0 }
-    _ = writeCString(EditorSelection.shared.selectedMaterialHandle, to: buffer, max: bufferSize)
-    return EditorSelection.shared.selectedMaterialHandle.isEmpty ? 0 : 1
+    _ = writeCString(context.editorSelection.selectedMaterialHandle, to: buffer, max: bufferSize)
+    return context.editorSelection.selectedMaterialHandle.isEmpty ? 0 : 1
 }
 
 @_cdecl("MCEEditorOpenMaterialEditor")
-public func MCEEditorOpenMaterialEditor(_ handle: UnsafePointer<CChar>?) {
+public func MCEEditorOpenMaterialEditor(_ contextPtr: UnsafeRawPointer?, _ handle: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr) else { return }
     guard let handle else { return }
     let value = String(cString: handle)
     guard !value.isEmpty else { return }
-    EditorSelection.shared.requestOpenMaterialEditor(handle: value)
+    context.editorSelection.requestOpenMaterialEditor(handle: value)
 }
 
 @_cdecl("MCEEditorConsumeOpenMaterialEditor")
-public func MCEEditorConsumeOpenMaterialEditor(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorConsumeOpenMaterialEditor(_ contextPtr: UnsafeRawPointer?,
+                                               _ buffer: UnsafeMutablePointer<CChar>?,
+                                               _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     guard let buffer, bufferSize > 0 else { return 0 }
-    guard let value = EditorSelection.shared.consumeOpenMaterialEditorHandle() else { return 0 }
+    guard let value = context.editorSelection.consumeOpenMaterialEditorHandle() else { return 0 }
     _ = writeCString(value, to: buffer, max: bufferSize)
     return 1
 }
 
 @_cdecl("MCEEditorRefreshAssets")
-public func MCEEditorRefreshAssets() {
+public func MCEEditorRefreshAssets(_ contextPtr: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr) else { return }
     AssetIO.clearDisplayNameCache()
-    EditorProjectManager.shared.refreshAssets()
+    context.editorProjectManager.refreshAssets()
 }
 
 @_cdecl("MCEEditorGetAssetRevision")
-public func MCEEditorGetAssetRevision() -> UInt64 {
-    EditorProjectManager.shared.assetRevisionToken()
+public func MCEEditorGetAssetRevision(_ contextPtr: UnsafeRawPointer?) -> UInt64 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return context.editorProjectManager.assetRevisionToken()
 }
 
 @_cdecl("MCEEditorGetAssetPathForHandle")
-public func MCEEditorGetAssetPathForHandle(_ handle: UnsafePointer<CChar>?, _ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorGetAssetPathForHandle(_ contextPtr: UnsafeRawPointer?,
+                                           _ handle: UnsafePointer<CChar>?,
+                                           _ buffer: UnsafeMutablePointer<CChar>?,
+                                           _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     guard let handle, let buffer, bufferSize > 0 else { return 0 }
     let handleString = String(cString: handle)
     guard let uuid = UUID(uuidString: handleString) else { return 0 }
     let assetHandle = AssetHandle(rawValue: uuid)
-    guard let assetURL = EditorProjectManager.shared.assetURL(for: assetHandle),
-          let rootURL = EditorProjectManager.shared.assetRootURL(),
+    guard let assetURL = context.editorProjectManager.assetURL(for: assetHandle),
+          let rootURL = context.editorProjectManager.assetRootURL(),
           let relative = PathUtils.relativePath(from: rootURL, to: assetURL) else { return 0 }
     return relative.withCString { ptr in
         let length = min(Int(bufferSize - 1), strlen(ptr))
@@ -412,16 +446,18 @@ public func MCEEditorGetAssetPathForHandle(_ handle: UnsafePointer<CChar>?, _ bu
 }
 
 @_cdecl("MCEEditorRenameAsset")
-public func MCEEditorRenameAsset(_ relativePath: UnsafePointer<CChar>?,
+public func MCEEditorRenameAsset(_ contextPtr: UnsafeRawPointer?,
+                                 _ relativePath: UnsafePointer<CChar>?,
                                  _ newName: UnsafePointer<CChar>?,
                                  _ outPath: UnsafeMutablePointer<CChar>?,
                                  _ outPathSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     guard let relativePath, let newName else { return 0 }
     let rel = String(cString: relativePath)
     let rawName = String(cString: newName)
-    guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return 0 }
+    guard let rootURL = context.editorProjectManager.assetRootURL() else { return 0 }
     guard let originalURL = AssetOps.resolveAssetURL(rootURL: rootURL, relativePath: rel) else { return 0 }
-    guard let newURL = AssetOps.renameAsset(relativePath: rel, newName: rawName) else { return 0 }
+    guard let newURL = AssetOps.renameAsset(context: contextPtr, relativePath: rel, newName: rawName) else { return 0 }
     if newURL.standardizedFileURL.path == originalURL.standardizedFileURL.path { return 1 }
     guard let outPath, outPathSize > 0,
           let relative = PathUtils.relativePath(from: rootURL, to: newURL) else { return 1 }
@@ -434,20 +470,22 @@ public func MCEEditorRenameAsset(_ relativePath: UnsafePointer<CChar>?,
 }
 
 @_cdecl("MCEEditorDeleteAsset")
-public func MCEEditorDeleteAsset(_ relativePath: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEEditorDeleteAsset(_ contextPtr: UnsafeRawPointer?, _ relativePath: UnsafePointer<CChar>?) -> UInt32 {
     guard let relativePath else { return 0 }
     let rel = String(cString: relativePath)
-    return AssetOps.deleteAsset(relativePath: rel) ? 1 : 0
+    return AssetOps.deleteAsset(context: contextPtr, relativePath: rel) ? 1 : 0
 }
 
 @_cdecl("MCEEditorDuplicateAsset")
-public func MCEEditorDuplicateAsset(_ relativePath: UnsafePointer<CChar>?,
+public func MCEEditorDuplicateAsset(_ contextPtr: UnsafeRawPointer?,
+                                    _ relativePath: UnsafePointer<CChar>?,
                                     _ outPath: UnsafeMutablePointer<CChar>?,
                                     _ outPathSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
     guard let relativePath else { return 0 }
     let rel = String(cString: relativePath)
-    guard let newURL = AssetOps.duplicateAsset(relativePath: rel) else { return 0 }
-    guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return 1 }
+    guard let newURL = AssetOps.duplicateAsset(context: contextPtr, relativePath: rel) else { return 0 }
+    guard let rootURL = context.editorProjectManager.assetRootURL() else { return 1 }
     guard let outPath, outPathSize > 0,
           let relative = PathUtils.relativePath(from: rootURL, to: newURL) else { return 1 }
     return relative.withCString { ptr in

@@ -7,7 +7,11 @@ import Foundation
 import MetalCupEngine
 
 final class EditorProjectManager {
-    static let shared = EditorProjectManager()
+    private let settingsStore: EditorSettingsStore
+    private let uiState: EditorUIState
+    private let logCenter: EditorLogCenter
+    private let alertCenter: EditorAlertCenter
+    private let sceneController: EditorSceneController
 
     private(set) var projectURL: URL?
     private(set) var projectRootURL: URL?
@@ -23,14 +27,23 @@ final class EditorProjectManager {
 
     private var assetRegistry: AssetRegistry?
     private var projectPaths: ProjectPaths?
-    private let settingsStore = EditorSettingsStore.shared
     private var shouldShowProjectModal: Bool = false
     private var resourcesRootURL: URL?
     private var didRunStartupCheck: Bool = false
     private var sceneDirty: Bool = false
     private var assetRevision: UInt64 = 0
 
-    private init() {}
+    init(settingsStore: EditorSettingsStore,
+         uiState: EditorUIState,
+         logCenter: EditorLogCenter,
+         alertCenter: EditorAlertCenter,
+         sceneController: EditorSceneController) {
+        self.settingsStore = settingsStore
+        self.uiState = uiState
+        self.logCenter = logCenter
+        self.alertCenter = alertCenter
+        self.sceneController = sceneController
+    }
 
     private struct ProjectListItem {
         let name: String
@@ -42,7 +55,10 @@ final class EditorProjectManager {
         self.resourcesRootURL = resourcesRootURL
         settingsStore.load()
         if let projectsRoot = ensureProjectsRootURL() {
-            let updated = ProjectMigration.migrateRecentProjects(settingsStore.recentProjects, projectsRoot: projectsRoot)
+            let updated = ProjectMigration.migrateRecentProjects(settingsStore.recentProjects,
+                                                                 projectsRoot: projectsRoot,
+                                                                 logCenter: logCenter,
+                                                                 alertCenter: alertCenter)
             if updated != settingsStore.recentProjects {
                 settingsStore.replaceRecentProjects(updated)
                 settingsStore.save()
@@ -81,7 +97,7 @@ final class EditorProjectManager {
 
     func newProject() {
         guard let projectsRoot = ensureProjectsRootURL() else {
-            EditorAlertCenter.shared.enqueueError("Failed to resolve Projects directory.")
+            alertCenter.enqueueError("Failed to resolve Projects directory.")
             return
         }
         guard let url = EditorFileDialog.saveFile(defaultName: "NewProject.mcp",
@@ -106,7 +122,7 @@ final class EditorProjectManager {
             try FileManager.default.createDirectory(at: intermediateFolder, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: savedFolder, withIntermediateDirectories: true)
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to create project folders: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to create project folders: \(error.localizedDescription)")
             return
         }
 
@@ -146,17 +162,17 @@ final class EditorProjectManager {
 
     func saveProject() {
         guard let projectURL, let projectDocument else {
-            EditorAlertCenter.shared.enqueueError("No project is open to save.")
+            alertCenter.enqueueError("No project is open to save.")
             return
         }
         if writeProject(projectDocument, to: projectURL) {
-            EditorLogCenter.shared.logInfo("Saved project.", category: .project)
+            logCenter.logInfo("Saved project.", category: .project)
         }
     }
 
     func saveProjectAs() {
         guard let projectDocument else {
-            EditorAlertCenter.shared.enqueueError("No project is open to save.")
+            alertCenter.enqueueError("No project is open to save.")
             return
         }
         guard let url = EditorFileDialog.saveFile(defaultName: "\(projectDocument.name).mcp",
@@ -169,12 +185,12 @@ final class EditorProjectManager {
         projectRootURL = url.deletingLastPathComponent()
         settingsStore.addRecentProject(url)
         settingsStore.save()
-        EditorLogCenter.shared.logInfo("Saved project as: \(url.lastPathComponent)", category: .project)
+        logCenter.logInfo("Saved project as: \(url.lastPathComponent)", category: .project)
     }
 
     func openScenePanel() {
         guard let projectRootURL, let projectDocument else {
-            EditorAlertCenter.shared.enqueueError("Open a project before loading scenes.")
+            alertCenter.enqueueError("Open a project before loading scenes.")
             return
         }
         let scenesRoot = projectRootURL.appendingPathComponent(projectDocument.scenesDirectory, isDirectory: true)
@@ -187,7 +203,7 @@ final class EditorProjectManager {
 
     func saveScene() {
         guard isProjectOpen else {
-            EditorAlertCenter.shared.enqueueError("Open a project before saving scenes.")
+            alertCenter.enqueueError("Open a project before saving scenes.")
             return
         }
         if lastOpenedScenePath.isEmpty {
@@ -199,7 +215,7 @@ final class EditorProjectManager {
 
     func saveSceneAs() {
         guard let projectRootURL, let projectDocument else {
-            EditorAlertCenter.shared.enqueueError("Open a project before saving scenes.")
+            alertCenter.enqueueError("Open a project before saving scenes.")
             return
         }
         let scenesRoot = projectRootURL.appendingPathComponent(projectDocument.scenesDirectory, isDirectory: true)
@@ -223,13 +239,13 @@ final class EditorProjectManager {
         guard let projectRootURL else { return }
         let url = projectRootURL.appendingPathComponent(relativePath)
         do {
-            try SceneManager.saveScene(to: url)
+            try sceneController.saveScene(to: url)
             lastOpenedScenePath = relativePath
             saveEditorState()
             sceneDirty = false
-            EditorLogCenter.shared.logInfo("Saved scene: \(relativePath)", category: .scene)
+            logCenter.logInfo("Saved scene: \(relativePath)", category: .scene)
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to save scene: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to save scene: \(error.localizedDescription)")
         }
     }
 
@@ -247,17 +263,17 @@ final class EditorProjectManager {
         let standardized = url.standardizedFileURL
         let projectFolder = standardized.deletingLastPathComponent()
         if let openRoot = projectRootURL?.standardizedFileURL, openRoot == projectFolder {
-            EditorAlertCenter.shared.enqueueError("Close the active project before deleting it.")
+            alertCenter.enqueueError("Close the active project before deleting it.")
             return false
         }
         do {
             try FileManager.default.removeItem(at: projectFolder)
             settingsStore.removeRecentProject(at: standardized.path)
             settingsStore.save()
-            EditorLogCenter.shared.logInfo("Deleted project: \(projectFolder.lastPathComponent)", category: .project)
+            logCenter.logInfo("Deleted project: \(projectFolder.lastPathComponent)", category: .project)
             return true
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to delete project: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to delete project: \(error.localizedDescription)")
             return false
         }
     }
@@ -265,14 +281,21 @@ final class EditorProjectManager {
     private func openProject(at url: URL, updateRecent: Bool = true) -> Bool {
         let decoder = JSONDecoder()
         let projectsRoot = ensureProjectsRootURL() ?? url.deletingLastPathComponent()
-        let resolvedProjectURL = ProjectMigration.migrateProjectIfNeeded(url: url, projectsRoot: projectsRoot) ?? url
+        let resolvedProjectURL = ProjectMigration.migrateProjectIfNeeded(url: url,
+                                                                         projectsRoot: projectsRoot,
+                                                                         logCenter: logCenter,
+                                                                         alertCenter: alertCenter) ?? url
         do {
             let data = try Data(contentsOf: resolvedProjectURL)
             let document = try decodeProject(from: data, decoder: decoder)
-            let migrated = ProjectMigration.migrateDocumentIfNeeded(document, projectURL: resolvedProjectURL, projectsRoot: projectsRoot)
+            let migrated = ProjectMigration.migrateDocumentIfNeeded(document,
+                                                                    projectURL: resolvedProjectURL,
+                                                                    projectsRoot: projectsRoot,
+                                                                    logCenter: logCenter,
+                                                                    alertCenter: alertCenter)
             let resolvedRootURL = resolvedProjectURL.deletingLastPathComponent().standardizedFileURL
-            if SceneManager.isPlaying {
-                SceneManager.stop()
+            if sceneController.isPlaying {
+                sceneController.stop()
             }
             projectDocument = migrated
             projectURL = resolvedProjectURL
@@ -306,7 +329,7 @@ final class EditorProjectManager {
             loadScene(relativePath: scenePath)
             return true
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to open project: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to open project: \(error.localizedDescription)")
             return false
         }
     }
@@ -316,16 +339,17 @@ final class EditorProjectManager {
         if !FileManager.default.fileExists(atPath: resolvedAssetRoot.path) {
             try? FileManager.default.createDirectory(at: resolvedAssetRoot, withIntermediateDirectories: true)
         }
-        let registry = AssetRegistry(projectAssetRootURL: resolvedAssetRoot)
+        let registry = AssetRegistry(projectAssetRootURL: resolvedAssetRoot, logCenter: logCenter)
         registry.startWatching()
         assetRevision = 1
         registry.onChange = { [weak self] in
-            self?.assetRevision &+= 1
+            guard let self else { return }
+            self.assetRevision &+= 1
             AssetManager.clearCache()
             AssetManager.preload(from: registry)
             let prefabHandles = registry.allMetadata().filter { $0.type == .prefab }.map { $0.handle }
-            PrefabSystem.shared.markAllDirty(handles: prefabHandles)
-            EditorLogCenter.shared.logInfo("Assets reloaded.", category: .assets)
+            self.sceneController.markPrefabsDirty(handles: prefabHandles)
+            self.logCenter.logInfo("Assets reloaded.", category: .assets)
         }
         assetRegistry = registry
         Engine.assetDatabase = registry
@@ -339,13 +363,13 @@ final class EditorProjectManager {
         guard let projectRootURL else { return }
         let url = projectRootURL.appendingPathComponent(relativePath)
         do {
-            try SceneManager.loadScene(from: url)
+            try sceneController.loadScene(from: url)
             lastOpenedScenePath = relativePath
             saveEditorState()
             sceneDirty = false
-            EditorLogCenter.shared.logInfo("Loaded scene: \(relativePath)", category: .scene)
+            logCenter.logInfo("Loaded scene: \(relativePath)", category: .scene)
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to load scene: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to load scene: \(error.localizedDescription)")
         }
     }
 
@@ -443,7 +467,7 @@ final class EditorProjectManager {
         assetRegistry?.refresh()
         if let registry = assetRegistry {
             let prefabHandles = registry.allMetadata().filter { $0.type == .prefab }.map { $0.handle }
-            PrefabSystem.shared.markAllDirty(handles: prefabHandles)
+            sceneController.markPrefabsDirty(handles: prefabHandles)
         }
     }
 
@@ -457,7 +481,7 @@ final class EditorProjectManager {
             }
             return ok
         } catch {
-            EditorAlertCenter.shared.enqueueError("Asset operation failed: \(error.localizedDescription)")
+            alertCenter.enqueueError("Asset operation failed: \(error.localizedDescription)")
             return false
         }
     }
@@ -491,35 +515,35 @@ final class EditorProjectManager {
     }
 
     func panelIsVisible(_ panelId: String, defaultValue: Bool) -> Bool {
-        EditorUIState.shared.panelIsVisible(panelId, defaultValue: defaultValue)
+        uiState.panelIsVisible(panelId, defaultValue: defaultValue)
     }
 
     func setPanelVisible(_ panelId: String, visible: Bool) {
-        EditorUIState.shared.setPanelVisible(panelId, visible: visible)
+        uiState.setPanelVisible(panelId, visible: visible)
     }
 
     func headerIsOpen(_ headerId: String, defaultValue: Bool) -> Bool {
-        EditorUIState.shared.headerIsOpen(headerId, defaultValue: defaultValue)
+        uiState.headerIsOpen(headerId, defaultValue: defaultValue)
     }
 
     func setHeaderOpen(_ headerId: String, open: Bool) {
-        EditorUIState.shared.setHeaderOpen(headerId, open: open)
+        uiState.setHeaderOpen(headerId, open: open)
     }
 
     func lastSelectedEntityId() -> String {
-        EditorUIState.shared.lastSelectedEntityId()
+        uiState.lastSelectedEntityId()
     }
 
     func setLastSelectedEntityId(_ entityId: String) {
-        EditorUIState.shared.setLastSelectedEntityId(entityId)
+        uiState.setLastSelectedEntityId(entityId)
     }
 
     func lastContentBrowserPath() -> String {
-        EditorUIState.shared.lastContentBrowserPath()
+        uiState.lastContentBrowserPath()
     }
 
     func setLastContentBrowserPath(_ path: String) {
-        EditorUIState.shared.setLastContentBrowserPath(path)
+        uiState.setLastContentBrowserPath(path)
     }
 
     func metaURLForAsset(assetURL: URL, relativePath: String) -> URL? {
@@ -546,7 +570,7 @@ final class EditorProjectManager {
             try data.write(to: url, options: [.atomic])
             return true
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to save project: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to save project: \(error.localizedDescription)")
             return false
         }
     }
@@ -581,7 +605,7 @@ final class EditorProjectManager {
         do {
             try SceneSerializer.save(scene: scene, to: url)
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to write default scene: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to write default scene: \(error.localizedDescription)")
         }
     }
 
@@ -589,7 +613,7 @@ final class EditorProjectManager {
         LayerCatalog.shared.setNames(settingsStore.layerNames)
         let document = SceneDocument(id: UUID(), name: "Untitled", entities: [])
         let scene = SerializedScene(document: document)
-        SceneManager.setScene(scene)
+        sceneController.setScene(scene)
     }
 
     private func relativePath(from root: URL, to url: URL) -> String {
@@ -698,15 +722,15 @@ final class EditorProjectManager {
         let activeProject = projectRootURL?.path ?? "<none>"
         let assetsRoot = assetsRootPath?.path ?? "<none>"
 
-        print("EDITOR_STARTUP::ActiveProject=\(activeProject)")
-        print("EDITOR_STARTUP::ProjectAssets=\(assetsRoot)")
+        logCenter.logTrace("Editor startup activeProject=\(activeProject)", category: .project)
+        logCenter.logTrace("Editor startup assetsRoot=\(assetsRoot)", category: .project)
 
         if let projectRootURL {
             if !FileManager.default.fileExists(atPath: projectRootURL.path) {
-                EditorAlertCenter.shared.enqueueError("Active project folder is missing.")
+                alertCenter.enqueueError("Active project folder is missing.")
             }
         } else {
-            EditorLogCenter.shared.logInfo("No active project loaded.", category: .project)
+            logCenter.logInfo("No active project loaded.", category: .project)
         }
 
         assetRegistry?.refresh()
@@ -723,49 +747,56 @@ private struct LegacyProjectDocument: Codable {
     var editorStatePath: String
 }
 
+private func resolveContext(_ contextPtr: UnsafeMutableRawPointer) -> MCEContext {
+    Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
+}
+
 @_cdecl("MCEProjectSave")
-public func MCEProjectSave() {
-    EditorProjectManager.shared.saveProject()
+public func MCEProjectSave(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.saveProject()
 }
 
 @_cdecl("MCEProjectSaveAs")
-public func MCEProjectSaveAs() {
-    EditorProjectManager.shared.saveProjectAs()
+public func MCEProjectSaveAs(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.saveProjectAs()
 }
 
 @_cdecl("MCEProjectNew")
-public func MCEProjectNew() {
-    EditorProjectManager.shared.newProject()
+public func MCEProjectNew(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.newProject()
 }
 
 @_cdecl("MCEProjectOpen")
-public func MCEProjectOpen() {
-    EditorProjectManager.shared.openProjectPanel()
+public func MCEProjectOpen(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.openProjectPanel()
 }
 
 @_cdecl("MCEProjectHasOpen")
-public func MCEProjectHasOpen() -> UInt32 {
-    return EditorProjectManager.shared.isProjectOpen ? 1 : 0
+public func MCEProjectHasOpen(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    return resolveContext(contextPtr).editorProjectManager.isProjectOpen ? 1 : 0
 }
 
 @_cdecl("MCEProjectNeedsModal")
-public func MCEProjectNeedsModal() -> UInt32 {
-    return EditorProjectManager.shared.needsProjectModal() ? 1 : 0
+public func MCEProjectNeedsModal(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    return resolveContext(contextPtr).editorProjectManager.needsProjectModal() ? 1 : 0
 }
 
 @_cdecl("MCEProjectDismissModal")
-public func MCEProjectDismissModal() {
-    EditorProjectManager.shared.dismissProjectModal()
+public func MCEProjectDismissModal(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.dismissProjectModal()
 }
 
 @_cdecl("MCEProjectRecentCount")
-public func MCEProjectRecentCount() -> Int32 {
-    return Int32(EditorProjectManager.shared.recentProjects().count)
+public func MCEProjectRecentCount(_ contextPtr: UnsafeMutableRawPointer) -> Int32 {
+    return Int32(resolveContext(contextPtr).editorProjectManager.recentProjects().count)
 }
 
 @_cdecl("MCEProjectRecentPathAt")
-public func MCEProjectRecentPathAt(_ index: Int32, _ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> Int32 {
-    let list = EditorProjectManager.shared.recentProjects()
+public func MCEProjectRecentPathAt(_ contextPtr: UnsafeMutableRawPointer,
+                                   _ index: Int32,
+                                   _ buffer: UnsafeMutablePointer<CChar>?,
+                                   _ bufferSize: Int32) -> Int32 {
+    let list = resolveContext(contextPtr).editorProjectManager.recentProjects()
     guard index >= 0, index < Int32(list.count), let buffer, bufferSize > 0 else { return 0 }
     let path = list[Int(index)]
     return path.withCString { ptr in
@@ -779,22 +810,24 @@ public func MCEProjectRecentPathAt(_ index: Int32, _ buffer: UnsafeMutablePointe
 }
 
 @_cdecl("MCEProjectOpenRecent")
-public func MCEProjectOpenRecent(_ path: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEProjectOpenRecent(_ contextPtr: UnsafeMutableRawPointer,
+                                 _ path: UnsafePointer<CChar>?) -> UInt32 {
     guard let path else { return 0 }
-    return EditorProjectManager.shared.openProjectAtPath(String(cString: path)) ? 1 : 0
+    return resolveContext(contextPtr).editorProjectManager.openProjectAtPath(String(cString: path)) ? 1 : 0
 }
 
 @_cdecl("MCEProjectListCount")
-public func MCEProjectListCount() -> Int32 {
-    return Int32(EditorProjectManager.shared.projectListItems().count)
+public func MCEProjectListCount(_ contextPtr: UnsafeMutableRawPointer) -> Int32 {
+    return Int32(resolveContext(contextPtr).editorProjectManager.projectListItems().count)
 }
 
 @_cdecl("MCEProjectListAt")
-public func MCEProjectListAt(_ index: Int32,
+public func MCEProjectListAt(_ contextPtr: UnsafeMutableRawPointer,
+                             _ index: Int32,
                              _ nameBuffer: UnsafeMutablePointer<CChar>?, _ nameBufferSize: Int32,
                              _ pathBuffer: UnsafeMutablePointer<CChar>?, _ pathBufferSize: Int32,
                              _ modifiedOut: UnsafeMutablePointer<Double>?) -> UInt32 {
-    let list = EditorProjectManager.shared.projectListItems()
+    let list = resolveContext(contextPtr).editorProjectManager.projectListItems()
     let idx = Int(index)
     guard idx >= 0, idx < list.count else { return 0 }
     let item = list[idx]
@@ -823,112 +856,126 @@ public func MCEProjectListAt(_ index: Int32,
 }
 
 @_cdecl("MCEProjectOpenAtPath")
-public func MCEProjectOpenAtPath(_ path: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEProjectOpenAtPath(_ contextPtr: UnsafeMutableRawPointer,
+                                 _ path: UnsafePointer<CChar>?) -> UInt32 {
     guard let path else { return 0 }
-    let ok = EditorProjectManager.shared.openProjectAtPath(String(cString: path))
+    let ok = resolveContext(contextPtr).editorProjectManager.openProjectAtPath(String(cString: path))
     return ok ? 1 : 0
 }
 
 @_cdecl("MCEProjectDeleteAtPath")
-public func MCEProjectDeleteAtPath(_ path: UnsafePointer<CChar>?) -> UInt32 {
+public func MCEProjectDeleteAtPath(_ contextPtr: UnsafeMutableRawPointer,
+                                   _ path: UnsafePointer<CChar>?) -> UInt32 {
     guard let path else { return 0 }
     let url = URL(fileURLWithPath: String(cString: path))
-    return EditorProjectManager.shared.deleteProject(at: url) ? 1 : 0
+    return resolveContext(contextPtr).editorProjectManager.deleteProject(at: url) ? 1 : 0
 }
 
 @_cdecl("MCESceneSave")
-public func MCESceneSave() {
-    EditorProjectManager.shared.saveScene()
+public func MCESceneSave(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.saveScene()
 }
 
 @_cdecl("MCESceneSaveAs")
-public func MCESceneSaveAs() {
-    EditorProjectManager.shared.saveSceneAs()
+public func MCESceneSaveAs(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.saveSceneAs()
 }
 
 @_cdecl("MCESceneLoad")
-public func MCESceneLoad() {
-    EditorProjectManager.shared.openScenePanel()
+public func MCESceneLoad(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.openScenePanel()
 }
 
 @_cdecl("MCEScenePlay")
-public func MCEScenePlay() {
-    SceneManager.play()
+public func MCEScenePlay(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorSceneController.play()
 }
 
 @_cdecl("MCESceneStop")
-public func MCESceneStop() {
-    SceneManager.stop()
+public func MCESceneStop(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorSceneController.stop()
 }
 
 @_cdecl("MCEScenePause")
-public func MCEScenePause() {
-    SceneManager.pause()
+public func MCEScenePause(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorSceneController.pause()
 }
 
 @_cdecl("MCESceneResume")
-public func MCESceneResume() {
-    SceneManager.resume()
+public func MCESceneResume(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorSceneController.resume()
 }
 
 @_cdecl("MCESceneIsPlaying")
-public func MCESceneIsPlaying() -> UInt32 {
-    return SceneManager.isPlaying ? 1 : 0
+public func MCESceneIsPlaying(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    return resolveContext(contextPtr).editorSceneController.isPlaying ? 1 : 0
 }
 
 @_cdecl("MCESceneIsPaused")
-public func MCESceneIsPaused() -> UInt32 {
-    return SceneManager.isPaused ? 1 : 0
+public func MCESceneIsPaused(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    return resolveContext(contextPtr).editorSceneController.isPaused ? 1 : 0
 }
 
 @_cdecl("MCESceneIsDirty")
-public func MCESceneIsDirty() -> UInt32 {
-    return EditorProjectManager.shared.isSceneDirty() ? 1 : 0
+public func MCESceneIsDirty(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    return resolveContext(contextPtr).editorProjectManager.isSceneDirty() ? 1 : 0
 }
 
 @_cdecl("MCEProjectSaveAll")
-public func MCEProjectSaveAll() {
-    EditorProjectManager.shared.saveAll()
+public func MCEProjectSaveAll(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.saveAll()
 }
 
 @_cdecl("MCEEditorSaveSettings")
-public func MCEEditorSaveSettings() {
-    EditorProjectManager.shared.saveSettings()
+public func MCEEditorSaveSettings(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.saveSettings()
 }
 
 @_cdecl("MCEEditorGetPanelVisibility")
-public func MCEEditorGetPanelVisibility(_ panelId: UnsafePointer<CChar>?, _ defaultValue: UInt32) -> UInt32 {
+public func MCEEditorGetPanelVisibility(_ contextPtr: UnsafeMutableRawPointer,
+                                        _ panelId: UnsafePointer<CChar>?,
+                                        _ defaultValue: UInt32) -> UInt32 {
     guard let panelId else { return defaultValue }
     let key = String(cString: panelId)
-    return EditorProjectManager.shared.panelIsVisible(key, defaultValue: defaultValue != 0) ? 1 : 0
+    return resolveContext(contextPtr).editorProjectManager.panelIsVisible(key, defaultValue: defaultValue != 0) ? 1 : 0
 }
 
 @_cdecl("MCEEditorSetPanelVisibility")
-public func MCEEditorSetPanelVisibility(_ panelId: UnsafePointer<CChar>?, _ visible: UInt32) {
+public func MCEEditorSetPanelVisibility(_ contextPtr: UnsafeMutableRawPointer,
+                                        _ panelId: UnsafePointer<CChar>?,
+                                        _ visible: UInt32) {
     guard let panelId else { return }
     let key = String(cString: panelId)
-    EditorProjectManager.shared.setPanelVisible(key, visible: visible != 0)
-    EditorProjectManager.shared.saveSettings()
+    let manager = resolveContext(contextPtr).editorProjectManager
+    manager.setPanelVisible(key, visible: visible != 0)
+    manager.saveSettings()
 }
 @_cdecl("MCEEditorGetHeaderOpen")
-public func MCEEditorGetHeaderOpen(_ headerId: UnsafePointer<CChar>?, _ defaultValue: UInt32) -> UInt32 {
+public func MCEEditorGetHeaderOpen(_ contextPtr: UnsafeMutableRawPointer,
+                                   _ headerId: UnsafePointer<CChar>?,
+                                   _ defaultValue: UInt32) -> UInt32 {
     guard let headerId else { return defaultValue }
     let key = String(cString: headerId)
-    return EditorProjectManager.shared.headerIsOpen(key, defaultValue: defaultValue != 0) ? 1 : 0
+    return resolveContext(contextPtr).editorProjectManager.headerIsOpen(key, defaultValue: defaultValue != 0) ? 1 : 0
 }
 
 @_cdecl("MCEEditorSetHeaderOpen")
-public func MCEEditorSetHeaderOpen(_ headerId: UnsafePointer<CChar>?, _ open: UInt32) {
+public func MCEEditorSetHeaderOpen(_ contextPtr: UnsafeMutableRawPointer,
+                                   _ headerId: UnsafePointer<CChar>?,
+                                   _ open: UInt32) {
     guard let headerId else { return }
     let key = String(cString: headerId)
-    EditorProjectManager.shared.setHeaderOpen(key, open: open != 0)
-    EditorProjectManager.shared.saveSettings()
+    let manager = resolveContext(contextPtr).editorProjectManager
+    manager.setHeaderOpen(key, open: open != 0)
+    manager.saveSettings()
 }
 
 @_cdecl("MCEEditorGetLastSelectedEntityId")
-public func MCEEditorGetLastSelectedEntityId(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorGetLastSelectedEntityId(_ contextPtr: UnsafeMutableRawPointer,
+                                             _ buffer: UnsafeMutablePointer<CChar>?,
+                                             _ bufferSize: Int32) -> UInt32 {
     guard let buffer, bufferSize > 0 else { return 0 }
-    let value = EditorProjectManager.shared.lastSelectedEntityId()
+    let value = resolveContext(contextPtr).editorProjectManager.lastSelectedEntityId()
     let length = min(Int(bufferSize - 1), value.count)
     value.withCString { ptr in
         if length > 0 { memcpy(buffer, ptr, length) }
@@ -938,18 +985,22 @@ public func MCEEditorGetLastSelectedEntityId(_ buffer: UnsafeMutablePointer<CCha
 }
 
 @_cdecl("MCEEditorSetLastSelectedEntityId")
-public func MCEEditorSetLastSelectedEntityId(_ value: UnsafePointer<CChar>?) {
+public func MCEEditorSetLastSelectedEntityId(_ contextPtr: UnsafeMutableRawPointer,
+                                             _ value: UnsafePointer<CChar>?) {
     guard let value else { return }
     let idString = String(cString: value)
-    EditorProjectManager.shared.setLastSelectedEntityId(idString)
-    SceneManager.setSelectedEntityId(idString)
-    EditorProjectManager.shared.saveSettings()
+    let context = resolveContext(contextPtr)
+    context.editorProjectManager.setLastSelectedEntityId(idString)
+    context.editorSceneController.setSelectedEntityId(idString)
+    context.editorProjectManager.saveSettings()
 }
 
 @_cdecl("MCEEditorGetLastContentBrowserPath")
-public func MCEEditorGetLastContentBrowserPath(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorGetLastContentBrowserPath(_ contextPtr: UnsafeMutableRawPointer,
+                                               _ buffer: UnsafeMutablePointer<CChar>?,
+                                               _ bufferSize: Int32) -> UInt32 {
     guard let buffer, bufferSize > 0 else { return 0 }
-    let value = EditorProjectManager.shared.lastContentBrowserPath()
+    let value = resolveContext(contextPtr).editorProjectManager.lastContentBrowserPath()
     let length = min(Int(bufferSize - 1), value.count)
     value.withCString { ptr in
         if length > 0 { memcpy(buffer, ptr, length) }
@@ -959,8 +1010,10 @@ public func MCEEditorGetLastContentBrowserPath(_ buffer: UnsafeMutablePointer<CC
 }
 
 @_cdecl("MCEEditorSetLastContentBrowserPath")
-public func MCEEditorSetLastContentBrowserPath(_ value: UnsafePointer<CChar>?) {
+public func MCEEditorSetLastContentBrowserPath(_ contextPtr: UnsafeMutableRawPointer,
+                                               _ value: UnsafePointer<CChar>?) {
     guard let value else { return }
-    EditorProjectManager.shared.setLastContentBrowserPath(String(cString: value))
-    EditorProjectManager.shared.saveSettings()
+    let manager = resolveContext(contextPtr).editorProjectManager
+    manager.setLastContentBrowserPath(String(cString: value))
+    manager.saveSettings()
 }

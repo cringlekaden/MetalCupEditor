@@ -12,6 +12,9 @@ import GameController
 
 final class ImGuiLayer: Layer {
 
+    private let context: MCEContext
+    private let contextPtr: UnsafeMutableRawPointer
+    private let imguiBridge: ImGuiBridge
     private let sceneContext = EditorSceneContext()
     private var previewTexture: MTLTexture?
     private var previewDepthTexture: MTLTexture?
@@ -23,39 +26,30 @@ final class ImGuiLayer: Layer {
     private let previewUpdateInterval: UInt64 = 8
     private let previewTextureSize = SIMD2<Int>(256, 256)
 
-    private enum MCLog {
-        static var onceKeys = Set<String>()
-
-        static func once(_ key: String, _ message: String) {
-            if onceKeys.contains(key) { return }
-            onceKeys.insert(key)
-            NSLog("[MC] \(message)")
-        }
-
-        static func trace(_ message: String) {
-            NSLog("[MC] \(message)")
-        }
-    }
-    
     nonisolated override init(name: String) {
+        fatalError("Use init(name:context:contextPtr:)")
+    }
+
+    init(name: String, context: MCEContext, contextPtr: UnsafeMutableRawPointer) {
+        self.context = context
+        self.contextPtr = contextPtr
+        let bridge = ImGuiBridge(context: contextPtr)
+        self.imguiBridge = bridge
+        self.context.imguiBridge = bridge
         super.init(name: name)
     }
 
     nonisolated override func onUpdate() {
-        MCLog.once("EDITOR_LOOP", "Editor loop running (ImGuiLayer.onUpdate reached)")
         DebugDraw.beginFrame()
-        sceneContext.editorScene = SceneManager.getEditorScene()
-        sceneContext.runtimeScene = SceneManager.isPlaying ? SceneManager.currentScene : sceneContext.runtimeScene
-        sceneContext.isPlaying = SceneManager.isPlaying
-        sceneContext.isPaused = SceneManager.isPaused
-        if let activeScene = sceneContext.activeScene {
-            MCLog.once("SCENE_ACTIVE", "Active scene id/name = \(activeScene.id)/\(activeScene.name)")
-        }
+        sceneContext.editorScene = context.editorSceneController.editorScene
+        sceneContext.runtimeScene = context.editorSceneController.runtimeScene
+        sceneContext.isPlaying = context.editorSceneController.isPlaying
+        sceneContext.isPaused = context.editorSceneController.isPaused
 
-        let viewportSize = ImGuiBridge.viewportImageSize()
-        let viewportOrigin = ImGuiBridge.viewportImageOrigin()
+        let viewportSize = imguiBridge.viewportImageSize()
+        let viewportOrigin = imguiBridge.viewportImageOrigin()
         if viewportSize.width > 1, viewportSize.height > 1 {
-            SceneManager.updateViewportSize(SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height)))
+            context.editorSceneController.updateViewportSize(SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height)))
             Mouse.SetViewportRect(
                 origin: SIMD2<Float>(Float(viewportOrigin.x), Float(viewportOrigin.y)),
                 size: SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
@@ -63,13 +57,14 @@ final class ImGuiLayer: Layer {
         }
         sceneContext.viewportOrigin = SIMD2<Float>(Float(viewportOrigin.x), Float(viewportOrigin.y))
         sceneContext.viewportSize = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
-        SceneManager.update()
-        if !SceneManager.isPlaying {
-            DebugDraw.submitGridXZ(SceneRenderer.gridParams(scene: SceneManager.currentScene))
+        context.editorSceneController.update()
+        if !context.editorSceneController.isPlaying,
+           let scene = sceneContext.activeScene {
+            DebugDraw.submitGridXZ(SceneRenderer.gridParams(scene: scene))
         }
         DebugDraw.endFrame()
 
-        if let selected = SceneManager.selectedEntityUUID() {
+        if let selected = context.editorSceneController.selectedEntityUUID() {
             if sceneContext.selectedEntityIds.first != selected {
                 sceneContext.selectedEntityIds = [selected]
             }
@@ -81,12 +76,14 @@ final class ImGuiLayer: Layer {
            let selectedId = sceneContext.selectedEntityIds.first,
            activeScene.ecs.entity(with: selectedId) == nil {
             sceneContext.selectedEntityIds = []
-            SceneManager.setSelectedEntityId("")
-            ImGuiBridge.setSelectedEntityId("")
+            context.editorSceneController.setSelectedEntityId("")
+            imguiBridge.setSelectedEntityId("")
         } else if let selectedId = sceneContext.selectedEntityIds.first {
-            ImGuiBridge.setSelectedEntityId(selectedId.uuidString)
+            context.editorSceneController.setSelectedEntityId(selectedId.uuidString)
+            imguiBridge.setSelectedEntityId(selectedId.uuidString)
         } else {
-            ImGuiBridge.setSelectedEntityId("")
+            context.editorSceneController.setSelectedEntityId("")
+            imguiBridge.setSelectedEntityId("")
         }
     }
 
@@ -95,29 +92,29 @@ final class ImGuiLayer: Layer {
     }
     
     nonisolated override func onOverlayRender(view: MTKView, commandBuffer: MTLCommandBuffer) {
-        ImGuiBridge.setup(with: view)
-        ImGuiBridge.newFrame(with: view, deltaTime: Time.DeltaTime)
+        imguiBridge.setup(with: view)
+        imguiBridge.newFrame(with: view, deltaTime: Time.DeltaTime)
         let sceneTex = AssetManager.texture(handle: BuiltinAssets.finalColorRender)
         let previewTex = updateCameraPreviewIfNeeded(view: view, commandBuffer: commandBuffer)
-        ImGuiBridge.buildUI(withSceneTexture: sceneTex, previewTexture: previewTex)
+        imguiBridge.buildUI(withSceneTexture: sceneTex, previewTexture: previewTex)
         if let rpd = view.currentRenderPassDescriptor {
-            ImGuiBridge.render(with: commandBuffer, renderPassDescriptor: rpd)
+            imguiBridge.render(with: commandBuffer, renderPassDescriptor: rpd)
         }
     }
     
     nonisolated override func onEvent(_ event: Event) {
-        if !SceneManager.isPlaying,
+        if !context.editorSceneController.isPlaying,
            let mouseEvent = event as? MouseButtonPressedEvent,
            mouseEvent.button == MouseCodes.left.rawValue {
-            let wantsMouse = ImGuiBridge.wantsCaptureMouse()
-            let viewportHovered = ImGuiBridge.viewportIsHovered()
-            if viewportHovered && !wantsMouse {
-                let viewportOrigin = ImGuiBridge.viewportImageOrigin()
-                let viewportImageSize = ImGuiBridge.viewportImageSize()
+            let viewportHovered = imguiBridge.viewportIsHovered()
+            let viewportUIHovered = imguiBridge.viewportIsUIHovered()
+            if viewportHovered && !viewportUIHovered {
+                let viewportOrigin = imguiBridge.viewportImageOrigin()
+                let viewportImageSize = imguiBridge.viewportImageSize()
                 let pickTexture = AssetManager.texture(handle: BuiltinAssets.pickIdRender)
                 let textureWidth = Float(pickTexture?.width ?? 0)
                 let textureHeight = Float(pickTexture?.height ?? 0)
-                let mousePos = ImGuiBridge.mousePosition()
+                let mousePos = imguiBridge.mousePosition()
                 let local = SIMD2<Float>(Float(mousePos.x - viewportOrigin.x),
                                          Float(mousePos.y - viewportOrigin.y))
                 if local.x < 0 || local.y < 0
@@ -135,17 +132,14 @@ final class ImGuiLayer: Layer {
                     uv.x = max(0.0, min(uv.x, 1.0))
                     uv.y = max(0.0, min(uv.y, 1.0))
                     let pixelX = Int(uv.x * textureWidth)
-                    let pixelY = Int((1.0 - uv.y) * textureHeight)
+                    let pixelY = Int(uv.y * textureHeight)
                     let clampedX = max(0, min(pixelX, Int(textureWidth) - 1))
                     let clampedY = max(0, min(pixelY, Int(textureHeight) - 1))
 
-                    MCLog.trace("PICK_REQ mouse=\(mousePos.x),\(mousePos.y) viewport=[\(viewportOrigin.x),\(viewportOrigin.y)]..[" +
-                        "\(viewportOrigin.x + viewportImageSize.width),\(viewportOrigin.y + viewportImageSize.height)] " +
-                        "local=\(local.x),\(local.y) uv=\(uv.x),\(uv.y) " +
-                        "pixel=\(clampedX),\(clampedY) tex=\(Int(textureWidth))x\(Int(textureHeight))")
-
-                    sceneContext.pendingPickRequest = SIMD2<Int>(clampedX, clampedY)
-                    PickingSystem.requestPick(pixel: SIMD2<Int>(clampedX, clampedY), mask: .all)
+                    if !viewportUIHovered {
+                        sceneContext.pendingPickRequest = SIMD2<Int>(clampedX, clampedY)
+                        PickingSystem.requestPick(pixel: SIMD2<Int>(clampedX, clampedY), mask: .all)
+                    }
                 }
             }
         }
@@ -153,7 +147,7 @@ final class ImGuiLayer: Layer {
             event.handled = true
             return
         }
-        SceneManager.currentScene.onEvent(event)
+        sceneContext.activeScene?.onEvent(event)
     }
 
     func activeScene() -> EngineScene? {
@@ -173,16 +167,6 @@ final class ImGuiLayer: Layer {
         let activeScene = sceneContext.activeScene
         let matrices = activeScene.map { SceneRenderer.cameraMatrices(scene: $0) }
         let cameraPosition = activeScene.map { SceneRenderer.cameraPosition(scene: $0) } ?? .zero
-        if let scene = activeScene,
-           let camera = scene.ecs.activeCamera(allowEditor: true, preferEditor: !sceneContext.isPlaying) {
-            MCLog.once(
-                "SCENEVIEW",
-                "SceneView camera=\(camera.0.id) viewRow0=\(matrices?.view.columns.0 ?? SIMD4<Float>(0,0,0,0)) " +
-                    "projRow0=\(matrices?.projection.columns.0 ?? SIMD4<Float>(0,0,0,0)) " +
-                    "camPos=\(cameraPosition) viewport=\(viewportSize)"
-            )
-        }
-
         return SceneView(
             viewMatrix: matrices?.view ?? matrix_identity_float4x4,
             projectionMatrix: matrices?.projection ?? matrix_identity_float4x4,
@@ -201,34 +185,33 @@ final class ImGuiLayer: Layer {
 
     func handlePickResult(_ result: PickResult) {
         sceneContext.pendingPickRequest = nil
-        MCLog.trace("PICK_RESULT pickedId=\(result.pickedId)")
         guard let scene = sceneContext.activeScene else { return }
         if result.pickedId == 0 {
             sceneContext.selectedEntityIds = []
             sceneContext.lastPickResult = nil
-            SceneManager.setSelectedEntityId("")
-            ImGuiBridge.setSelectedEntityId("")
+            context.editorSceneController.setSelectedEntityId("")
+            imguiBridge.setSelectedEntityId("")
             return
         }
         if let entity = PickingSystem.entity(for: result.pickedId),
            let hit = scene.raycast(hitEntity: entity, mask: result.mask) {
             sceneContext.selectedEntityIds = [hit.id]
             sceneContext.lastPickResult = hit.id
-            SceneManager.setSelectedEntityId(hit.id.uuidString)
-            ImGuiBridge.setSelectedEntityId(hit.id.uuidString)
+            context.editorSceneController.setSelectedEntityId(hit.id.uuidString)
+            imguiBridge.setSelectedEntityId(hit.id.uuidString)
         } else {
             sceneContext.selectedEntityIds = []
             sceneContext.lastPickResult = nil
-            SceneManager.setSelectedEntityId("")
-            ImGuiBridge.setSelectedEntityId("")
+            context.editorSceneController.setSelectedEntityId("")
+            imguiBridge.setSelectedEntityId("")
         }
     }
 
     private func shouldCaptureEvent(_ event: Event) -> Bool {
-        let wantsMouse = ImGuiBridge.wantsCaptureMouse()
-        let wantsKeyboard = ImGuiBridge.wantsCaptureKeyboard()
-        let viewportHovered = ImGuiBridge.viewportIsHovered()
-        let viewportFocused = ImGuiBridge.viewportIsFocused()
+        let wantsMouse = imguiBridge.wantsCaptureMouse()
+        let wantsKeyboard = imguiBridge.wantsCaptureKeyboard()
+        let viewportHovered = imguiBridge.viewportIsHovered()
+        let viewportFocused = imguiBridge.viewportIsFocused()
 
         switch event {
         case is MouseMovedEvent, is MouseButtonPressedEvent, is MouseButtonReleasedEvent, is MouseScrolledEvent:
@@ -243,8 +226,8 @@ final class ImGuiLayer: Layer {
     private func updateCameraPreviewIfNeeded(view: MTKView,
                                              commandBuffer: MTLCommandBuffer) -> MTLTexture? {
         previewFrameCounter &+= 1
-        guard let scene = SceneManager.getEditorScene(),
-              let selectedId = SceneManager.selectedEntityUUID(),
+        guard let scene = context.editorSceneController.activeScene(),
+              let selectedId = context.editorSceneController.selectedEntityUUID(),
               let entity = scene.ecs.entity(with: selectedId),
               let camera = scene.ecs.get(CameraComponent.self, for: entity),
               let transform = scene.ecs.get(TransformComponent.self, for: entity) else {

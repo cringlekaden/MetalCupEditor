@@ -6,52 +6,43 @@
 
 #import "../../ImGui/imgui.h"
 #import "../../ImGuizmo/ImGuizmo.h"
+#import "PanelState.h"
 #import "../Widgets/UIWidgets.h"
 #include <algorithm>
 #include <cmath>
 
-extern "C" void MCEScenePlay(void);
-extern "C" void MCESceneStop(void);
-extern "C" void MCEScenePause(void);
-extern "C" void MCESceneResume(void);
-extern "C" uint32_t MCESceneIsPlaying(void);
-extern "C" uint32_t MCESceneIsPaused(void);
-extern "C" int32_t MCEEditorCreateMeshEntityFromHandle(const char *meshHandle, char *outId, int32_t outIdSize);
-extern "C" int32_t MCEEditorInstantiatePrefabFromHandle(const char *prefabHandle, char *outId, int32_t outIdSize);
-extern "C" uint32_t MCEEditorOpenSceneAtPath(const char *relativePath);
-extern "C" int32_t MCEEditorCreateCameraFromView(char *outId, int32_t outIdSize);
-extern "C" uint32_t MCEEditorGetTransform(const char *entityId,
+extern "C" void MCEScenePlay(MCE_CTX);
+extern "C" void MCESceneStop(MCE_CTX);
+extern "C" void MCEScenePause(MCE_CTX);
+extern "C" void MCESceneResume(MCE_CTX);
+extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
+extern "C" uint32_t MCESceneIsPaused(MCE_CTX);
+extern "C" int32_t MCEEditorCreateMeshEntityFromHandle(MCE_CTX,  const char *meshHandle, char *outId, int32_t outIdSize);
+extern "C" int32_t MCEEditorInstantiatePrefabFromHandle(MCE_CTX,  const char *prefabHandle, char *outId, int32_t outIdSize);
+extern "C" uint32_t MCEEditorOpenSceneAtPath(MCE_CTX,  const char *relativePath);
+extern "C" int32_t MCEEditorCreateCameraFromView(MCE_CTX,  char *outId, int32_t outIdSize);
+extern "C" uint32_t MCEEditorGetTransform(MCE_CTX,  const char *entityId,
                                           float *px, float *py, float *pz,
                                           float *rx, float *ry, float *rz,
                                           float *sx, float *sy, float *sz);
-extern "C" void MCEEditorSetTransformNoLog(const char *entityId,
+extern "C" void MCEEditorSetTransformNoLog(MCE_CTX,  const char *entityId,
                                            float px, float py, float pz,
                                            float rx, float ry, float rz,
                                            float sx, float sy, float sz);
-extern "C" uint32_t MCEEditorGetEditorCameraMatrices(float *viewOut, float *projectionOut);
-extern "C" void MCEImGuiSetGizmoCapture(uint32_t wantsMouse, uint32_t wantsKeyboard);
-extern "C" void MCEEditorLogMessage(int32_t level, int32_t category, const char *message);
-extern "C" uint32_t MCEEditorSetTransformFromMatrix(const char *entityId, const float *matrix);
-extern "C" uint32_t MCEEditorGetModelMatrix(const char *entityId, float *matrixOut);
+extern "C" uint32_t MCEEditorGetEditorCameraMatrices(MCE_CTX,  float *viewOut, float *projectionOut);
+extern "C" void MCEImGuiSetGizmoCapture(MCE_CTX,  uint32_t wantsMouse, uint32_t wantsKeyboard);
+extern "C" uint32_t MCEEditorSetTransformFromMatrix(MCE_CTX,  const char *entityId, const float *matrix);
+extern "C" uint32_t MCEEditorGetModelMatrix(MCE_CTX,  const char *entityId, float *matrixOut);
+extern "C" void *MCEContextGetUIPanelState(MCE_CTX);
 
 namespace {
-    enum class GizmoOperation : uint8_t {
-        None,
-        Translate,
-        Rotate,
-        Scale
-    };
+    using MCEPanelState::GizmoOperation;
+    using MCEPanelState::ViewportState;
 
-    struct GizmoState {
-        GizmoOperation operation = GizmoOperation::Translate;
-        ImGuizmo::MODE mode = ImGuizmo::LOCAL;
-        bool snapEnabled = false;
-        float translateSnap = 0.5f;
-        float rotateSnap = 15.0f;
-        float scaleSnap = 0.1f;
-    };
-
-    GizmoState g_GizmoState;
+    ViewportState &GetViewportState(void *context) {
+        auto *state = static_cast<MCEPanelState::EditorUIPanelState *>(MCEContextGetUIPanelState(context));
+        return state->viewport;
+    }
 
     ImGuizmo::OPERATION ToImGuizmoOperation(GizmoOperation op) {
         switch (op) {
@@ -67,11 +58,11 @@ namespace {
         }
     }
 
-    bool GetModelMatrix(const char *entityId, float *outMatrix) {
+    bool GetModelMatrix(void *context, const char *entityId, float *outMatrix) {
         if (!entityId || entityId[0] == 0 || !outMatrix) {
             return false;
         }
-        if (MCEEditorGetModelMatrix(entityId, outMatrix) == 0) {
+        if (MCEEditorGetModelMatrix(context, entityId, outMatrix) == 0) {
             return false;
         }
         return true;
@@ -94,7 +85,7 @@ namespace {
         return pressed;
     }
 
-    void DrawGizmoToolbar(const ImVec2& imageMin, const ImVec2& imageMax) {
+    bool DrawGizmoToolbar(ViewportState &state, const ImVec2& imageMin, const ImVec2& imageMax) {
         const float toolbarPadding = 10.0f;
         const ImVec2 padding = ImGui::GetStyle().FramePadding;
         const float spacing = ImGui::GetStyle().ItemSpacing.x;
@@ -113,42 +104,53 @@ namespace {
         ImGui::SetCursorScreenPos(ImVec2(imageMin.x + toolbarPadding, imageMin.y + toolbarPadding));
         ImGui::BeginChild("ViewportGizmoToolbar", ImVec2(toolbarWidth, toolbarHeight), false,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
-        if (ToolbarToggleButton("Select", g_GizmoState.operation == GizmoOperation::None)) {
-            g_GizmoState.operation = GizmoOperation::None;
+        bool hovered = false;
+        if (ToolbarToggleButton("Select", state.operation == GizmoOperation::None)) {
+            state.operation = GizmoOperation::None;
         }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
-        if (ToolbarToggleButton("Move", g_GizmoState.operation == GizmoOperation::Translate)) {
-            g_GizmoState.operation = GizmoOperation::Translate;
+        if (ToolbarToggleButton("Move", state.operation == GizmoOperation::Translate)) {
+            state.operation = GizmoOperation::Translate;
         }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
-        if (ToolbarToggleButton("Rotate", g_GizmoState.operation == GizmoOperation::Rotate)) {
-            g_GizmoState.operation = GizmoOperation::Rotate;
+        if (ToolbarToggleButton("Rotate", state.operation == GizmoOperation::Rotate)) {
+            state.operation = GizmoOperation::Rotate;
         }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
-        if (ToolbarToggleButton("Scale", g_GizmoState.operation == GizmoOperation::Scale)) {
-            g_GizmoState.operation = GizmoOperation::Scale;
+        if (ToolbarToggleButton("Scale", state.operation == GizmoOperation::Scale)) {
+            state.operation = GizmoOperation::Scale;
         }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
-        if (ToolbarToggleButton("Local", g_GizmoState.mode == ImGuizmo::LOCAL)) {
-            g_GizmoState.mode = ImGuizmo::LOCAL;
+        if (ToolbarToggleButton("Local", state.mode == 0)) {
+            state.mode = 0;
         }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
-        if (ToolbarToggleButton("World", g_GizmoState.mode == ImGuizmo::WORLD)) {
-            g_GizmoState.mode = ImGuizmo::WORLD;
+        if (ToolbarToggleButton("World", state.mode == 1)) {
+            state.mode = 1;
         }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::EndChild();
+        return hovered;
     }
 }
 
-void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
+void ImGuiViewportPanelDraw(void *context,
+                            id<MTLTexture> _Nullable sceneTexture,
                             id<MTLTexture> _Nullable previewTexture,
                             const char *selectedEntityId,
                             bool *hovered,
                             bool *focused,
+                            bool *uiHovered,
                             CGSize *contentSize,
                             CGPoint *contentOrigin,
                             CGPoint *imageOrigin,
                             CGSize *imageSize) {
+    ViewportState &state = GetViewportState(context);
     if (!EditorUI::BeginPanel("Viewport")) {
         EditorUI::EndPanel();
         return;
@@ -166,12 +168,7 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
     if (focused) {
         *focused = isFocused;
     }
-    if (isHovered) {
-        ImGui::SetNextFrameWantCaptureMouse(false);
-    }
-    if (isFocused) {
-        ImGui::SetNextFrameWantCaptureKeyboard(false);
-    }
+    bool viewportUIHovered = false;
 
     ImGuizmo::BeginFrame();
 
@@ -209,16 +206,16 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
             char createdId[64] = {0};
-            MCEEditorCreateMeshEntityFromHandle(payloadText, createdId, sizeof(createdId));
+            MCEEditorCreateMeshEntityFromHandle(context, payloadText, createdId, sizeof(createdId));
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
             char createdId[64] = {0};
-            MCEEditorInstantiatePrefabFromHandle(payloadText, createdId, sizeof(createdId));
+            MCEEditorInstantiatePrefabFromHandle(context, payloadText, createdId, sizeof(createdId));
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_SCENE_PATH")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
-            MCEEditorOpenSceneAtPath(payloadText);
+            MCEEditorOpenSceneAtPath(context, payloadText);
         }
         ImGui::EndDragDropTarget();
     }
@@ -242,34 +239,38 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
         ImGui::SetCursorScreenPos(ImVec2(centerX, imageMin.y + toolbarPadding));
         ImGui::BeginChild("ViewportToolbar", ImVec2(toolbarWidth, toolbarHeight), false,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
-        bool playing = MCESceneIsPlaying() != 0;
-        bool paused = MCESceneIsPaused() != 0;
+        bool playing = MCESceneIsPlaying(context) != 0;
+        bool paused = MCESceneIsPaused(context) != 0;
         if (EditorUI::ToolbarButton("Play", !playing)) {
-            MCEScenePlay();
+            MCEScenePlay(context);
         }
+        viewportUIHovered = viewportUIHovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
         if (EditorUI::ToolbarButton(paused ? "Resume" : "Pause", playing)) {
             if (paused) {
-                MCESceneResume();
+                MCESceneResume(context);
             } else {
-                MCEScenePause();
+                MCEScenePause(context);
             }
         }
+        viewportUIHovered = viewportUIHovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
         if (EditorUI::ToolbarButton("Stop", playing)) {
-            MCESceneStop();
+            MCESceneStop(context);
         }
+        viewportUIHovered = viewportUIHovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
         if (EditorUI::ToolbarButton("Camera", !playing)) {
             char createdId[64] = {0};
-            MCEEditorCreateCameraFromView(createdId, sizeof(createdId));
+            MCEEditorCreateCameraFromView(context, createdId, sizeof(createdId));
         }
+        viewportUIHovered = viewportUIHovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::EndChild();
     }
 
-    bool playing = MCESceneIsPlaying() != 0;
+    bool playing = MCESceneIsPlaying(context) != 0;
     if (!playing && imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
-        DrawGizmoToolbar(imageMin, imageMax);
+        viewportUIHovered = viewportUIHovered || DrawGizmoToolbar(state, imageMin, imageMax);
     }
 
     if (previewTexture && imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
@@ -303,16 +304,16 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
     const bool canHandleShortcuts = viewportActive && !(io.WantCaptureKeyboard || io.WantTextInput);
     if (!playing && canHandleShortcuts && !cameraControlsActive) {
         if (ImGui::IsKeyPressed(ImGuiKey_Q)) {
-            g_GizmoState.operation = GizmoOperation::None;
+            state.operation = GizmoOperation::None;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_W)) {
-            g_GizmoState.operation = GizmoOperation::Translate;
+            state.operation = GizmoOperation::Translate;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_E)) {
-            g_GizmoState.operation = GizmoOperation::Rotate;
+            state.operation = GizmoOperation::Rotate;
         }
         if (ImGui::IsKeyPressed(ImGuiKey_R)) {
-            g_GizmoState.operation = GizmoOperation::Scale;
+            state.operation = GizmoOperation::Scale;
         }
     }
 
@@ -320,49 +321,48 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
     bool gizmoCapturesKeyboard = false;
     if (!playing
         && !cameraControlsActive
-        && g_GizmoState.operation != GizmoOperation::None
+        && state.operation != GizmoOperation::None
         && selectedEntityId && selectedEntityId[0] != 0
         && imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
         float px = 0, py = 0, pz = 0;
         float rx = 0, ry = 0, rz = 0;
         float sx = 1, sy = 1, sz = 1;
-        if (MCEEditorGetTransform(selectedEntityId, &px, &py, &pz, &rx, &ry, &rz, &sx, &sy, &sz) != 0) {
+        if (MCEEditorGetTransform(context, selectedEntityId, &px, &py, &pz, &rx, &ry, &rz, &sx, &sy, &sz) != 0) {
             float viewMatrix[16] = {0};
             float projectionMatrix[16] = {0};
-            if (MCEEditorGetEditorCameraMatrices(viewMatrix, projectionMatrix) != 0) {
+            if (MCEEditorGetEditorCameraMatrices(context, viewMatrix, projectionMatrix) != 0) {
                 ImGuizmo::SetDrawlist();
                 ImGuizmo::SetRect(imageMin.x, imageMin.y, imageMax.x - imageMin.x, imageMax.y - imageMin.y);
 
                 float transformMatrix[16];
-                if (!GetModelMatrix(selectedEntityId, transformMatrix)) {
-                    MCEEditorLogMessage(3, 2, "Gizmo model matrix fetch failed; update skipped.");
+                if (!GetModelMatrix(context, selectedEntityId, transformMatrix)) {
                     EditorUI::EndPanel();
                     return;
                 }
 
-                ImGuizmo::OPERATION operation = ToImGuizmoOperation(g_GizmoState.operation);
-                ImGuizmo::MODE mode = g_GizmoState.mode;
+                ImGuizmo::OPERATION operation = ToImGuizmoOperation(state.operation);
+                ImGuizmo::MODE mode = (state.mode == 0) ? ImGuizmo::LOCAL : ImGuizmo::WORLD;
                 float snapValues[3] = {0.0f, 0.0f, 0.0f};
-                const bool useSnap = g_GizmoState.snapEnabled || io.KeyShift;
+                const bool useSnap = state.snapEnabled || io.KeyShift;
                 const float *snap = nullptr;
                 if (useSnap) {
                     switch (operation) {
                     case ImGuizmo::TRANSLATE:
-                        snapValues[0] = g_GizmoState.translateSnap;
-                        snapValues[1] = g_GizmoState.translateSnap;
-                        snapValues[2] = g_GizmoState.translateSnap;
+                        snapValues[0] = state.translateSnap;
+                        snapValues[1] = state.translateSnap;
+                        snapValues[2] = state.translateSnap;
                         snap = snapValues;
                         break;
                     case ImGuizmo::ROTATE:
-                        snapValues[0] = g_GizmoState.rotateSnap;
-                        snapValues[1] = g_GizmoState.rotateSnap;
-                        snapValues[2] = g_GizmoState.rotateSnap;
+                        snapValues[0] = state.rotateSnap;
+                        snapValues[1] = state.rotateSnap;
+                        snapValues[2] = state.rotateSnap;
                         snap = snapValues;
                         break;
                     case ImGuizmo::SCALE:
-                        snapValues[0] = g_GizmoState.scaleSnap;
-                        snapValues[1] = g_GizmoState.scaleSnap;
-                        snapValues[2] = g_GizmoState.scaleSnap;
+                        snapValues[0] = state.scaleSnap;
+                        snapValues[1] = state.scaleSnap;
+                        snapValues[2] = state.scaleSnap;
                         snap = snapValues;
                         break;
                     default:
@@ -375,8 +375,7 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
                 gizmoCapturesKeyboard = ImGuizmo::IsUsing();
 
                 if (manipulated) {
-                    if (MCEEditorSetTransformFromMatrix(selectedEntityId, transformMatrix) == 0) {
-                        MCEEditorLogMessage(3, 2, "Gizmo transform decomposition failed; update skipped.");
+                    if (MCEEditorSetTransformFromMatrix(context, selectedEntityId, transformMatrix) == 0) {
                         return;
                     }
                 }
@@ -384,7 +383,17 @@ void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
         }
     }
 
-    MCEImGuiSetGizmoCapture(gizmoCapturesMouse ? 1 : 0, gizmoCapturesKeyboard ? 1 : 0);
+    viewportUIHovered = viewportUIHovered || gizmoCapturesMouse || gizmoCapturesKeyboard;
+    if (uiHovered) {
+        *uiHovered = viewportUIHovered;
+    }
+    if (isHovered && !viewportUIHovered) {
+        ImGui::SetNextFrameWantCaptureMouse(false);
+    }
+    if (isFocused && !viewportUIHovered) {
+        ImGui::SetNextFrameWantCaptureKeyboard(false);
+    }
+    MCEImGuiSetGizmoCapture(context, gizmoCapturesMouse ? 1 : 0, gizmoCapturesKeyboard ? 1 : 0);
 
     EditorUI::EndPanel();
 }

@@ -7,8 +7,8 @@
 #include <cctype>
 #include <cstring>
 
-extern "C" uint32_t MCEEditorGetHeaderOpen(const char *headerId, uint32_t defaultValue);
-extern "C" void MCEEditorSetHeaderOpen(const char *headerId, uint32_t open);
+extern "C" uint32_t MCEEditorGetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t defaultValue);
+extern "C" void MCEEditorSetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t open);
 
 namespace EditorUI {
     bool BeginPanel(const char *title, bool *isOpen, ImGuiWindowFlags flags) {
@@ -207,23 +207,24 @@ namespace EditorUI {
         return changed;
     }
 
-    bool BeginSection(const char *label, const char *stateId, bool defaultOpen) {
-        const uint32_t openState = MCEEditorGetHeaderOpen(stateId, defaultOpen ? 1 : 0);
+    bool BeginSection(void *context, const char *label, const char *stateId, bool defaultOpen) {
+        const uint32_t openState = MCEEditorGetHeaderOpen(context, stateId, defaultOpen ? 1 : 0);
         ImGui::SetNextItemOpen(openState != 0, ImGuiCond_Once);
         const ImGuiTreeNodeFlags flags = defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0;
         const bool open = ImGui::CollapsingHeader(label, flags);
         if (ImGui::IsItemToggledOpen()) {
-            MCEEditorSetHeaderOpen(stateId, open ? 1 : 0);
+            MCEEditorSetHeaderOpen(context, stateId, open ? 1 : 0);
         }
         return open;
     }
 
-    bool BeginSectionWithContext(const char *label,
+    bool BeginSectionWithContext(void *context,
+                                 const char *label,
                                  const char *stateId,
                                  const char *contextId,
                                  const std::function<void()> &contextBody,
                                  bool defaultOpen) {
-        const bool open = BeginSection(label, stateId, defaultOpen);
+        const bool open = BeginSection(context, label, stateId, defaultOpen);
         if (ImGui::BeginPopupContextItem(contextId)) {
             contextBody();
             ImGui::EndPopup();

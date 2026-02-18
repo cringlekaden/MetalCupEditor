@@ -4,4 +4,4 @@
 
 #pragma once
 
-void ImGuiInspectorPanelDraw(bool *isOpen, const char *selectedEntityId);
+void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEntityId);

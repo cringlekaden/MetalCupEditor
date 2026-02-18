@@ -4,4 +4,4 @@
 
 #pragma once
 
-void ImGuiContentBrowserPanelDraw(bool *isOpen);
+void ImGuiContentBrowserPanelDraw(void *context, bool *isOpen);

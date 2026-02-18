@@ -24,7 +24,7 @@ struct MetalCupEditorApp: App {
         )
         self.engineApp = EditorApplication(specification: spec)
         let appId = ObjectIdentifier(engineApp)
-        NSLog("[MC] MetalCupEditorApp.init engineApp=\(appId)")
+        engineApp.engineContext.log.logDebug("MetalCupEditorApp init engineApp=\(appId)", category: .editor)
     }
     
     var body: some SwiftUI.Scene {

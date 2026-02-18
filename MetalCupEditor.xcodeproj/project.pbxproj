@@ -9,7 +9,6 @@
 /* Begin PBXBuildFile section */
 		3786522A2F32EE2800321B24 /* MetalCupEngine.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 378652292F32EE2800321B24 /* MetalCupEngine.framework */; settings = {ATTRIBUTES = (Required, ); }; };
 		3786522B2F32EE2800321B24 /* MetalCupEngine.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 378652292F32EE2800321B24 /* MetalCupEngine.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		37DE57222F421383004CE717 /* EditorDataFlowMap.md in Resources */ = {isa = PBXBuildFile; fileRef = 37DE57212F421383004CE717 /* EditorDataFlowMap.md */; };
 		37F505032F3C2AB8001C21A5 /* MetalCupEditor in Resources */ = {isa = PBXBuildFile; fileRef = 37F505022F3C2AB8001C21A5 /* MetalCupEditor */; };
 /* End PBXBuildFile section */
 
@@ -31,7 +30,6 @@
 		375E99272F3F589A00F39780 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AGENTS.md; sourceTree = "<group>"; };
 		3786521A2F32EDBB00321B24 /* MetalCupEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MetalCupEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		378652292F32EE2800321B24 /* MetalCupEngine.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = MetalCupEngine.framework; sourceTree = BUILT_PRODUCTS_DIR; };
-		37DE57212F421383004CE717 /* EditorDataFlowMap.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = EditorDataFlowMap.md; sourceTree = "<group>"; };
 		37F505022F3C2AB8001C21A5 /* MetalCupEditor */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MetalCupEditor; path = "../../../Library/Application Support/MetalCupEditor"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -63,7 +61,6 @@
 				3786521C2F32EDBB00321B24 /* MetalCupEditor */,
 				378652282F32EE2800321B24 /* Frameworks */,
 				3786521B2F32EDBB00321B24 /* Products */,
-				37DE57212F421383004CE717 /* EditorDataFlowMap.md */,
 			);
 			sourceTree = "<group>";
 		};
@@ -150,7 +147,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				37F505032F3C2AB8001C21A5 /* MetalCupEditor in Resources */,
-				37DE57222F421383004CE717 /* EditorDataFlowMap.md in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -357,6 +353,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				REGISTER_APP_GROUPS = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;

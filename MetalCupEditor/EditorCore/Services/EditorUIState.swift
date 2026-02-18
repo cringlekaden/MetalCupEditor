@@ -5,11 +5,9 @@
 import Foundation
 
 final class EditorUIState {
-    static let shared = EditorUIState(settingsStore: EditorSettingsStore.shared)
-
     private let settingsStore: EditorSettingsStore
 
-    private init(settingsStore: EditorSettingsStore) {
+    init(settingsStore: EditorSettingsStore) {
         self.settingsStore = settingsStore
     }
 

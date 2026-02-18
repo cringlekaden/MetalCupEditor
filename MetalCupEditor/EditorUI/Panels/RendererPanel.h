@@ -10,7 +10,7 @@
 extern "C" {
 #endif
 
-void ImGuiRendererPanelDraw(bool *isOpen);
+void ImGuiRendererPanelDraw(void *context, bool *isOpen);
 
 #ifdef __cplusplus
 }

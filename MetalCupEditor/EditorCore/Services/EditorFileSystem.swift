@@ -97,7 +97,9 @@ enum EditorFileSystem {
     }
 }
 @_cdecl("MCEEditorGetImGuiIniPath")
-public func MCEEditorGetImGuiIniPath(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorGetImGuiIniPath(_ contextPtr: UnsafeRawPointer?,
+                                     _ buffer: UnsafeMutablePointer<CChar>?,
+                                     _ bufferSize: Int32) -> UInt32 {
     guard let buffer, bufferSize > 0 else { return 0 }
     guard let url = EditorFileSystem.imguiConfigURL() else { return 0 }
     let path = url.path

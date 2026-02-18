@@ -20,8 +20,8 @@ This file defines how automated agents (Codex/LLMs) must operate in this codebas
 - **Scene + ECS:** `MetalCupEngine/MetalCupEngine/Game/`
 - **Project assets (per-project only):** `MetalCupEditor/MetalCupEditor/Projects/<ProjectName>/Assets/`
 - **Shaders (per-project assets):**
-  - `MetalCupEditor/MetalCupEditor/Projects/Sandbox/Assets/Shaders/`
-  - `MetalCupEditor/MetalCupEditor/Projects/Test/Assets/Shaders/`
+  - `MetalCupEditor/MetalCupEditor/Projects/<ProjectName>/Assets/Shaders/`
+  - Currently any shader changes need to be done in each project's shaders
 - **Scenes (per-project assets):** `MetalCupEditor/MetalCupEditor/Projects/<ProjectName>/Assets/Scenes/`
 - **Materials (per-project assets):** `MetalCupEditor/MetalCupEditor/Projects/<ProjectName>/Assets/Materials/`
 
@@ -57,6 +57,34 @@ If anything is “shared assets” or legacy migration: **do not reintroduce**. 
 - Must compile and run.
 - Keep behavior stable unless the prompt explicitly changes it.
 - Avoid touching rendering/shader paths unless asked.
+
+---
+
+## Engine / Editor Architecture Rules (hard requirements)
+- **No singletons anywhere** in Engine or Editor (no `static let shared`, no global mutable state, no global service locators).
+- **Services must be passed explicitly** (constructor injection or owned by Application/Layer and passed down).
+- **Engine must not depend on Editor types.** Editor may depend on Engine.
+- **Renderer must not pull state from globals.** It uses only renderer delegate callbacks and explicitly passed frame/context objects.
+- **No per-frame logging.** Logs must be event-driven (state change) or error-only.
+- **No debug prints in shipping code.** `print`/`NSLog` only behind a compile flag for debug builds.
+- **Keep file count stable.** Do not create new subsystems unless required by the pass.
+
+---
+
+## How to Add a New System (ownership + injection)
+- **Ownership:** The Application (Engine) or EditorLayer (Editor) owns the system instance.
+- **Construction:** Create the system with explicit dependencies in its initializer.
+- **Injection:** Pass the system (or its dependencies) down to consumers via initializers or properties.
+- **Wiring:** Update the owning layer/app to construct and store the system, then pass it where needed.
+- **No globals:** Do not register in a global registry or static accessor.
+
+---
+
+## Singleton Ban Checklist (short)
+- No `static let shared` or `static var shared`.
+- No global mutable variables or global service locators.
+- No hidden singletons via static caches that hold app state.
+- Dependencies are passed explicitly through initializers or owners.
 
 ---
 
@@ -135,8 +163,11 @@ At the end of a change:
 ---
 
 ## What NOT to do
-- Do not rewrite the renderer.
-- Do not redesign ECS.
 - Do not introduce a new project layout.
 - Do not add third-party dependencies without explicit approval.
 - Do not change serialization formats unless asked.
+- NO singletons.
+- NO global static shared instances.
+- NO static global state.
+- All services must be injected explicitly.
+- Renderer, Application, and EditorLayer should receive services via constructor or property injection.

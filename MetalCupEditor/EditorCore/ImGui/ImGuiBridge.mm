@@ -14,6 +14,7 @@
 #import "../../EditorUI/Panels/SceneHierarchyPanel.h"
 #import "../../EditorUI/Panels/InspectorPanel.h"
 #import "../../EditorUI/Panels/ContentBrowserPanel.h"
+#import "../../EditorUI/Panels/PanelState.h"
 #import "../Bridge/RendererSettingsBridge.h"
 #import "../../EditorUI/Widgets/UIWidgets.h"
 #import <Cocoa/Cocoa.h>
@@ -24,74 +25,56 @@
 #include <vector>
 #include <sys/stat.h>
 
+extern "C" void *MCEUIPanelStateCreate(void) {
+    return new MCEPanelState::EditorUIPanelState();
+}
 
-extern "C" void MCEProjectNew(void);
-extern "C" void MCEProjectOpen(void);
-extern "C" void MCEProjectSave(void);
-extern "C" void MCEProjectSaveAs(void);
-extern "C" void MCEProjectSaveAll(void);
-extern "C" uint32_t MCEProjectHasOpen(void);
-extern "C" uint32_t MCEProjectNeedsModal(void);
-extern "C" void MCEProjectDismissModal(void);
-extern "C" int32_t MCEProjectRecentCount(void);
-extern "C" int32_t MCEProjectRecentPathAt(int32_t index, char *buffer, int32_t bufferSize);
-extern "C" uint32_t MCEProjectOpenRecent(const char *path);
-extern "C" int32_t MCEProjectListCount(void);
-extern "C" uint32_t MCEProjectListAt(int32_t index,
+extern "C" void MCEUIPanelStateDestroy(void *state) {
+    delete static_cast<MCEPanelState::EditorUIPanelState *>(state);
+}
+
+extern "C" void MCEProjectNew(MCE_CTX);
+extern "C" void MCEProjectOpen(MCE_CTX);
+extern "C" void MCEProjectSave(MCE_CTX);
+extern "C" void MCEProjectSaveAs(MCE_CTX);
+extern "C" void MCEProjectSaveAll(MCE_CTX);
+extern "C" uint32_t MCEProjectHasOpen(MCE_CTX);
+extern "C" uint32_t MCEProjectNeedsModal(MCE_CTX);
+extern "C" void MCEProjectDismissModal(MCE_CTX);
+extern "C" int32_t MCEProjectRecentCount(MCE_CTX);
+extern "C" int32_t MCEProjectRecentPathAt(MCE_CTX,  int32_t index, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEProjectOpenRecent(MCE_CTX,  const char *path);
+extern "C" int32_t MCEProjectListCount(MCE_CTX);
+extern "C" uint32_t MCEProjectListAt(MCE_CTX,  int32_t index,
                                      char *nameBuffer, int32_t nameBufferSize,
                                      char *pathBuffer, int32_t pathBufferSize,
                                      double *modifiedOut);
-extern "C" uint32_t MCEProjectOpenAtPath(const char *path);
-extern "C" uint32_t MCEProjectDeleteAtPath(const char *path);
-extern "C" void MCESceneSave(void);
-extern "C" void MCESceneSaveAs(void);
-extern "C" void MCESceneLoad(void);
-extern "C" void MCEScenePlay(void);
-extern "C" void MCESceneStop(void);
-extern "C" void MCEScenePause(void);
-extern "C" void MCESceneResume(void);
-extern "C" uint32_t MCESceneIsPlaying(void);
-extern "C" uint32_t MCESceneIsPaused(void);
-extern "C" uint32_t MCESceneIsDirty(void);
-extern "C" uint32_t MCEEditorPopNextAlert(char *buffer, int32_t bufferSize);
-extern "C" uint32_t MCEEditorGetImGuiIniPath(char *buffer, int32_t bufferSize);
-extern "C" uint32_t MCEEditorGetPanelVisibility(const char *panelId, uint32_t defaultValue);
-extern "C" void MCEEditorSetPanelVisibility(const char *panelId, uint32_t visible);
-extern "C" uint32_t MCEEditorGetHeaderOpen(const char *headerId, uint32_t defaultValue);
-extern "C" void MCEEditorSetHeaderOpen(const char *headerId, uint32_t open);
-extern "C" void MCEEditorSaveSettings(void);
-extern "C" uint32_t MCEEditorGetLastSelectedEntityId(char *buffer, int32_t bufferSize);
-extern "C" void MCEEditorSetLastSelectedEntityId(const char *value);
-extern "C" int32_t MCEEditorLogCount(void);
-extern "C" uint32_t MCEEditorLogEntryAt(int32_t index, int32_t *levelOut, int32_t *categoryOut, double *timestampOut, char *messageBuffer, int32_t messageBufferSize);
-extern "C" uint64_t MCEEditorLogRevision(void);
-extern "C" void MCEEditorLogClear(void);
-extern "C" void MCEEditorLogSelection(const char *entityId);
-extern "C" void MCEEditorRequestQuit(void);
-
-static bool g_ImGuiInitialized = false;
-static bool g_ViewportHovered = false;
-static bool g_ViewportFocused = false;
-static CGSize g_ViewportContentSize = {0, 0};
-static CGPoint g_ViewportContentOrigin = {0, 0};
-static CGPoint g_ViewportImageOrigin = {0, 0};
-static CGSize g_ViewportImageSize = {0, 0};
-static bool g_GizmoCaptureMouse = false;
-static bool g_GizmoCaptureKeyboard = false;
-static bool g_ShowRendererPanel = true;
-static bool g_ShowSceneHierarchyPanel = true;
-static bool g_ShowInspectorPanel = true;
-static bool g_ShowContentBrowserPanel = true;
-static bool g_ShowViewportPanel = true;
-static bool g_ShowProfilingPanel = false;
-static bool g_ShowLogsPanel = true;
-static bool g_LoadedPanelVisibility = false;
-static char g_SelectedEntityId[64] = {0};
-
-extern "C" void MCEImGuiSetGizmoCapture(uint32_t wantsMouse, uint32_t wantsKeyboard) {
-    g_GizmoCaptureMouse = wantsMouse != 0;
-    g_GizmoCaptureKeyboard = wantsKeyboard != 0;
-}
+extern "C" uint32_t MCEProjectOpenAtPath(MCE_CTX,  const char *path);
+extern "C" uint32_t MCEProjectDeleteAtPath(MCE_CTX,  const char *path);
+extern "C" void MCESceneSave(MCE_CTX);
+extern "C" void MCESceneSaveAs(MCE_CTX);
+extern "C" void MCESceneLoad(MCE_CTX);
+extern "C" void MCEScenePlay(MCE_CTX);
+extern "C" void MCESceneStop(MCE_CTX);
+extern "C" void MCEScenePause(MCE_CTX);
+extern "C" void MCESceneResume(MCE_CTX);
+extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
+extern "C" uint32_t MCESceneIsPaused(MCE_CTX);
+extern "C" uint32_t MCESceneIsDirty(MCE_CTX);
+extern "C" uint32_t MCEEditorPopNextAlert(MCE_CTX,  char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEEditorGetImGuiIniPath(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEEditorGetPanelVisibility(MCE_CTX,  const char *panelId, uint32_t defaultValue);
+extern "C" void MCEEditorSetPanelVisibility(MCE_CTX,  const char *panelId, uint32_t visible);
+extern "C" uint32_t MCEEditorGetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t defaultValue);
+extern "C" void MCEEditorSetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t open);
+extern "C" void MCEEditorSaveSettings(MCE_CTX);
+extern "C" uint32_t MCEEditorGetLastSelectedEntityId(MCE_CTX,  char *buffer, int32_t bufferSize);
+extern "C" void MCEEditorSetLastSelectedEntityId(MCE_CTX,  const char *value);
+extern "C" int32_t MCEEditorLogCount(MCE_CTX);
+extern "C" uint32_t MCEEditorLogEntryAt(MCE_CTX,  int32_t index, int32_t *levelOut, int32_t *categoryOut, double *timestampOut, char *messageBuffer, int32_t messageBufferSize);
+extern "C" uint64_t MCEEditorLogRevision(MCE_CTX);
+extern "C" void MCEEditorLogClear(MCE_CTX);
+extern "C" void MCEEditorRequestQuit(MCE_CTX);
 
 struct LogEntrySnapshot {
     int32_t level = 0;
@@ -102,15 +85,46 @@ struct LogEntrySnapshot {
     std::string label;
 };
 
-static uint64_t g_LogRevision = 0;
-static std::vector<LogEntrySnapshot> g_LogEntries;
-static std::vector<int32_t> g_LogFilteredIndices;
-static bool g_LogFilterDirty = true;
-static char g_LogFilterText[256] = {0};
-static bool g_LogFilterTrace = true;
-static bool g_LogFilterInfo = true;
-static bool g_LogFilterWarn = true;
-static bool g_LogFilterError = true;
+@interface ImGuiBridge () {
+@public
+    void *_context;
+    bool _ImGuiInitialized;
+    bool _ViewportHovered;
+    bool _ViewportFocused;
+    bool _ViewportUIHovered;
+    CGSize _ViewportContentSize;
+    CGPoint _ViewportContentOrigin;
+    CGPoint _ViewportImageOrigin;
+    CGSize _ViewportImageSize;
+    bool _GizmoCaptureMouse;
+    bool _GizmoCaptureKeyboard;
+    bool _ShowRendererPanel;
+    bool _ShowSceneHierarchyPanel;
+    bool _ShowInspectorPanel;
+    bool _ShowContentBrowserPanel;
+    bool _ShowViewportPanel;
+    bool _ShowProfilingPanel;
+    bool _ShowLogsPanel;
+    bool _LoadedPanelVisibility;
+    char _SelectedEntityId[64];
+
+    uint64_t _LogRevision;
+    std::vector<LogEntrySnapshot> _LogEntries;
+    std::vector<int32_t> _LogFilteredIndices;
+    bool _LogFilterDirty;
+    char _LogFilterText[256];
+    bool _LogFilterTrace;
+    bool _LogFilterInfo;
+    bool _LogFilterWarn;
+    bool _LogFilterError;
+    ImGuiTextFilter _LogFilter;
+    bool _LogShowTrace;
+    bool _LogShowInfo;
+    bool _LogShowWarn;
+    bool _LogShowError;
+    bool _LogAutoScroll;
+}
+@end
 
 static void ApplyEditorTheme() {
     ImGuiStyle& style = ImGui::GetStyle();
@@ -219,32 +233,33 @@ static std::string FormatClockTime(double seconds) {
 
 static const char *LogCategoryLabel(int32_t category) {
     switch (category) {
-    case 0: return "Editor";
-    case 1: return "Project";
-    case 2: return "Scene";
-    case 3: return "Assets";
-    case 4: return "Renderer";
-    case 5: return "Serialization";
-    case 6: return "Input";
+    case 0: return "Core";
+    case 1: return "Editor";
+    case 2: return "Project";
+    case 3: return "Scene";
+    case 4: return "Assets";
+    case 5: return "Renderer";
+    case 6: return "Serialization";
+    case 7: return "Input";
     default: return "Other";
     }
 }
 
-static void RefreshLogSnapshotIfNeeded() {
-    const uint64_t revision = MCEEditorLogRevision();
-    if (revision == g_LogRevision) { return; }
-    g_LogRevision = revision;
-    g_LogEntries.clear();
-    g_LogFilteredIndices.clear();
+static void RefreshLogSnapshotIfNeeded(ImGuiBridge *bridge) {
+    const uint64_t revision = MCEEditorLogRevision(bridge->_context);
+    if (revision == bridge->_LogRevision) { return; }
+    bridge->_LogRevision = revision;
+    bridge->_LogEntries.clear();
+    bridge->_LogFilteredIndices.clear();
 
-    const int32_t count = MCEEditorLogCount();
-    g_LogEntries.reserve(static_cast<size_t>(count));
+    const int32_t count = MCEEditorLogCount(bridge->_context);
+    bridge->_LogEntries.reserve(static_cast<size_t>(count));
     for (int32_t i = 0; i < count; ++i) {
         char message[512] = {0};
         int32_t level = 0;
         int32_t category = 0;
         double timestamp = 0.0;
-        if (MCEEditorLogEntryAt(i, &level, &category, &timestamp, message, sizeof(message)) == 0) { continue; }
+        if (MCEEditorLogEntryAt(bridge->_context, i, &level, &category, &timestamp, message, sizeof(message)) == 0) { continue; }
         LogEntrySnapshot entry;
         entry.level = level;
         entry.category = category;
@@ -252,39 +267,39 @@ static void RefreshLogSnapshotIfNeeded() {
         entry.message = message;
         entry.timeLabel = FormatClockTime(timestamp);
         entry.label = "[" + entry.timeLabel + "] [" + LogCategoryLabel(category) + "] " + entry.message;
-        g_LogEntries.push_back(std::move(entry));
+        bridge->_LogEntries.push_back(std::move(entry));
     }
 
-    g_LogFilterDirty = true;
+    bridge->_LogFilterDirty = true;
 }
 
-static void RebuildLogFilterIfNeeded(ImGuiTextFilter &filter, bool showTrace, bool showInfo, bool showWarn, bool showError) {
-    if (strcmp(g_LogFilterText, filter.InputBuf) != 0) {
-        strncpy(g_LogFilterText, filter.InputBuf, sizeof(g_LogFilterText) - 1);
-        g_LogFilterText[sizeof(g_LogFilterText) - 1] = 0;
-        g_LogFilterDirty = true;
+static void RebuildLogFilterIfNeeded(ImGuiBridge *bridge, ImGuiTextFilter &filter, bool showTrace, bool showInfo, bool showWarn, bool showError) {
+    if (strcmp(bridge->_LogFilterText, filter.InputBuf) != 0) {
+        strncpy(bridge->_LogFilterText, filter.InputBuf, sizeof(bridge->_LogFilterText) - 1);
+        bridge->_LogFilterText[sizeof(bridge->_LogFilterText) - 1] = 0;
+        bridge->_LogFilterDirty = true;
     }
 
-    if (g_LogFilterTrace != showTrace || g_LogFilterInfo != showInfo || g_LogFilterWarn != showWarn || g_LogFilterError != showError) {
-        g_LogFilterTrace = showTrace;
-        g_LogFilterInfo = showInfo;
-        g_LogFilterWarn = showWarn;
-        g_LogFilterError = showError;
-        g_LogFilterDirty = true;
+    if (bridge->_LogFilterTrace != showTrace || bridge->_LogFilterInfo != showInfo || bridge->_LogFilterWarn != showWarn || bridge->_LogFilterError != showError) {
+        bridge->_LogFilterTrace = showTrace;
+        bridge->_LogFilterInfo = showInfo;
+        bridge->_LogFilterWarn = showWarn;
+        bridge->_LogFilterError = showError;
+        bridge->_LogFilterDirty = true;
     }
 
-    if (!g_LogFilterDirty) { return; }
-    g_LogFilterDirty = false;
-    g_LogFilteredIndices.clear();
-    g_LogFilteredIndices.reserve(g_LogEntries.size());
+    if (!bridge->_LogFilterDirty) { return; }
+    bridge->_LogFilterDirty = false;
+    bridge->_LogFilteredIndices.clear();
+    bridge->_LogFilteredIndices.reserve(bridge->_LogEntries.size());
 
-    for (int32_t i = 0; i < static_cast<int32_t>(g_LogEntries.size()); ++i) {
-        const auto &entry = g_LogEntries[i];
+    for (int32_t i = 0; i < static_cast<int32_t>(bridge->_LogEntries.size()); ++i) {
+        const auto &entry = bridge->_LogEntries[i];
         const bool levelEnabled = (entry.level == 0 && showTrace) || (entry.level == 1 && showInfo) ||
             (entry.level == 2 && showWarn) || (entry.level == 3 && showError);
         if (!levelEnabled) { continue; }
         if (!filter.PassFilter(entry.message.c_str())) { continue; }
-        g_LogFilteredIndices.push_back(i);
+        bridge->_LogFilteredIndices.push_back(i);
     }
 }
 
@@ -328,27 +343,27 @@ static void DrawLegendItem(const char *label, const ImVec4 &color) {
     ImGui::SameLine();
 }
 
-static void LoadPanelVisibilityIfNeeded() {
-    if (g_LoadedPanelVisibility) { return; }
-    g_LoadedPanelVisibility = true;
+static void LoadPanelVisibilityIfNeeded(ImGuiBridge *bridge) {
+    if (bridge->_LoadedPanelVisibility) { return; }
+    bridge->_LoadedPanelVisibility = true;
 
-    g_ShowRendererPanel = MCEEditorGetPanelVisibility("Renderer", 1) != 0;
-    g_ShowSceneHierarchyPanel = MCEEditorGetPanelVisibility("SceneHierarchy", 1) != 0;
-    g_ShowInspectorPanel = MCEEditorGetPanelVisibility("Inspector", 1) != 0;
-    g_ShowContentBrowserPanel = MCEEditorGetPanelVisibility("ContentBrowser", 1) != 0;
-    g_ShowViewportPanel = MCEEditorGetPanelVisibility("Viewport", 1) != 0;
-    g_ShowProfilingPanel = MCEEditorGetPanelVisibility("Profiling", 0) != 0;
-    g_ShowLogsPanel = MCEEditorGetPanelVisibility("Logs", 1) != 0;
+    bridge->_ShowRendererPanel = MCEEditorGetPanelVisibility(bridge->_context, "Renderer", 1) != 0;
+    bridge->_ShowSceneHierarchyPanel = MCEEditorGetPanelVisibility(bridge->_context, "SceneHierarchy", 1) != 0;
+    bridge->_ShowInspectorPanel = MCEEditorGetPanelVisibility(bridge->_context, "Inspector", 1) != 0;
+    bridge->_ShowContentBrowserPanel = MCEEditorGetPanelVisibility(bridge->_context, "ContentBrowser", 1) != 0;
+    bridge->_ShowViewportPanel = MCEEditorGetPanelVisibility(bridge->_context, "Viewport", 1) != 0;
+    bridge->_ShowProfilingPanel = MCEEditorGetPanelVisibility(bridge->_context, "Profiling", 0) != 0;
+    bridge->_ShowLogsPanel = MCEEditorGetPanelVisibility(bridge->_context, "Logs", 1) != 0;
 
     char selectedBuffer[64] = {0};
-    if (MCEEditorGetLastSelectedEntityId(selectedBuffer, sizeof(selectedBuffer)) != 0) {
-        strncpy(g_SelectedEntityId, selectedBuffer, sizeof(g_SelectedEntityId) - 1);
-        g_SelectedEntityId[sizeof(g_SelectedEntityId) - 1] = 0;
+    if (MCEEditorGetLastSelectedEntityId(bridge->_context, selectedBuffer, sizeof(selectedBuffer)) != 0) {
+        strncpy(bridge->_SelectedEntityId, selectedBuffer, sizeof(bridge->_SelectedEntityId) - 1);
+        bridge->_SelectedEntityId[sizeof(bridge->_SelectedEntityId) - 1] = 0;
     }
 }
 
-static void SetPanelVisibility(const char *panelId, bool value) {
-    MCEEditorSetPanelVisibility(panelId, value ? 1 : 0);
+static void SetPanelVisibility(ImGuiBridge *bridge, const char *panelId, bool value) {
+    MCEEditorSetPanelVisibility(bridge->_context, panelId, value ? 1 : 0);
 }
 
 struct PanelMenuEntry {
@@ -357,69 +372,62 @@ struct PanelMenuEntry {
     bool *visible = nullptr;
 };
 
-static void DrawPanelMenuItem(const PanelMenuEntry &entry) {
+static void DrawPanelMenuItem(ImGuiBridge *bridge, const PanelMenuEntry &entry) {
     if (!entry.label || !entry.id || !entry.visible) { return; }
     if (ImGui::MenuItem(entry.label, nullptr, entry.visible)) {
-        SetPanelVisibility(entry.id, *entry.visible);
+        SetPanelVisibility(bridge, entry.id, *entry.visible);
     }
 }
 
-static void DrawLogsPanel(bool *isOpen) {
+static void DrawLogsPanel(ImGuiBridge *bridge, bool *isOpen) {
     if (!isOpen || !*isOpen) { return; }
     ImGui::Begin("Logs", isOpen);
 
-    static ImGuiTextFilter filter;
-    static bool showTrace = true;
-    static bool showInfo = true;
-    static bool showWarn = true;
-    static bool showError = true;
-    static bool autoScroll = true;
-
-    RefreshLogSnapshotIfNeeded();
+    RefreshLogSnapshotIfNeeded(bridge);
 
     if (ImGui::Button("Clear")) {
-        MCEEditorLogClear();
+        MCEEditorLogClear(bridge->_context);
     }
     ImGui::SameLine();
     if (ImGui::Button("Copy")) {
         std::string output;
-        RebuildLogFilterIfNeeded(filter, showTrace, showInfo, showWarn, showError);
-        output.reserve(static_cast<size_t>(g_LogFilteredIndices.size()) * 80);
-        for (int32_t index : g_LogFilteredIndices) {
-            if (index < 0 || index >= static_cast<int32_t>(g_LogEntries.size())) { continue; }
-            const auto &entry = g_LogEntries[index];
+        RebuildLogFilterIfNeeded(bridge, bridge->_LogFilter, bridge->_LogShowTrace, bridge->_LogShowInfo, bridge->_LogShowWarn, bridge->_LogShowError);
+        output.reserve(static_cast<size_t>(bridge->_LogFilteredIndices.size()) * 80);
+        for (int32_t index : bridge->_LogFilteredIndices) {
+            if (index < 0 || index >= static_cast<int32_t>(bridge->_LogEntries.size())) { continue; }
+            const auto &entry = bridge->_LogEntries[index];
             output += entry.label;
             output += "\n";
         }
         ImGui::SetClipboardText(output.c_str());
     }
     ImGui::SameLine();
-    ImGui::Checkbox("Auto-scroll", &autoScroll);
+    ImGui::Checkbox("Auto-scroll", &bridge->_LogAutoScroll);
     ImGui::SameLine();
-    filter.Draw("Filter", 200.0f);
+    bridge->_LogFilter.Draw("Filter", 200.0f);
 
     ImGui::Separator();
-    ImGui::Checkbox("Trace", &showTrace);
+    ImGui::Checkbox("Trace", &bridge->_LogShowTrace);
     ImGui::SameLine();
-    ImGui::Checkbox("Info", &showInfo);
+    ImGui::Checkbox("Info", &bridge->_LogShowInfo);
     ImGui::SameLine();
-    ImGui::Checkbox("Warn", &showWarn);
+    ImGui::Checkbox("Warn", &bridge->_LogShowWarn);
     ImGui::SameLine();
-    ImGui::Checkbox("Error", &showError);
+    ImGui::Checkbox("Error", &bridge->_LogShowError);
 
     ImGui::Separator();
     ImGui::BeginChild("LogsScroll", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
-    RebuildLogFilterIfNeeded(filter, showTrace, showInfo, showWarn, showError);
+    RebuildLogFilterIfNeeded(bridge, bridge->_LogFilter, bridge->_LogShowTrace, bridge->_LogShowInfo, bridge->_LogShowWarn, bridge->_LogShowError);
 
-    const int32_t filteredCount = static_cast<int32_t>(g_LogFilteredIndices.size());
+    const int32_t filteredCount = static_cast<int32_t>(bridge->_LogFilteredIndices.size());
     ImGuiListClipper clipper;
     clipper.Begin(filteredCount);
     while (clipper.Step()) {
         for (int32_t row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
-            const int32_t entryIndex = g_LogFilteredIndices[row];
-            if (entryIndex < 0 || entryIndex >= static_cast<int32_t>(g_LogEntries.size())) { continue; }
-            const auto &entry = g_LogEntries[entryIndex];
+            const int32_t entryIndex = bridge->_LogFilteredIndices[row];
+            if (entryIndex < 0 || entryIndex >= static_cast<int32_t>(bridge->_LogEntries.size())) { continue; }
+            const auto &entry = bridge->_LogEntries[entryIndex];
             ImVec4 color = ImVec4(0.82f, 0.82f, 0.86f, 1.0f);
             if (entry.level == 0) {
                 color = ImVec4(0.55f, 0.6f, 0.65f, 1.0f);
@@ -437,7 +445,7 @@ static void DrawLogsPanel(bool *isOpen) {
         }
     }
 
-    if (autoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 4.0f) {
+    if (bridge->_LogAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 4.0f) {
         ImGui::SetScrollHereY(1.0f);
     }
 
@@ -445,20 +453,20 @@ static void DrawLogsPanel(bool *isOpen) {
     ImGui::End();
 }
 
-static void DrawProfilingPanel(bool *isOpen) {
+static void DrawProfilingPanel(void *context, bool *isOpen) {
     if (!isOpen || !*isOpen) { return; }
     ImGui::Begin("Profiling", isOpen);
 
-    float frameMs = MCERendererGetFrameMs();
-    float gpuMs = MCERendererGetGpuMs();
+    float frameMs = MCERendererGetFrameMs(context);
+    float gpuMs = MCERendererGetGpuMs(context);
     static float frameHistory[120] = {0};
     static float updateHistory[120] = {0};
     static float renderHistory[120] = {0};
     static float postHistory[120] = {0};
     static int frameOffset = 0;
-    const float updateMs = MCERendererGetUpdateMs();
-    const float renderMs = MCERendererGetRenderMs();
-    const float postMs = MCERendererGetBloomMs() + MCERendererGetCompositeMs() + MCERendererGetOverlaysMs();
+    const float updateMs = MCERendererGetUpdateMs(context);
+    const float renderMs = MCERendererGetRenderMs(context);
+    const float postMs = MCERendererGetBloomMs(context) + MCERendererGetCompositeMs(context) + MCERendererGetOverlaysMs(context);
     frameHistory[frameOffset] = frameMs;
     updateHistory[frameOffset] = updateMs;
     renderHistory[frameOffset] = renderMs;
@@ -535,16 +543,16 @@ static void DrawProfilingPanel(bool *isOpen) {
 
     ImGui::Separator();
     ImGui::TextUnformatted("CPU Breakdown");
-    ImGui::Text("Update:     %.2f ms", MCERendererGetUpdateMs());
-    ImGui::Text("Scene:      %.2f ms", MCERendererGetSceneMs());
-    ImGui::Text("Render:     %.2f ms", MCERendererGetRenderMs());
-    ImGui::Text("Bloom:      %.2f ms", MCERendererGetBloomMs());
-    ImGui::Text("  Extract:  %.2f ms", MCERendererGetBloomExtractMs());
-    ImGui::Text("  Downsample: %.2f ms", MCERendererGetBloomDownsampleMs());
-    ImGui::Text("  Blur:     %.2f ms", MCERendererGetBloomBlurMs());
-    ImGui::Text("Composite:  %.2f ms", MCERendererGetCompositeMs());
-    ImGui::Text("Overlays:   %.2f ms", MCERendererGetOverlaysMs());
-    ImGui::Text("Present:    %.2f ms", MCERendererGetPresentMs());
+    ImGui::Text("Update:     %.2f ms", MCERendererGetUpdateMs(context));
+    ImGui::Text("Scene:      %.2f ms", MCERendererGetSceneMs(context));
+    ImGui::Text("Render:     %.2f ms", MCERendererGetRenderMs(context));
+    ImGui::Text("Bloom:      %.2f ms", MCERendererGetBloomMs(context));
+    ImGui::Text("  Extract:  %.2f ms", MCERendererGetBloomExtractMs(context));
+    ImGui::Text("  Downsample: %.2f ms", MCERendererGetBloomDownsampleMs(context));
+    ImGui::Text("  Blur:     %.2f ms", MCERendererGetBloomBlurMs(context));
+    ImGui::Text("Composite:  %.2f ms", MCERendererGetCompositeMs(context));
+    ImGui::Text("Overlays:   %.2f ms", MCERendererGetOverlaysMs(context));
+    ImGui::Text("Present:    %.2f ms", MCERendererGetPresentMs(context));
 
     ImGui::End();
 }
@@ -565,9 +573,50 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
 @implementation ImGuiBridge
 
-+ (void)setupWithView:(MTKView *)view {
-    if (g_ImGuiInitialized) { return; }
-    g_ImGuiInitialized = true;
+- (instancetype)initWithContext:(void *)context {
+    self = [super init];
+    if (self) {
+        _context = context;
+        _ImGuiInitialized = false;
+        _ViewportHovered = false;
+        _ViewportFocused = false;
+        _ViewportUIHovered = false;
+        _ViewportContentSize = {0, 0};
+        _ViewportContentOrigin = {0, 0};
+        _ViewportImageOrigin = {0, 0};
+        _ViewportImageSize = {0, 0};
+        _GizmoCaptureMouse = false;
+        _GizmoCaptureKeyboard = false;
+        _ShowRendererPanel = true;
+        _ShowSceneHierarchyPanel = true;
+        _ShowInspectorPanel = true;
+        _ShowContentBrowserPanel = true;
+        _ShowViewportPanel = true;
+        _ShowProfilingPanel = false;
+        _ShowLogsPanel = true;
+        _LoadedPanelVisibility = false;
+        _SelectedEntityId[0] = 0;
+        _LogRevision = 0;
+        _LogEntries.clear();
+        _LogFilteredIndices.clear();
+        _LogFilterDirty = true;
+        _LogFilterText[0] = 0;
+        _LogFilterTrace = true;
+        _LogFilterInfo = true;
+        _LogFilterWarn = true;
+        _LogFilterError = true;
+        _LogShowTrace = true;
+        _LogShowInfo = true;
+        _LogShowWarn = true;
+        _LogShowError = true;
+        _LogAutoScroll = true;
+    }
+    return self;
+}
+
+- (void)setupWithView:(MTKView *)view {
+    if (_ImGuiInitialized) { return; }
+    _ImGuiInitialized = true;
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -576,7 +625,7 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
     // Store ImGui config in Application Support so it persists with or without sandbox.
     char iniPathBuffer[512] = {0};
-    if (MCEEditorGetImGuiIniPath(iniPathBuffer, sizeof(iniPathBuffer)) != 0) {
+    if (MCEEditorGetImGuiIniPath(_context, iniPathBuffer, sizeof(iniPathBuffer)) != 0) {
         io.IniFilename = strdup(iniPathBuffer);
     }
 
@@ -617,8 +666,8 @@ static void EnsureImGuiKeyResponder(NSView *view) {
     }
 }
 
-+ (void)newFrameWithView:(MTKView *)view deltaTime:(float)dt {
-    if (!g_ImGuiInitialized) { [self setupWithView:view]; }
+- (void)newFrameWithView:(MTKView *)view deltaTime:(float)dt {
+    if (!_ImGuiInitialized) { [self setupWithView:view]; }
     EnsureImGuiKeyResponder(view);
 
     ImGuiIO& io = ImGui::GetIO();
@@ -629,23 +678,23 @@ static void EnsureImGuiKeyResponder(NSView *view) {
     ImGui::NewFrame();
 }
 
-+ (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture
+- (void)buildUIWithSceneTexture:(id<MTLTexture> _Nullable)sceneTexture
                  previewTexture:(id<MTLTexture> _Nullable)previewTexture {
-    static char g_AlertMessage[512] = {0};
-    g_GizmoCaptureMouse = false;
-    g_GizmoCaptureKeyboard = false;
-    if (g_AlertMessage[0] == 0) {
-        if (MCEEditorPopNextAlert(g_AlertMessage, sizeof(g_AlertMessage)) != 0) {
+    static char _AlertMessage[512] = {0};
+    _GizmoCaptureMouse = false;
+    _GizmoCaptureKeyboard = false;
+    if (_AlertMessage[0] == 0) {
+        if (MCEEditorPopNextAlert(_context, _AlertMessage, sizeof(_AlertMessage)) != 0) {
             ImGui::OpenPopup("Error");
         }
     }
 
-    LoadPanelVisibilityIfNeeded();
+    LoadPanelVisibilityIfNeeded(self);
 
     if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextWrapped("%s", g_AlertMessage);
+        ImGui::TextWrapped("%s", _AlertMessage);
         if (ImGui::Button("OK")) {
-            g_AlertMessage[0] = 0;
+            _AlertMessage[0] = 0;
             ImGui::CloseCurrentPopup();
         }
         ImGui::EndPopup();
@@ -681,49 +730,49 @@ static void EnsureImGuiKeyResponder(NSView *view) {
         if (ImGui::BeginMenu("File")) {
             EditorUI::PushMenuPopupStyle();
             if (ImGui::MenuItem("New Project...")) {
-                MCEProjectNew();
+                MCEProjectNew(_context);
             }
             if (ImGui::MenuItem("Open Project...")) {
-                MCEProjectOpen();
+                MCEProjectOpen(_context);
             }
-            bool hasProject = MCEProjectHasOpen() != 0;
+            bool hasProject = MCEProjectHasOpen(_context) != 0;
             if (ImGui::MenuItem("Save", nullptr, false, hasProject)) {
-                MCEProjectSaveAll();
+                MCEProjectSaveAll(_context);
             }
-            int32_t recentCount = MCEProjectRecentCount();
+            int32_t recentCount = MCEProjectRecentCount(_context);
             if (ImGui::BeginMenu("Recent Projects", recentCount > 0)) {
                 if (recentCount == 0) {
                     ImGui::MenuItem("No recent projects", nullptr, false, false);
                 }
                 for (int32_t i = 0; i < recentCount && i < 10; ++i) {
                     char pathBuffer[512] = {0};
-                    if (MCEProjectRecentPathAt(i, pathBuffer, sizeof(pathBuffer)) <= 0) { continue; }
+                    if (MCEProjectRecentPathAt(_context, i, pathBuffer, sizeof(pathBuffer)) <= 0) { continue; }
                     std::string path = pathBuffer;
                     size_t slash = path.find_last_of('/');
                     std::string name = (slash == std::string::npos) ? path : path.substr(slash + 1);
                     std::string label = name + "##recent" + std::to_string(i);
                     if (ImGui::MenuItem(label.c_str())) {
-                        MCEProjectOpenRecent(pathBuffer);
+                        MCEProjectOpenRecent(_context, pathBuffer);
                     }
                 }
                 ImGui::EndMenu();
             }
             ImGui::Separator();
             if (ImGui::MenuItem("Exit")) {
-                MCEEditorRequestQuit();
+                MCEEditorRequestQuit(_context);
             }
             EditorUI::PopMenuPopupStyle();
             ImGui::EndMenu();
         }
         if (ImGui::BeginMenu("View")) {
             EditorUI::PushMenuPopupStyle();
-            DrawPanelMenuItem({ "Scene Hierarchy", "SceneHierarchy", &g_ShowSceneHierarchyPanel });
-            DrawPanelMenuItem({ "Inspector", "Inspector", &g_ShowInspectorPanel });
-            DrawPanelMenuItem({ "Content Browser", "ContentBrowser", &g_ShowContentBrowserPanel });
-            DrawPanelMenuItem({ "Renderer", "Renderer", &g_ShowRendererPanel });
-            DrawPanelMenuItem({ "Profiling", "Profiling", &g_ShowProfilingPanel });
-            DrawPanelMenuItem({ "Logs", "Logs", &g_ShowLogsPanel });
-            DrawPanelMenuItem({ "Viewport", "Viewport", &g_ShowViewportPanel });
+            DrawPanelMenuItem(self, { "Scene Hierarchy", "SceneHierarchy", &_ShowSceneHierarchyPanel });
+            DrawPanelMenuItem(self, { "Inspector", "Inspector", &_ShowInspectorPanel });
+            DrawPanelMenuItem(self, { "Content Browser", "ContentBrowser", &_ShowContentBrowserPanel });
+            DrawPanelMenuItem(self, { "Renderer", "Renderer", &_ShowRendererPanel });
+            DrawPanelMenuItem(self, { "Profiling", "Profiling", &_ShowProfilingPanel });
+            DrawPanelMenuItem(self, { "Logs", "Logs", &_ShowLogsPanel });
+            DrawPanelMenuItem(self, { "Viewport", "Viewport", &_ShowViewportPanel });
             EditorUI::PopMenuPopupStyle();
             ImGui::EndMenu();
         }
@@ -733,35 +782,35 @@ static void EnsureImGuiKeyResponder(NSView *view) {
 
     ImGui::PopStyleVar(3);
 
-    if (MCEProjectNeedsModal() != 0) {
+    if (MCEProjectNeedsModal(_context) != 0) {
         ImGui::OpenPopup("Create or Open Project");
     }
     if (ImGui::BeginPopupModal("Create or Open Project", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextUnformatted("Select a project to get started.");
-        if (MCEProjectHasOpen() != 0) {
+        if (MCEProjectHasOpen(_context) != 0) {
             if (ImGui::Button("Continue with Loaded Project")) {
-                MCEProjectDismissModal();
+                MCEProjectDismissModal(_context);
                 ImGui::CloseCurrentPopup();
             }
             ImGui::Separator();
         }
 
         if (ImGui::Button("Open Other Project...")) {
-            MCEProjectOpen();
+            MCEProjectOpen(_context);
         }
         ImGui::SameLine();
         if (ImGui::Button("New Project...")) {
-            MCEProjectNew();
+            MCEProjectNew(_context);
         }
         ImGui::Separator();
 
-        static int32_t g_SelectedProjectIndex = -1;
-        static char g_SelectedProjectPath[512] = {0};
-        static bool g_ConfirmDeleteProjectOpen = false;
+        static int32_t _SelectedProjectIndex = -1;
+        static char _SelectedProjectPath[512] = {0};
+        static bool _ConfirmDeleteProjectOpen = false;
 
         ImGui::TextUnformatted("Projects");
         if (ImGui::BeginChild("ProjectList", ImVec2(520, 240), true)) {
-            int32_t projectCount = MCEProjectListCount();
+            int32_t projectCount = MCEProjectListCount(_context);
             if (projectCount <= 0) {
                 ImGui::TextUnformatted("No projects found in the Projects folder.");
             }
@@ -775,21 +824,21 @@ static void EnsureImGuiKeyResponder(NSView *view) {
                     char nameBuffer[256] = {0};
                     char pathBuffer[512] = {0};
                     double modified = 0.0;
-                    if (MCEProjectListAt(i, nameBuffer, sizeof(nameBuffer), pathBuffer, sizeof(pathBuffer), &modified) == 0) {
+                    if (MCEProjectListAt(_context, i, nameBuffer, sizeof(nameBuffer), pathBuffer, sizeof(pathBuffer), &modified) == 0) {
                         continue;
                     }
                     ImGui::TableNextRow();
                     ImGui::TableSetColumnIndex(0);
                     ImGui::PushID(i);
-                    bool selected = (g_SelectedProjectIndex == i);
+                    bool selected = (_SelectedProjectIndex == i);
                     if (ImGui::Selectable(nameBuffer, selected, ImGuiSelectableFlags_SpanAllColumns)) {
-                        g_SelectedProjectIndex = i;
-                        strncpy(g_SelectedProjectPath, pathBuffer, sizeof(g_SelectedProjectPath) - 1);
-                        g_SelectedProjectPath[sizeof(g_SelectedProjectPath) - 1] = 0;
+                        _SelectedProjectIndex = i;
+                        strncpy(_SelectedProjectPath, pathBuffer, sizeof(_SelectedProjectPath) - 1);
+                        _SelectedProjectPath[sizeof(_SelectedProjectPath) - 1] = 0;
                     }
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(0)) {
-                        if (MCEProjectOpenAtPath(pathBuffer) != 0) {
-                            MCEProjectDismissModal();
+                        if (MCEProjectOpenAtPath(_context, pathBuffer) != 0) {
+                            MCEProjectDismissModal(_context);
                             ImGui::CloseCurrentPopup();
                         }
                     }
@@ -805,104 +854,109 @@ static void EnsureImGuiKeyResponder(NSView *view) {
         }
         ImGui::EndChild();
 
-        bool hasSelection = g_SelectedProjectIndex >= 0 && g_SelectedProjectPath[0] != 0;
+        bool hasSelection = _SelectedProjectIndex >= 0 && _SelectedProjectPath[0] != 0;
         if (ImGui::Button("Open Selected") && hasSelection) {
-            if (MCEProjectOpenAtPath(g_SelectedProjectPath) != 0) {
-                MCEProjectDismissModal();
+            if (MCEProjectOpenAtPath(_context, _SelectedProjectPath) != 0) {
+                MCEProjectDismissModal(_context);
                 ImGui::CloseCurrentPopup();
             }
         }
         ImGui::SameLine();
         ImGui::BeginDisabled(!hasSelection);
         if (ImGui::Button("Delete")) {
-            g_ConfirmDeleteProjectOpen = true;
+            _ConfirmDeleteProjectOpen = true;
         }
         ImGui::EndDisabled();
         EditorUI::ConfirmModal("Confirm Delete Project",
-                               &g_ConfirmDeleteProjectOpen,
+                               &_ConfirmDeleteProjectOpen,
                                "Delete the selected project? This will remove it from disk.",
                                "Delete",
                                "Cancel",
                                [&]() {
-            MCEProjectDeleteAtPath(g_SelectedProjectPath);
-            g_SelectedProjectIndex = -1;
-            g_SelectedProjectPath[0] = 0;
+            MCEProjectDeleteAtPath(_context, _SelectedProjectPath);
+            _SelectedProjectIndex = -1;
+            _SelectedProjectPath[0] = 0;
         });
 
         ImGui::EndPopup();
     }
 
     // --- Panels ---
-    bool rendererOpen = g_ShowRendererPanel;
+    bool rendererOpen = _ShowRendererPanel;
     if (rendererOpen) {
-        ImGuiRendererPanelDraw(&rendererOpen);
-        if (rendererOpen != g_ShowRendererPanel) {
-            g_ShowRendererPanel = rendererOpen;
-            SetPanelVisibility("Renderer", g_ShowRendererPanel);
+        ImGuiRendererPanelDraw(_context, &rendererOpen);
+        if (rendererOpen != _ShowRendererPanel) {
+            _ShowRendererPanel = rendererOpen;
+            SetPanelVisibility(self, "Renderer", _ShowRendererPanel);
         }
     }
 
-    bool hierarchyOpen = g_ShowSceneHierarchyPanel;
+    bool hierarchyOpen = _ShowSceneHierarchyPanel;
     if (hierarchyOpen) {
-        ImGuiSceneHierarchyPanelDraw(&hierarchyOpen, g_SelectedEntityId, sizeof(g_SelectedEntityId));
-        if (hierarchyOpen != g_ShowSceneHierarchyPanel) {
-            g_ShowSceneHierarchyPanel = hierarchyOpen;
-            SetPanelVisibility("SceneHierarchy", g_ShowSceneHierarchyPanel);
+        ImGuiSceneHierarchyPanelDraw(_context, &hierarchyOpen, _SelectedEntityId, sizeof(_SelectedEntityId));
+        if (hierarchyOpen != _ShowSceneHierarchyPanel) {
+            _ShowSceneHierarchyPanel = hierarchyOpen;
+            SetPanelVisibility(self, "SceneHierarchy", _ShowSceneHierarchyPanel);
         }
     }
 
-    bool inspectorOpen = g_ShowInspectorPanel;
+    bool inspectorOpen = _ShowInspectorPanel;
     if (inspectorOpen) {
-        ImGuiInspectorPanelDraw(&inspectorOpen, g_SelectedEntityId);
-        if (inspectorOpen != g_ShowInspectorPanel) {
-            g_ShowInspectorPanel = inspectorOpen;
-            SetPanelVisibility("Inspector", g_ShowInspectorPanel);
+        ImGuiInspectorPanelDraw(_context, &inspectorOpen, _SelectedEntityId);
+        if (inspectorOpen != _ShowInspectorPanel) {
+            _ShowInspectorPanel = inspectorOpen;
+            SetPanelVisibility(self, "Inspector", _ShowInspectorPanel);
         }
     }
 
-    bool contentOpen = g_ShowContentBrowserPanel;
+    bool contentOpen = _ShowContentBrowserPanel;
     if (contentOpen) {
-        ImGuiContentBrowserPanelDraw(&contentOpen);
-        if (contentOpen != g_ShowContentBrowserPanel) {
-            g_ShowContentBrowserPanel = contentOpen;
-            SetPanelVisibility("ContentBrowser", g_ShowContentBrowserPanel);
+        ImGuiContentBrowserPanelDraw(_context, &contentOpen);
+        if (contentOpen != _ShowContentBrowserPanel) {
+            _ShowContentBrowserPanel = contentOpen;
+            SetPanelVisibility(self, "ContentBrowser", _ShowContentBrowserPanel);
         }
     }
 
-    bool profilingOpen = g_ShowProfilingPanel;
+    bool profilingOpen = _ShowProfilingPanel;
     if (profilingOpen) {
-        DrawProfilingPanel(&profilingOpen);
-        if (profilingOpen != g_ShowProfilingPanel) {
-            g_ShowProfilingPanel = profilingOpen;
-            SetPanelVisibility("Profiling", g_ShowProfilingPanel);
+        DrawProfilingPanel(_context, &profilingOpen);
+        if (profilingOpen != _ShowProfilingPanel) {
+            _ShowProfilingPanel = profilingOpen;
+            SetPanelVisibility(self, "Profiling", _ShowProfilingPanel);
         }
     }
 
-    bool logsOpen = g_ShowLogsPanel;
+    bool logsOpen = _ShowLogsPanel;
     if (logsOpen) {
-        DrawLogsPanel(&logsOpen);
-        if (logsOpen != g_ShowLogsPanel) {
-            g_ShowLogsPanel = logsOpen;
-            SetPanelVisibility("Logs", g_ShowLogsPanel);
+        DrawLogsPanel(self, &logsOpen);
+        if (logsOpen != _ShowLogsPanel) {
+            _ShowLogsPanel = logsOpen;
+            SetPanelVisibility(self, "Logs", _ShowLogsPanel);
         }
     }
 
-    if (g_ShowViewportPanel) {
-        ImGuiViewportPanelDraw(sceneTexture,
+    if (_ShowViewportPanel) {
+        _ViewportUIHovered = false;
+        ImGuiViewportPanelDraw(_context,
+                               sceneTexture,
                                previewTexture,
-                               g_SelectedEntityId,
-                               &g_ViewportHovered,
-                               &g_ViewportFocused,
-                               &g_ViewportContentSize,
-                               &g_ViewportContentOrigin,
-                               &g_ViewportImageOrigin,
-                               &g_ViewportImageSize);
+                               _SelectedEntityId,
+                               &_ViewportHovered,
+                               &_ViewportFocused,
+                               &_ViewportUIHovered,
+                               &_ViewportContentSize,
+                               &_ViewportContentOrigin,
+                               &_ViewportImageOrigin,
+                               &_ViewportImageSize);
+    } else {
+        _ViewportUIHovered = false;
     }
 
     ImGui::End(); // DockSpaceHost
 }
 
-+ (void)renderWithCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
+- (void)renderWithCommandBuffer:(id<MTLCommandBuffer>)commandBuffer
             renderPassDescriptor:(MTLRenderPassDescriptor *)renderPassDescriptor {
 
     ImGui::Render();
@@ -923,57 +977,63 @@ static void EnsureImGuiKeyResponder(NSView *view) {
     }
 }
 
-+ (bool)wantsCaptureMouse {
-    if (!g_ImGuiInitialized) { return false; }
+- (bool)wantsCaptureMouse {
+    if (!_ImGuiInitialized) { return false; }
     ImGuiIO& io = ImGui::GetIO();
-    return io.WantCaptureMouse || g_GizmoCaptureMouse;
+    return io.WantCaptureMouse || _GizmoCaptureMouse;
 }
 
-+ (bool)wantsCaptureKeyboard {
-    if (!g_ImGuiInitialized) { return false; }
+- (bool)wantsCaptureKeyboard {
+    if (!_ImGuiInitialized) { return false; }
     ImGuiIO& io = ImGui::GetIO();
-    return io.WantCaptureKeyboard || g_GizmoCaptureKeyboard;
+    return io.WantCaptureKeyboard || _GizmoCaptureKeyboard;
 }
 
-+ (bool)viewportIsHovered {
-    return g_ViewportHovered;
+- (bool)viewportIsHovered {
+    return _ViewportHovered;
 }
 
-+ (bool)viewportIsFocused {
-    return g_ViewportFocused;
+- (bool)viewportIsFocused {
+    return _ViewportFocused;
 }
 
-+ (CGSize)viewportContentSize {
-    return g_ViewportContentSize;
+- (bool)viewportIsUIHovered {
+    return _ViewportUIHovered;
 }
 
-+ (CGPoint)viewportContentOrigin {
-    return g_ViewportContentOrigin;
+- (CGSize)viewportContentSize {
+    return _ViewportContentSize;
 }
 
-+ (CGPoint)viewportImageOrigin {
-    return g_ViewportImageOrigin;
+- (CGPoint)viewportContentOrigin {
+    return _ViewportContentOrigin;
 }
 
-+ (CGSize)viewportImageSize {
-    return g_ViewportImageSize;
+- (CGPoint)viewportImageOrigin {
+    return _ViewportImageOrigin;
 }
 
-+ (CGPoint)mousePosition {
-    if (!g_ImGuiInitialized) { return CGPointZero; }
+- (CGSize)viewportImageSize {
+    return _ViewportImageSize;
+}
+
+- (CGPoint)mousePosition {
+    if (!_ImGuiInitialized) { return CGPointZero; }
     ImVec2 mousePos = ImGui::GetMousePos();
     return CGPointMake(mousePos.x, mousePos.y);
 }
 
-+ (void)setSelectedEntityId:(NSString *)value {
+- (void)setSelectedEntityId:(NSString *)value {
     const char *utf8 = value != nil ? value.UTF8String : "";
     if (!utf8) { utf8 = ""; }
-    strncpy(g_SelectedEntityId, utf8, sizeof(g_SelectedEntityId) - 1);
-    g_SelectedEntityId[sizeof(g_SelectedEntityId) - 1] = 0;
-    MCEEditorSetLastSelectedEntityId(g_SelectedEntityId);
-    if (g_SelectedEntityId[0] != 0) {
-        MCEEditorLogSelection(g_SelectedEntityId);
-    }
+    strncpy(_SelectedEntityId, utf8, sizeof(_SelectedEntityId) - 1);
+    _SelectedEntityId[sizeof(_SelectedEntityId) - 1] = 0;
+    MCEEditorSetLastSelectedEntityId(_context, _SelectedEntityId);
+}
+
+- (void)setGizmoCaptureMouse:(bool)wantsMouse keyboard:(bool)wantsKeyboard {
+    _GizmoCaptureMouse = wantsMouse;
+    _GizmoCaptureKeyboard = wantsKeyboard;
 }
 
 @end

@@ -5,6 +5,7 @@
 #import "ContentBrowserPanel.h"
 
 #import "../../ImGui/imgui.h"
+#import "PanelState.h"
 #import "../Widgets/UIWidgets.h"
 #include <string>
 #include <vector>
@@ -14,103 +15,56 @@
 #include <unordered_map>
 #include <stdint.h>
 
-extern "C" uint32_t MCEEditorGetAssetsRootPath(char *buffer, int32_t bufferSize);
-extern "C" uint64_t MCEEditorGetAssetRevision(void);
-extern "C" int32_t MCEEditorListDirectory(const char *relativePath);
-extern "C" uint32_t MCEEditorGetDirectoryEntry(int32_t index,
+extern "C" uint32_t MCEEditorGetAssetsRootPath(MCE_CTX,  char *buffer, int32_t bufferSize);
+extern "C" uint64_t MCEEditorGetAssetRevision(MCE_CTX);
+extern "C" int32_t MCEEditorListDirectory(MCE_CTX,  const char *relativePath);
+extern "C" uint32_t MCEEditorGetDirectoryEntry(MCE_CTX,  int32_t index,
                                                 char *nameBuffer, int32_t nameBufferSize,
                                                 char *relativePathBuffer, int32_t relativePathBufferSize,
                                                 uint32_t *isDirectoryOut,
                                                 int32_t *typeOut,
                                                 char *handleBuffer, int32_t handleBufferSize,
                                                 double *modifiedOut);
-extern "C" uint32_t MCEEditorCreateFolder(const char *relativePath, const char *name);
-extern "C" uint32_t MCEEditorCreateMaterial(const char *relativePath, const char *name, char *outHandle, int32_t outHandleSize);
-extern "C" uint32_t MCEEditorCreateScene(const char *relativePath, const char *name);
-extern "C" uint32_t MCEEditorCreatePrefab(const char *relativePath, const char *name);
-extern "C" uint32_t MCEEditorOpenSceneAtPath(const char *relativePath);
-extern "C" void MCEEditorSetSelectedMaterial(const char *handle);
-extern "C" void MCEEditorOpenMaterialEditor(const char *handle);
-extern "C" void MCEEditorRefreshAssets(void);
-extern "C" uint32_t MCEEditorRenameAsset(const char *relativePath, const char *newName, char *outPath, int32_t outPathSize);
-extern "C" uint32_t MCEEditorDeleteAsset(const char *relativePath);
-extern "C" uint32_t MCEEditorDuplicateAsset(const char *relativePath, char *outPath, int32_t outPathSize);
-extern "C" uint32_t MCEEditorDuplicateMaterial(const char *handle, char *outHandle, int32_t outHandleSize);
-extern "C" uint32_t MCEEditorDeleteMaterial(const char *handle);
-extern "C" uint32_t MCEEditorGetAssetPathForHandle(const char *handle, char *buffer, int32_t bufferSize);
-extern "C" uint32_t MCEEditorGetLastContentBrowserPath(char *buffer, int32_t bufferSize);
-extern "C" void MCEEditorSetLastContentBrowserPath(const char *value);
-extern "C" void MCEEditorLogMessage(int32_t level, int32_t category, const char *message);
+extern "C" uint32_t MCEEditorCreateFolder(MCE_CTX,  const char *relativePath, const char *name);
+extern "C" uint32_t MCEEditorCreateMaterial(MCE_CTX,  const char *relativePath, const char *name, char *outHandle, int32_t outHandleSize);
+extern "C" uint32_t MCEEditorCreateScene(MCE_CTX,  const char *relativePath, const char *name);
+extern "C" uint32_t MCEEditorCreatePrefab(MCE_CTX,  const char *relativePath, const char *name);
+extern "C" uint32_t MCEEditorOpenSceneAtPath(MCE_CTX,  const char *relativePath);
+extern "C" void MCEEditorSetSelectedMaterial(MCE_CTX,  const char *handle);
+extern "C" void MCEEditorOpenMaterialEditor(MCE_CTX,  const char *handle);
+extern "C" void MCEEditorRefreshAssets(MCE_CTX);
+extern "C" uint32_t MCEEditorRenameAsset(MCE_CTX,  const char *relativePath, const char *newName, char *outPath, int32_t outPathSize);
+extern "C" uint32_t MCEEditorDeleteAsset(MCE_CTX,  const char *relativePath);
+extern "C" uint32_t MCEEditorDuplicateAsset(MCE_CTX,  const char *relativePath, char *outPath, int32_t outPathSize);
+extern "C" uint32_t MCEEditorDuplicateMaterial(MCE_CTX,  const char *handle, char *outHandle, int32_t outHandleSize);
+extern "C" uint32_t MCEEditorDeleteMaterial(MCE_CTX,  const char *handle);
+extern "C" uint32_t MCEEditorGetAssetPathForHandle(MCE_CTX,  const char *handle, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEEditorGetLastContentBrowserPath(MCE_CTX,  char *buffer, int32_t bufferSize);
+extern "C" void MCEEditorSetLastContentBrowserPath(MCE_CTX,  const char *value);
+extern "C" void MCEEditorLogMessage(MCE_CTX,  int32_t level, int32_t category, const char *message);
+extern "C" void *MCEContextGetUIPanelState(MCE_CTX);
 
 namespace {
-    enum AssetType : int32_t {
-        AssetTexture = 0,
-        AssetModel = 1,
-        AssetMaterial = 2,
-        AssetEnvironment = 3,
-        AssetScene = 4,
-        AssetPrefab = 5,
-        AssetUnknown = 6
-    };
+    using MCEPanelState::AssetType;
+    using MCEPanelState::AssetEnvironment;
+    using MCEPanelState::AssetMaterial;
+    using MCEPanelState::AssetModel;
+    using MCEPanelState::AssetPrefab;
+    using MCEPanelState::AssetScene;
+    using MCEPanelState::AssetTexture;
+    using MCEPanelState::AssetUnknown;
+    using MCEPanelState::BrowserEntry;
+    using MCEPanelState::ContentBrowserState;
+    using MCEPanelState::ContextTarget;
+    using MCEPanelState::SortMode;
+    using MCEPanelState::SortByModified;
+    using MCEPanelState::SortByName;
+    using MCEPanelState::SortByType;
 
-    enum SortMode : int32_t {
-        SortByName = 0,
-        SortByType = 1,
-        SortByModified = 2
-    };
-
-    struct BrowserEntry {
-        std::string displayName;
-        std::string displayNameLower;
-        std::string fileName;
-        std::string relativePath;
-        bool isDirectory = false;
-        int32_t type = AssetUnknown;
-        std::string handle;
-        double modified = 0.0;
-    };
-
-    static std::string g_CurrentPath;
-    static std::vector<std::string> g_History;
-    static int g_HistoryIndex = -1;
-    static char g_Search[128] = {0};
-    static SortMode g_Sort = SortByName;
-    static bool g_SortAscending = true;
-    static std::string g_SelectedPath;
-    static std::string g_SelectedHandle;
-    static int32_t g_SelectedType = AssetUnknown;
-    static bool g_SelectedIsDirectory = false;
-    static std::string g_RenamePath;
-    static char g_RenameBuffer[128] = {0};
-    static bool g_RenameActive = false;
-    static bool g_RenameFocusNext = false;
-    static std::string g_DeletePath;
-    static std::string g_DeleteLabel;
-    static bool g_DeleteIsDirectory = false;
-    static int32_t g_DeleteType = AssetUnknown;
-    static std::string g_DeleteHandle;
-    static bool g_DeletePendingOpen = false;
-
-    struct ContextTarget {
-        bool valid = false;
-        std::string relativePath;
-        std::string displayName;
-        std::string fileName;
-        std::string handle;
-        bool isDirectory = false;
-        int32_t type = AssetUnknown;
-    };
-
-    static ContextTarget g_ContextTarget;
-    static bool g_OpenContextMenu = false;
-    static uint64_t g_LastAssetRevision = 0;
-    static std::unordered_map<std::string, std::vector<BrowserEntry>> g_DirectoryCache;
-    static std::vector<BrowserEntry> g_FilteredEntries;
-    static std::string g_FilteredPath;
-    static std::string g_FilteredSearch;
-    static SortMode g_FilteredSort = SortByName;
-    static bool g_FilteredAscending = true;
-    static uint64_t g_FilteredRevision = 0;
+    ContentBrowserState &GetContentBrowserState(void *context) {
+        auto *state = static_cast<MCEPanelState::EditorUIPanelState *>(MCEContextGetUIPanelState(context));
+        return state->contentBrowser;
+    }
 
     const char *AssetTypeLabel(int32_t type) {
         switch (type) {
@@ -192,64 +146,64 @@ namespace {
         return label.substr(0, fit) + ellipsis;
     }
 
-    void LogAssetError(const std::string &message) {
-        MCEEditorLogMessage(2, 3, message.c_str());
+    void LogAssetError(void *context, const std::string &message) {
+        MCEEditorLogMessage(context, 2, 3, message.c_str());
     }
 
-    void BeginRename(const BrowserEntry &entry) {
-        g_RenamePath = entry.relativePath;
-        g_RenameActive = true;
-        g_RenameFocusNext = true;
+    void BeginRename(ContentBrowserState &state, const BrowserEntry &entry) {
+        state.renamePath = entry.relativePath;
+        state.renameActive = true;
+        state.renameFocusNext = true;
         std::string base = entry.isDirectory ? entry.fileName : StripExtension(entry.fileName);
-        strncpy(g_RenameBuffer, base.c_str(), sizeof(g_RenameBuffer) - 1);
-        g_RenameBuffer[sizeof(g_RenameBuffer) - 1] = 0;
+        strncpy(state.renameBuffer, base.c_str(), sizeof(state.renameBuffer) - 1);
+        state.renameBuffer[sizeof(state.renameBuffer) - 1] = 0;
     }
 
-    void CancelRename() {
-        g_RenameActive = false;
-        g_RenameFocusNext = false;
-        g_RenamePath.clear();
-        g_RenameBuffer[0] = 0;
+    void CancelRename(ContentBrowserState &state) {
+        state.renameActive = false;
+        state.renameFocusNext = false;
+        state.renamePath.clear();
+        state.renameBuffer[0] = 0;
     }
 
-    void PushHistory(const std::string &path) {
-        if (g_HistoryIndex >= 0 && g_HistoryIndex < static_cast<int>(g_History.size())) {
-            if (g_History[g_HistoryIndex] == path) {
+    void PushHistory(ContentBrowserState &state, const std::string &path) {
+        if (state.historyIndex >= 0 && state.historyIndex < static_cast<int>(state.history.size())) {
+            if (state.history[state.historyIndex] == path) {
                 return;
             }
         }
-        if (g_HistoryIndex + 1 < static_cast<int>(g_History.size())) {
-            g_History.erase(g_History.begin() + g_HistoryIndex + 1, g_History.end());
+        if (state.historyIndex + 1 < static_cast<int>(state.history.size())) {
+            state.history.erase(state.history.begin() + state.historyIndex + 1, state.history.end());
         }
-        g_History.push_back(path);
-        g_HistoryIndex = static_cast<int>(g_History.size()) - 1;
+        state.history.push_back(path);
+        state.historyIndex = static_cast<int>(state.history.size()) - 1;
     }
 
-    void NavigateTo(const std::string &path) {
-        g_CurrentPath = path;
-        PushHistory(path);
-        MCEEditorSetLastContentBrowserPath(g_CurrentPath.c_str());
+    void NavigateTo(void *context, ContentBrowserState &state, const std::string &path) {
+        state.currentPath = path;
+        PushHistory(state, path);
+        MCEEditorSetLastContentBrowserPath(context, state.currentPath.c_str());
     }
 
-    void InvalidateDirectoryCache() {
-        g_DirectoryCache.clear();
-        g_FilteredEntries.clear();
-        g_FilteredPath.clear();
-        g_FilteredSearch.clear();
-        g_FilteredRevision = 0;
+    void InvalidateDirectoryCache(ContentBrowserState &state) {
+        state.directoryCache.clear();
+        state.filteredEntries.clear();
+        state.filteredPath.clear();
+        state.filteredSearch.clear();
+        state.filteredRevision = 0;
     }
 
-    void RefreshDirectoryCacheIfNeeded() {
-        const uint64_t revision = MCEEditorGetAssetRevision();
-        if (revision != g_LastAssetRevision) {
-            g_LastAssetRevision = revision;
-            InvalidateDirectoryCache();
+    void RefreshDirectoryCacheIfNeeded(void *context, ContentBrowserState &state) {
+        const uint64_t revision = MCEEditorGetAssetRevision(context);
+        if (revision != state.lastAssetRevision) {
+            state.lastAssetRevision = revision;
+            InvalidateDirectoryCache(state);
         }
     }
 
-    std::vector<BrowserEntry> FetchDirectoryEntries(const std::string &relativePath) {
+    std::vector<BrowserEntry> FetchDirectoryEntries(void *context, const std::string &relativePath) {
         std::vector<BrowserEntry> entries;
-        const int32_t count = MCEEditorListDirectory(relativePath.empty() ? nullptr : relativePath.c_str());
+        const int32_t count = MCEEditorListDirectory(context, relativePath.empty() ? nullptr : relativePath.c_str());
         entries.reserve(count);
 
         for (int32_t i = 0; i < count; ++i) {
@@ -259,7 +213,7 @@ namespace {
             uint32_t isDirectory = 0;
             int32_t type = AssetUnknown;
             double modified = 0.0;
-            if (MCEEditorGetDirectoryEntry(i,
+            if (MCEEditorGetDirectoryEntry(context, i,
                                           nameBuffer, sizeof(nameBuffer),
                                           pathBuffer, sizeof(pathBuffer),
                                           &isDirectory,
@@ -286,67 +240,67 @@ namespace {
         return entries;
     }
 
-    const std::vector<BrowserEntry> &GetDirectoryEntries(const std::string &relativePath) {
-        auto existing = g_DirectoryCache.find(relativePath);
-        if (existing != g_DirectoryCache.end()) {
+    const std::vector<BrowserEntry> &GetDirectoryEntries(void *context, ContentBrowserState &state, const std::string &relativePath) {
+        auto existing = state.directoryCache.find(relativePath);
+        if (existing != state.directoryCache.end()) {
             return existing->second;
         }
-        auto inserted = g_DirectoryCache.emplace(relativePath, FetchDirectoryEntries(relativePath));
+        auto inserted = state.directoryCache.emplace(relativePath, FetchDirectoryEntries(context, relativePath));
         return inserted.first->second;
     }
 
-    const std::vector<BrowserEntry> &GetFilteredEntries() {
-        const std::string search = EditorUI::ToLower(std::string(g_Search));
-        if (g_FilteredRevision != g_LastAssetRevision ||
-            g_FilteredPath != g_CurrentPath ||
-            g_FilteredSearch != search ||
-            g_FilteredSort != g_Sort ||
-            g_FilteredAscending != g_SortAscending) {
-            g_FilteredEntries = GetDirectoryEntries(g_CurrentPath);
+    const std::vector<BrowserEntry> &GetFilteredEntries(void *context, ContentBrowserState &state) {
+        const std::string search = EditorUI::ToLower(std::string(state.search));
+        if (state.filteredRevision != state.lastAssetRevision ||
+            state.filteredPath != state.currentPath ||
+            state.filteredSearch != search ||
+            state.filteredSort != state.sort ||
+            state.filteredAscending != state.sortAscending) {
+            state.filteredEntries = GetDirectoryEntries(context, state, state.currentPath);
             if (!search.empty()) {
-                g_FilteredEntries.erase(std::remove_if(g_FilteredEntries.begin(), g_FilteredEntries.end(),
+                state.filteredEntries.erase(std::remove_if(state.filteredEntries.begin(), state.filteredEntries.end(),
                     [&](const BrowserEntry &entry) {
                         return entry.displayNameLower.find(search) == std::string::npos;
                     }),
-                    g_FilteredEntries.end());
+                    state.filteredEntries.end());
             }
-            std::sort(g_FilteredEntries.begin(), g_FilteredEntries.end(), [&](const BrowserEntry &a, const BrowserEntry &b) {
-                if (g_Sort == SortByType) {
+            std::sort(state.filteredEntries.begin(), state.filteredEntries.end(), [&](const BrowserEntry &a, const BrowserEntry &b) {
+                if (state.sort == SortByType) {
                     if (a.isDirectory != b.isDirectory) {
-                        return g_SortAscending ? a.isDirectory : !a.isDirectory;
+                        return state.sortAscending ? a.isDirectory : !a.isDirectory;
                     }
                     int cmp = std::string(AssetTypeLabel(a.type)).compare(AssetTypeLabel(b.type));
-                    return g_SortAscending ? cmp < 0 : cmp > 0;
+                    return state.sortAscending ? cmp < 0 : cmp > 0;
                 }
-                if (g_Sort == SortByModified) {
+                if (state.sort == SortByModified) {
                     if (a.modified == b.modified) {
-                        return g_SortAscending ? a.displayName < b.displayName : a.displayName > b.displayName;
+                        return state.sortAscending ? a.displayName < b.displayName : a.displayName > b.displayName;
                     }
-                    return g_SortAscending ? a.modified < b.modified : a.modified > b.modified;
+                    return state.sortAscending ? a.modified < b.modified : a.modified > b.modified;
                 }
                 if (a.isDirectory != b.isDirectory) {
-                    return g_SortAscending ? a.isDirectory : !a.isDirectory;
+                    return state.sortAscending ? a.isDirectory : !a.isDirectory;
                 }
-                return g_SortAscending ? a.displayName < b.displayName : a.displayName > b.displayName;
+                return state.sortAscending ? a.displayName < b.displayName : a.displayName > b.displayName;
             });
 
-            g_FilteredPath = g_CurrentPath;
-            g_FilteredSearch = search;
-            g_FilteredSort = g_Sort;
-            g_FilteredAscending = g_SortAscending;
-            g_FilteredRevision = g_LastAssetRevision;
+            state.filteredPath = state.currentPath;
+            state.filteredSearch = search;
+            state.filteredSort = state.sort;
+            state.filteredAscending = state.sortAscending;
+            state.filteredRevision = state.lastAssetRevision;
         }
 
-        return g_FilteredEntries;
+        return state.filteredEntries;
     }
 
-    void DrawDirectoryTree(const std::string &relativePath, const std::string &label) {
+    void DrawDirectoryTree(void *context, ContentBrowserState &state, const std::string &relativePath, const std::string &label) {
         ImGuiTreeNodeFlags flags = ImGuiTreeNodeFlags_OpenOnArrow | ImGuiTreeNodeFlags_SpanAvailWidth;
-        if (relativePath == g_CurrentPath) {
+        if (relativePath == state.currentPath) {
             flags |= ImGuiTreeNodeFlags_Selected;
         }
 
-        const auto &entries = GetDirectoryEntries(relativePath);
+        const auto &entries = GetDirectoryEntries(context, state, relativePath);
         bool hasChild = std::any_of(entries.begin(), entries.end(), [](const BrowserEntry &entry) { return entry.isDirectory; });
         if (!hasChild) {
             flags |= ImGuiTreeNodeFlags_Leaf;
@@ -354,13 +308,13 @@ namespace {
 
         bool opened = ImGui::TreeNodeEx(label.c_str(), flags);
         if (ImGui::IsItemClicked()) {
-            NavigateTo(relativePath);
+            NavigateTo(context, state, relativePath);
         }
 
         if (opened) {
             for (const auto &entry : entries) {
                 if (!entry.isDirectory) { continue; }
-                DrawDirectoryTree(entry.relativePath, entry.displayName);
+                DrawDirectoryTree(context, state, entry.relativePath, entry.displayName);
             }
             ImGui::TreePop();
         }
@@ -398,141 +352,142 @@ namespace {
         }
     }
 
-    void SelectEntry(const BrowserEntry &entry, bool updateMaterialSelection) {
-        g_SelectedPath = entry.relativePath;
-        g_SelectedHandle = entry.handle;
-        g_SelectedType = entry.type;
-        g_SelectedIsDirectory = entry.isDirectory;
+    void SelectEntry(void *context, ContentBrowserState &state, const BrowserEntry &entry, bool updateMaterialSelection) {
+        state.selectedPath = entry.relativePath;
+        state.selectedHandle = entry.handle;
+        state.selectedType = entry.type;
+        state.selectedIsDirectory = entry.isDirectory;
         if (updateMaterialSelection) {
             if (entry.type == AssetMaterial && !entry.handle.empty()) {
-                MCEEditorSetSelectedMaterial(entry.handle.c_str());
+                MCEEditorSetSelectedMaterial(context, entry.handle.c_str());
             } else {
-                MCEEditorSetSelectedMaterial(nullptr);
+                MCEEditorSetSelectedMaterial(context, nullptr);
             }
         }
     }
 
-    void SetContextTarget(const BrowserEntry &entry) {
-        g_ContextTarget.valid = true;
-        g_ContextTarget.relativePath = entry.relativePath;
-        g_ContextTarget.displayName = entry.displayName;
-        g_ContextTarget.fileName = entry.fileName;
-        g_ContextTarget.handle = entry.handle;
-        g_ContextTarget.isDirectory = entry.isDirectory;
-        g_ContextTarget.type = entry.type;
-        SelectEntry(entry, false);
+    void SetContextTarget(void *context, ContentBrowserState &state, const BrowserEntry &entry) {
+        state.contextTarget.valid = true;
+        state.contextTarget.relativePath = entry.relativePath;
+        state.contextTarget.displayName = entry.displayName;
+        state.contextTarget.fileName = entry.fileName;
+        state.contextTarget.handle = entry.handle;
+        state.contextTarget.isDirectory = entry.isDirectory;
+        state.contextTarget.type = entry.type;
+        SelectEntry(context, state, entry, false);
     }
 
-    void DrawEntryContextMenu() {
-        if (!g_ContextTarget.valid) { return; }
+    void DrawEntryContextMenu(void *context, ContentBrowserState &state) {
+        if (!state.contextTarget.valid) { return; }
         if (ImGui::BeginPopup("EntryContext")) {
             BrowserEntry entry;
-            entry.relativePath = g_ContextTarget.relativePath;
-            entry.displayName = g_ContextTarget.displayName;
-            entry.fileName = g_ContextTarget.fileName;
-            entry.handle = g_ContextTarget.handle;
-            entry.isDirectory = g_ContextTarget.isDirectory;
-            entry.type = g_ContextTarget.type;
+            entry.relativePath = state.contextTarget.relativePath;
+            entry.displayName = state.contextTarget.displayName;
+            entry.fileName = state.contextTarget.fileName;
+            entry.handle = state.contextTarget.handle;
+            entry.isDirectory = state.contextTarget.isDirectory;
+            entry.type = state.contextTarget.type;
 
             if (ImGui::MenuItem("Rename")) {
-                BeginRename(entry);
+                BeginRename(state, entry);
             }
             if (!entry.isDirectory) {
                 if (ImGui::MenuItem("Duplicate")) {
                     if (entry.type == AssetMaterial && !entry.handle.empty()) {
                         char newHandle[64] = {0};
-                        if (MCEEditorDuplicateMaterial(entry.handle.c_str(), newHandle, sizeof(newHandle)) != 0) {
+                        if (MCEEditorDuplicateMaterial(context, entry.handle.c_str(), newHandle, sizeof(newHandle)) != 0) {
                             char newPath[512] = {0};
-                            if (MCEEditorGetAssetPathForHandle(newHandle, newPath, sizeof(newPath)) != 0) {
-                                g_SelectedPath = newPath;
-                                g_SelectedHandle = newHandle;
-                                g_SelectedType = entry.type;
-                                g_SelectedIsDirectory = false;
+                            if (MCEEditorGetAssetPathForHandle(context, newHandle, newPath, sizeof(newPath)) != 0) {
+                                state.selectedPath = newPath;
+                                state.selectedHandle = newHandle;
+                                state.selectedType = entry.type;
+                                state.selectedIsDirectory = false;
                             }
                         } else {
-                            LogAssetError("Duplicate failed.");
+                            LogAssetError(context, "Duplicate failed.");
                         }
                     } else {
                         char newPath[512] = {0};
-                        if (MCEEditorDuplicateAsset(entry.relativePath.c_str(), newPath, sizeof(newPath)) != 0) {
+                        if (MCEEditorDuplicateAsset(context, entry.relativePath.c_str(), newPath, sizeof(newPath)) != 0) {
                             if (newPath[0] != 0) {
-                                g_SelectedPath = newPath;
-                                g_SelectedHandle.clear();
-                                g_SelectedType = entry.type;
-                                g_SelectedIsDirectory = false;
+                                state.selectedPath = newPath;
+                                state.selectedHandle.clear();
+                                state.selectedType = entry.type;
+                                state.selectedIsDirectory = false;
                             }
                         } else {
-                            LogAssetError("Duplicate failed.");
+                            LogAssetError(context, "Duplicate failed.");
                         }
                     }
                 }
             }
             if (ImGui::MenuItem("Delete")) {
-                g_DeletePath = entry.relativePath;
-                g_DeleteLabel = entry.displayName;
-                g_DeleteIsDirectory = entry.isDirectory;
-                g_DeleteType = entry.type;
-                g_DeleteHandle = entry.handle;
-                g_DeletePendingOpen = true;
+                state.deletePath = entry.relativePath;
+                state.deleteLabel = entry.displayName;
+                state.deleteIsDirectory = entry.isDirectory;
+                state.deleteType = entry.type;
+                state.deleteHandle = entry.handle;
+                state.deletePendingOpen = true;
             }
             ImGui::EndPopup();
         }
         if (!ImGui::IsPopupOpen("EntryContext")) {
-            g_ContextTarget.valid = false;
+            state.contextTarget.valid = false;
         }
     }
 }
 
-void ImGuiContentBrowserPanelDraw(bool *isOpen) {
+void ImGuiContentBrowserPanelDraw(void *context, bool *isOpen) {
     if (!isOpen || !*isOpen) { return; }
+    ContentBrowserState &state = GetContentBrowserState(context);
     if (!EditorUI::BeginPanel("Content Browser", isOpen)) {
         EditorUI::EndPanel();
         return;
     }
 
     ImGui::BeginChild("ContentBrowserRoot", ImVec2(0, 0), false, ImGuiWindowFlags_NoScrollbar);
-    RefreshDirectoryCacheIfNeeded();
+    RefreshDirectoryCacheIfNeeded(context, state);
 
-    if (g_HistoryIndex < 0) {
+    if (state.historyIndex < 0) {
         char savedPath[512] = {0};
-        if (MCEEditorGetLastContentBrowserPath(savedPath, sizeof(savedPath)) != 0) {
+        if (MCEEditorGetLastContentBrowserPath(context, savedPath, sizeof(savedPath)) != 0) {
             std::string restored = savedPath;
             if (restored.rfind("Assets/", 0) == 0) {
                 restored = restored.substr(strlen("Assets/"));
             }
-            NavigateTo(restored);
+            NavigateTo(context, state, restored);
         } else {
-            NavigateTo("");
+            NavigateTo(context, state, "");
         }
     }
 
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6, 6));
 
-    bool backDisabled = g_HistoryIndex <= 0;
-    bool forwardDisabled = g_HistoryIndex >= static_cast<int>(g_History.size()) - 1;
+    bool backDisabled = state.historyIndex <= 0;
+    bool forwardDisabled = state.historyIndex >= static_cast<int>(state.history.size()) - 1;
 
     ImGui::BeginDisabled(backDisabled);
     if (ImGui::Button("<")) {
-        g_HistoryIndex = std::max(0, g_HistoryIndex - 1);
-        g_CurrentPath = g_History[g_HistoryIndex];
-        MCEEditorSetLastContentBrowserPath(g_CurrentPath.c_str());
+        state.historyIndex = std::max(0, state.historyIndex - 1);
+        state.currentPath = state.history[state.historyIndex];
+        MCEEditorSetLastContentBrowserPath(context, state.currentPath.c_str());
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
     ImGui::BeginDisabled(forwardDisabled);
     if (ImGui::Button(">")) {
-        g_HistoryIndex = std::min(static_cast<int>(g_History.size()) - 1, g_HistoryIndex + 1);
-        g_CurrentPath = g_History[g_HistoryIndex];
-        MCEEditorSetLastContentBrowserPath(g_CurrentPath.c_str());
+        state.historyIndex = std::min(static_cast<int>(state.history.size()) - 1, state.historyIndex + 1);
+        state.currentPath = state.history[state.historyIndex];
+        MCEEditorSetLastContentBrowserPath(context, state.currentPath.c_str());
     }
     ImGui::EndDisabled();
     ImGui::SameLine();
 
     char rootPath[512] = {0};
-    MCEEditorGetAssetsRootPath(rootPath, sizeof(rootPath));
+    MCEEditorGetAssetsRootPath(context, rootPath, sizeof(rootPath));
     std::string fullPath = std::string(rootPath);
-    if (!g_CurrentPath.empty()) {
-        fullPath += "/" + g_CurrentPath;
+    if (!state.currentPath.empty()) {
+        fullPath += "/" + state.currentPath;
     }
     char pathBuffer[512] = {0};
     strncpy(pathBuffer, fullPath.c_str(), sizeof(pathBuffer) - 1);
@@ -541,40 +496,40 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
 
     ImGui::SameLine();
     ImGui::SetNextItemWidth(180.0f);
-    ImGui::InputTextWithHint("##Search", "Search", g_Search, sizeof(g_Search));
+    ImGui::InputTextWithHint("##Search", "Search", state.search, sizeof(state.search));
 
     ImGui::SameLine();
     const char *sortItems[] = {"Name", "Type", "Modified"};
-    int sortIndex = static_cast<int>(g_Sort);
+    int sortIndex = static_cast<int>(state.sort);
     ImGui::SetNextItemWidth(110.0f);
     if (ImGui::Combo("##Sort", &sortIndex, sortItems, IM_ARRAYSIZE(sortItems))) {
-        g_Sort = static_cast<SortMode>(sortIndex);
+        state.sort = static_cast<SortMode>(sortIndex);
     }
     ImGui::SameLine();
-    if (ImGui::Button(g_SortAscending ? "Asc" : "Desc")) {
-        g_SortAscending = !g_SortAscending;
+    if (ImGui::Button(state.sortAscending ? "Asc" : "Desc")) {
+        state.sortAscending = !state.sortAscending;
     }
 
     ImGui::Separator();
 
     ImGui::BeginChild("Breadcrumbs", ImVec2(0, 28), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     if (ImGui::Button("Assets")) {
-        NavigateTo("");
+        NavigateTo(context, state, "");
     }
-    if (!g_CurrentPath.empty()) {
+    if (!state.currentPath.empty()) {
         std::string accumulated;
         size_t start = 0;
-        while (start < g_CurrentPath.size()) {
-            size_t slash = g_CurrentPath.find('/', start);
+        while (start < state.currentPath.size()) {
+            size_t slash = state.currentPath.find('/', start);
             std::string segment = (slash == std::string::npos)
-                ? g_CurrentPath.substr(start)
-                : g_CurrentPath.substr(start, slash - start);
+                ? state.currentPath.substr(start)
+                : state.currentPath.substr(start, slash - start);
             accumulated = accumulated.empty() ? segment : accumulated + "/" + segment;
             ImGui::SameLine();
             ImGui::TextUnformatted("/");
             ImGui::SameLine();
             if (ImGui::Button(segment.c_str())) {
-                NavigateTo(accumulated);
+                NavigateTo(context, state, accumulated);
             }
             if (slash == std::string::npos) { break; }
             start = slash + 1;
@@ -589,13 +544,13 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
         ImGui::TableNextRow();
         ImGui::TableSetColumnIndex(0);
         ImGui::BeginChild("DirectoryTree", ImVec2(0, 0), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
-        DrawDirectoryTree("", "Assets");
+        DrawDirectoryTree(context, state, "", "Assets");
         ImGui::EndChild();
 
         ImGui::TableSetColumnIndex(1);
         ImGui::BeginChild("ContentGrid", ImVec2(0, 0), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
-        const auto &entries = GetFilteredEntries();
+        const auto &entries = GetFilteredEntries(context, state);
 
         const float thumbnailSize = 64.0f;
         const float tilePadding = 8.0f;
@@ -629,21 +584,21 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
 
                         ImVec2 iconSize(thumbnailSize, thumbnailSize);
                         ImVec2 tileSize(tileWidth, tileHeight);
-                        const bool isSelected = (g_SelectedPath == entry.relativePath);
+                        const bool isSelected = (state.selectedPath == entry.relativePath);
 
                         ImGui::InvisibleButton("##Entry", tileSize);
                         const bool hovered = ImGui::IsItemHovered();
                         if (hovered && ImGui::IsMouseClicked(0)) {
-                            SelectEntry(entry, true);
+                            SelectEntry(context, state, entry, true);
                         }
                         if (hovered && ImGui::IsMouseClicked(1)) {
-                            SelectEntry(entry, false);
+                            SelectEntry(context, state, entry, false);
                         }
 
                         BeginAssetDragPayload(entry);
                         if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-                            SetContextTarget(entry);
-                            g_OpenContextMenu = true;
+                            SetContextTarget(context, state, entry);
+                            state.openContextMenu = true;
                         }
 
                         ImVec2 itemMin = ImGui::GetItemRectMin();
@@ -661,36 +616,36 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
                         ImVec2 textPos(itemMin.x + tilePadding, itemMin.y + tilePadding + iconSize.y + 6.0f);
                         float textAreaWidth = tileWidth - tilePadding * 2.0f;
                         float textAreaHeight = labelHeight;
-                        const bool isRenaming = g_RenameActive && g_RenamePath == entry.relativePath;
+                        const bool isRenaming = state.renameActive && state.renamePath == entry.relativePath;
                         if (isRenaming) {
                             ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 3.0f));
                             float inputHeight = ImGui::GetFrameHeight();
                             ImVec2 inputPos(textPos.x, textPos.y - (inputHeight - textLineHeight) * 0.5f);
                             ImGui::SetCursorScreenPos(inputPos);
                             ImGui::PushItemWidth(textAreaWidth);
-                            if (g_RenameFocusNext) {
+                            if (state.renameFocusNext) {
                                 ImGui::SetKeyboardFocusHere();
-                                g_RenameFocusNext = false;
+                                state.renameFocusNext = false;
                             }
-                            bool committed = ImGui::InputText("##RenameInput", g_RenameBuffer, sizeof(g_RenameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
+                            bool committed = ImGui::InputText("##RenameInput", state.renameBuffer, sizeof(state.renameBuffer), ImGuiInputTextFlags_EnterReturnsTrue);
                             ImGui::PopItemWidth();
                             ImGui::PopStyleVar();
                             if (ImGui::IsItemActive() && ImGui::IsKeyPressed(ImGuiKey_Escape)) {
-                                CancelRename();
+                                CancelRename(state);
                             } else if (!ImGui::IsItemActive() && ImGui::IsMouseClicked(0)) {
-                                CancelRename();
+                                CancelRename(state);
                             } else if (committed) {
                                 char newPath[512] = {0};
-                                if (MCEEditorRenameAsset(entry.relativePath.c_str(), g_RenameBuffer, newPath, sizeof(newPath)) != 0) {
+                                if (MCEEditorRenameAsset(context, entry.relativePath.c_str(), state.renameBuffer, newPath, sizeof(newPath)) != 0) {
                                     std::string resolvedPath = newPath[0] != 0 ? std::string(newPath) : entry.relativePath;
-                                    g_SelectedPath = resolvedPath;
-                                    g_SelectedHandle = entry.handle;
-                                    g_SelectedType = entry.type;
-                                    g_SelectedIsDirectory = entry.isDirectory;
+                                    state.selectedPath = resolvedPath;
+                                    state.selectedHandle = entry.handle;
+                                    state.selectedType = entry.type;
+                                    state.selectedIsDirectory = entry.isDirectory;
                                 } else {
-                                    LogAssetError("Rename failed.");
+                                    LogAssetError(context, "Rename failed.");
                                 }
-                                CancelRename();
+                                CancelRename(state);
                             }
                         } else {
                             std::string label = TruncateLabelToWidth(entry.displayName, textAreaWidth);
@@ -705,24 +660,24 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
                             ImGui::InvisibleButton("##RenameClick", ImVec2(textAreaWidth, textAreaHeight));
                             BeginAssetDragPayload(entry);
                             if (ImGui::IsItemClicked(ImGuiMouseButton_Right)) {
-                                SetContextTarget(entry);
-                                g_OpenContextMenu = true;
+                                SetContextTarget(context, state, entry);
+                                state.openContextMenu = true;
                             }
                             if (ImGui::IsItemClicked(0)) {
                                 if (!isSelected) {
-                                    SelectEntry(entry, false);
+                                    SelectEntry(context, state, entry, false);
                                 }
-                                BeginRename(entry);
+                                BeginRename(state, entry);
                             }
                         }
 
                         if (!isRenaming && hovered && ImGui::IsMouseDoubleClicked(0)) {
                             if (entry.isDirectory) {
-                                NavigateTo(entry.relativePath);
+                                NavigateTo(context, state, entry.relativePath);
                             } else if (entry.type == AssetScene) {
-                                MCEEditorOpenSceneAtPath(entry.relativePath.c_str());
+                                MCEEditorOpenSceneAtPath(context, entry.relativePath.c_str());
                             } else if (entry.type == AssetMaterial) {
-                                MCEEditorOpenMaterialEditor(entry.handle.c_str());
+                                MCEEditorOpenMaterialEditor(context, entry.handle.c_str());
                             }
                         }
 
@@ -733,80 +688,80 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
             ImGui::EndTable();
         }
 
-        if (g_OpenContextMenu) {
+        if (state.openContextMenu) {
             ImGui::OpenPopup("EntryContext");
-            g_OpenContextMenu = false;
+            state.openContextMenu = false;
         }
-        DrawEntryContextMenu();
+        DrawEntryContextMenu(context, state);
 
         if (!ImGui::IsPopupOpen("EntryContext") &&
             ImGui::BeginPopupContextWindow("ContentGridContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
             if (ImGui::BeginMenu("Create")) {
                 if (ImGui::MenuItem("Folder")) {
-                    const auto &entries = GetDirectoryEntries(g_CurrentPath);
+                    const auto &entries = GetDirectoryEntries(context, state, state.currentPath);
                     const std::string uniqueName = MakeUniqueName(entries, "New Folder", true, "");
-                    if (MCEEditorCreateFolder(g_CurrentPath.empty() ? nullptr : g_CurrentPath.c_str(), uniqueName.c_str()) == 0) {
-                        LogAssetError("Failed to create folder.");
+                    if (MCEEditorCreateFolder(context, state.currentPath.empty() ? nullptr : state.currentPath.c_str(), uniqueName.c_str()) == 0) {
+                        LogAssetError(context, "Failed to create folder.");
                     } else {
-                        g_SelectedPath = g_CurrentPath.empty() ? uniqueName : g_CurrentPath + "/" + uniqueName;
-                        g_SelectedHandle.clear();
-                        g_SelectedType = AssetUnknown;
-                        g_SelectedIsDirectory = true;
+                        state.selectedPath = state.currentPath.empty() ? uniqueName : state.currentPath + "/" + uniqueName;
+                        state.selectedHandle.clear();
+                        state.selectedType = AssetUnknown;
+                        state.selectedIsDirectory = true;
                     }
                 }
                 if (ImGui::MenuItem("Material")) {
-                    const std::string targetPath = g_CurrentPath.empty() ? "Materials" : g_CurrentPath;
-                    const auto &entries = GetDirectoryEntries(targetPath);
+                    const std::string targetPath = state.currentPath.empty() ? "Materials" : state.currentPath;
+                    const auto &entries = GetDirectoryEntries(context, state, targetPath);
                     const std::string uniqueName = MakeUniqueName(entries, "NewMaterial", false, "mcmat");
                     char outHandle[64] = {0};
-                    if (MCEEditorCreateMaterial(targetPath.c_str(), uniqueName.c_str(), outHandle, sizeof(outHandle)) == 0) {
-                        LogAssetError("Failed to create material.");
+                    if (MCEEditorCreateMaterial(context, targetPath.c_str(), uniqueName.c_str(), outHandle, sizeof(outHandle)) == 0) {
+                        LogAssetError(context, "Failed to create material.");
                     } else {
-                        if (g_CurrentPath.empty()) {
-                            NavigateTo(targetPath);
+                        if (state.currentPath.empty()) {
+                            NavigateTo(context, state, targetPath);
                         }
-                        g_SelectedPath = targetPath + "/" + uniqueName + ".mcmat";
-                        g_SelectedHandle = outHandle;
-                        g_SelectedType = AssetMaterial;
-                        g_SelectedIsDirectory = false;
+                        state.selectedPath = targetPath + "/" + uniqueName + ".mcmat";
+                        state.selectedHandle = outHandle;
+                        state.selectedType = AssetMaterial;
+                        state.selectedIsDirectory = false;
                     }
                 }
                 if (ImGui::MenuItem("Scene")) {
-                    const std::string targetPath = g_CurrentPath.empty() ? "Scenes" : g_CurrentPath;
-                    const auto &entries = GetDirectoryEntries(targetPath);
+                    const std::string targetPath = state.currentPath.empty() ? "Scenes" : state.currentPath;
+                    const auto &entries = GetDirectoryEntries(context, state, targetPath);
                     const std::string uniqueName = MakeUniqueName(entries, "NewScene", false, "mcscene");
-                    if (MCEEditorCreateScene(targetPath.c_str(), uniqueName.c_str()) == 0) {
-                        LogAssetError("Failed to create scene.");
+                    if (MCEEditorCreateScene(context, targetPath.c_str(), uniqueName.c_str()) == 0) {
+                        LogAssetError(context, "Failed to create scene.");
                     } else {
-                        if (g_CurrentPath.empty()) {
-                            NavigateTo(targetPath);
+                        if (state.currentPath.empty()) {
+                            NavigateTo(context, state, targetPath);
                         }
-                        g_SelectedPath = targetPath + "/" + uniqueName + ".mcscene";
-                        g_SelectedHandle.clear();
-                        g_SelectedType = AssetScene;
-                        g_SelectedIsDirectory = false;
+                        state.selectedPath = targetPath + "/" + uniqueName + ".mcscene";
+                        state.selectedHandle.clear();
+                        state.selectedType = AssetScene;
+                        state.selectedIsDirectory = false;
                     }
                 }
                 if (ImGui::MenuItem("Prefab")) {
-                    const std::string targetPath = g_CurrentPath.empty() ? "Prefabs" : g_CurrentPath;
-                    const auto &entries = GetDirectoryEntries(targetPath);
+                    const std::string targetPath = state.currentPath.empty() ? "Prefabs" : state.currentPath;
+                    const auto &entries = GetDirectoryEntries(context, state, targetPath);
                     const std::string uniqueName = MakeUniqueName(entries, "NewPrefab", false, "prefab");
-                    if (MCEEditorCreatePrefab(targetPath.c_str(), uniqueName.c_str()) == 0) {
-                        LogAssetError("Failed to create prefab.");
+                    if (MCEEditorCreatePrefab(context, targetPath.c_str(), uniqueName.c_str()) == 0) {
+                        LogAssetError(context, "Failed to create prefab.");
                     } else {
-                        if (g_CurrentPath.empty()) {
-                            NavigateTo(targetPath);
+                        if (state.currentPath.empty()) {
+                            NavigateTo(context, state, targetPath);
                         }
-                        g_SelectedPath = targetPath + "/" + uniqueName + ".prefab";
-                        g_SelectedHandle.clear();
-                        g_SelectedType = AssetPrefab;
-                        g_SelectedIsDirectory = false;
+                        state.selectedPath = targetPath + "/" + uniqueName + ".prefab";
+                        state.selectedHandle.clear();
+                        state.selectedType = AssetPrefab;
+                        state.selectedIsDirectory = false;
                     }
                 }
                 ImGui::EndMenu();
             }
             if (ImGui::MenuItem("Refresh")) {
-                MCEEditorRefreshAssets();
+                MCEEditorRefreshAssets(context);
             }
             ImGui::EndPopup();
         }
@@ -816,45 +771,45 @@ void ImGuiContentBrowserPanelDraw(bool *isOpen) {
     }
 
     std::string deleteMessage;
-    if (!g_DeleteLabel.empty()) {
-        if (g_DeleteIsDirectory) {
-            deleteMessage = "Delete folder \"" + g_DeleteLabel + "\" and all contents?";
+    if (!state.deleteLabel.empty()) {
+        if (state.deleteIsDirectory) {
+            deleteMessage = "Delete folder \"" + state.deleteLabel + "\" and all contents?";
         } else {
-            deleteMessage = "Delete \"" + g_DeleteLabel + "\"?";
+            deleteMessage = "Delete \"" + state.deleteLabel + "\"?";
         }
     }
 
-    EditorUI::ConfirmModal("Confirm Delete", &g_DeletePendingOpen, deleteMessage.c_str(), "Delete", "Cancel", [&]() {
+    EditorUI::ConfirmModal("Confirm Delete", &state.deletePendingOpen, deleteMessage.c_str(), "Delete", "Cancel", [&]() {
         bool deleted = false;
-        if (!g_DeletePath.empty()) {
-            if (g_DeleteType == AssetMaterial && !g_DeleteHandle.empty()) {
-                deleted = MCEEditorDeleteMaterial(g_DeleteHandle.c_str()) != 0;
+        if (!state.deletePath.empty()) {
+            if (state.deleteType == AssetMaterial && !state.deleteHandle.empty()) {
+                deleted = MCEEditorDeleteMaterial(context, state.deleteHandle.c_str()) != 0;
                 if (!deleted) {
-                    deleted = MCEEditorDeleteAsset(g_DeletePath.c_str()) != 0;
+                    deleted = MCEEditorDeleteAsset(context, state.deletePath.c_str()) != 0;
                 }
             } else {
-                deleted = MCEEditorDeleteAsset(g_DeletePath.c_str()) != 0;
+                deleted = MCEEditorDeleteAsset(context, state.deletePath.c_str()) != 0;
             }
         }
         if (deleted) {
-            if (g_DeleteType == AssetMaterial && !g_DeletePath.empty()) {
-                std::string message = "Deleted material: " + g_DeletePath;
-                MCEEditorLogMessage(1, 3, message.c_str());
+            if (state.deleteType == AssetMaterial && !state.deletePath.empty()) {
+                std::string message = "Deleted material: " + state.deletePath;
+                MCEEditorLogMessage(context, 1, 3, message.c_str());
             }
-            if (g_SelectedPath == g_DeletePath) {
-                g_SelectedPath.clear();
-                g_SelectedHandle.clear();
-                g_SelectedType = AssetUnknown;
-                g_SelectedIsDirectory = false;
+            if (state.selectedPath == state.deletePath) {
+                state.selectedPath.clear();
+                state.selectedHandle.clear();
+                state.selectedType = AssetUnknown;
+                state.selectedIsDirectory = false;
             }
         } else {
-            LogAssetError("Delete failed.");
+            LogAssetError(context, "Delete failed.");
         }
-        g_DeletePath.clear();
-        g_DeleteLabel.clear();
-        g_DeleteIsDirectory = false;
-        g_DeleteType = AssetUnknown;
-        g_DeleteHandle.clear();
+        state.deletePath.clear();
+        state.deleteLabel.clear();
+        state.deleteIsDirectory = false;
+        state.deleteType = AssetUnknown;
+        state.deleteHandle.clear();
     });
 
     ImGui::PopStyleVar();

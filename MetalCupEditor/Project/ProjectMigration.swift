@@ -28,18 +28,24 @@ enum ProjectMigration {
         let document: ProjectDocument
     }
 
-    static func migrateRecentProjects(_ paths: [String], projectsRoot: URL) -> [String] {
+    static func migrateRecentProjects(_ paths: [String],
+                                      projectsRoot: URL,
+                                      logCenter: EditorLogCenter,
+                                      alertCenter: EditorAlertCenter) -> [String] {
         var updated: [String] = []
         for path in paths {
             let url = URL(fileURLWithPath: path)
             guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            let migrated = migrateProjectIfNeeded(url: url, projectsRoot: projectsRoot) ?? url
+            let migrated = migrateProjectIfNeeded(url: url, projectsRoot: projectsRoot, logCenter: logCenter, alertCenter: alertCenter) ?? url
             updated.append(migrated.path)
         }
         return updated
     }
 
-    static func migrateProjectIfNeeded(url: URL, projectsRoot: URL) -> URL? {
+    static func migrateProjectIfNeeded(url: URL,
+                                       projectsRoot: URL,
+                                       logCenter: EditorLogCenter,
+                                       alertCenter: EditorAlertCenter) -> URL? {
         let standardized = url.standardizedFileURL
         let projectsRootPath = projectsRoot.standardizedFileURL.path
 
@@ -51,7 +57,7 @@ enum ProjectMigration {
         let projectName = standardized.deletingPathExtension().lastPathComponent
         let destinationFolder = uniqueDestination(for: projectsRoot.appendingPathComponent(projectName, isDirectory: true))
 
-        if moveOrCopyItem(from: sourceFolder, to: destinationFolder) == false {
+        if moveOrCopyItem(from: sourceFolder, to: destinationFolder, alertCenter: alertCenter) == false {
             return standardized
         }
 
@@ -65,14 +71,22 @@ enum ProjectMigration {
 
         if let data = try? Data(contentsOf: migratedURL),
            let document = try? JSONDecoder().decode(ProjectDocument.self, from: data) {
-            let normalized = migrateDocumentIfNeeded(document, projectURL: migratedURL, projectsRoot: projectsRoot)
-            _ = saveProject(normalized, to: migratedURL)
+            let normalized = migrateDocumentIfNeeded(document,
+                                                     projectURL: migratedURL,
+                                                     projectsRoot: projectsRoot,
+                                                     logCenter: logCenter,
+                                                     alertCenter: alertCenter)
+            _ = saveProject(normalized, to: migratedURL, alertCenter: alertCenter)
         }
 
         return migratedURL
     }
 
-    static func migrateDocumentIfNeeded(_ project: ProjectDocument, projectURL: URL, projectsRoot: URL) -> ProjectDocument {
+    static func migrateDocumentIfNeeded(_ project: ProjectDocument,
+                                        projectURL: URL,
+                                        projectsRoot: URL,
+                                        logCenter: EditorLogCenter,
+                                        alertCenter: EditorAlertCenter) -> ProjectDocument {
         var updated = project
         let projectRoot = projectURL.deletingLastPathComponent().standardizedFileURL
         if updated.rootPath.isEmpty || updated.rootPath == "." || isAbsolutePath(updated.rootPath) {
@@ -98,15 +112,18 @@ enum ProjectMigration {
             }
         }
 
-        migrateLooseAssetsIfNeeded(projectRoot: projectRoot)
-        migrateNestedAssetsIfNeeded(projectRoot: projectRoot)
-        migrateScenesToAssetsIfNeeded(projectRoot: projectRoot, project: &updated)
+        migrateLooseAssetsIfNeeded(projectRoot: projectRoot, logCenter: logCenter, alertCenter: alertCenter)
+        migrateNestedAssetsIfNeeded(projectRoot: projectRoot, logCenter: logCenter, alertCenter: alertCenter)
+        migrateScenesToAssetsIfNeeded(projectRoot: projectRoot, project: &updated, logCenter: logCenter, alertCenter: alertCenter)
 
         updated.schemaVersion = ProjectSchema.currentVersion
         return updated
     }
 
-    private static func migrateScenesToAssetsIfNeeded(projectRoot: URL, project: inout ProjectDocument) {
+    private static func migrateScenesToAssetsIfNeeded(projectRoot: URL,
+                                                      project: inout ProjectDocument,
+                                                      logCenter: EditorLogCenter,
+                                                      alertCenter: EditorAlertCenter) {
         let desiredScenesRel = "Assets/Scenes"
         let currentScenesRel = project.scenesDirectory.isEmpty ? "Scenes" : project.scenesDirectory
         if currentScenesRel == desiredScenesRel {
@@ -130,7 +147,7 @@ enum ProjectMigration {
                     guard let relative = PathUtils.relativePath(from: legacyURL, to: url) else { continue }
                     let destination = targetURL.appendingPathComponent(relative)
                     PathUtils.ensureDirectoryExists(destination.deletingLastPathComponent())
-                    if moveOrCopyItem(from: url, to: destination) {
+                    if moveOrCopyItem(from: url, to: destination, alertCenter: alertCenter) {
                         didMove = true
                     }
                 }
@@ -146,11 +163,13 @@ enum ProjectMigration {
         }
 
         if didMove {
-            print("PROJECT_MIGRATION::Scenes -> Assets/Scenes")
+            logCenter.logInfo("Project migration: Scenes -> Assets/Scenes", category: .project)
         }
     }
 
-    private static func migrateLooseAssetsIfNeeded(projectRoot: URL) {
+    private static func migrateLooseAssetsIfNeeded(projectRoot: URL,
+                                                   logCenter: EditorLogCenter,
+                                                   alertCenter: EditorAlertCenter) {
         let assetsRoot = projectRoot.appendingPathComponent("Assets", isDirectory: true)
         if !FileManager.default.fileExists(atPath: assetsRoot.path) {
             PathUtils.ensureDirectoryExists(assetsRoot)
@@ -168,13 +187,18 @@ enum ProjectMigration {
             if name.hasPrefix(".") { continue }
 
             let destination = uniqueDestination(for: assetsRoot.appendingPathComponent(name, isDirectory: item.hasDirectoryPath))
-            if moveOrCopyItem(from: item, to: destination) {
-                print("PROJECT_MIGRATION::Moved \(name) -> Assets/\(destination.lastPathComponent)")
+            if moveOrCopyItem(from: item, to: destination, alertCenter: alertCenter) {
+                logCenter.logInfo(
+                    "Project migration moved \(name) -> Assets/\(destination.lastPathComponent)",
+                    category: .project
+                )
             }
         }
     }
 
-    private static func migrateNestedAssetsIfNeeded(projectRoot: URL) {
+    private static func migrateNestedAssetsIfNeeded(projectRoot: URL,
+                                                    logCenter: EditorLogCenter,
+                                                    alertCenter: EditorAlertCenter) {
         let assetsRoot = projectRoot.appendingPathComponent("Assets", isDirectory: true)
         let nestedRoot = assetsRoot.appendingPathComponent("Assets", isDirectory: true)
         guard FileManager.default.fileExists(atPath: nestedRoot.path) else { return }
@@ -187,12 +211,12 @@ enum ProjectMigration {
         for item in contents {
             let destination = assetsRoot.appendingPathComponent(item.lastPathComponent, isDirectory: item.hasDirectoryPath)
             if FileManager.default.fileExists(atPath: destination.path) {
-                EditorLogCenter.shared.logWarning("Assets repair skipped existing item: \(item.lastPathComponent)", category: .assets)
+                logCenter.logWarning("Assets repair skipped existing item: \(item.lastPathComponent)", category: .assets)
                 continue
             }
-            if moveOrCopyItem(from: item, to: destination) {
+            if moveOrCopyItem(from: item, to: destination, alertCenter: alertCenter) {
                 movedAny = true
-                EditorLogCenter.shared.logInfo("Assets repair moved: Assets/Assets/\(item.lastPathComponent) -> Assets/\(item.lastPathComponent)", category: .assets)
+                logCenter.logInfo("Assets repair moved: Assets/Assets/\(item.lastPathComponent) -> Assets/\(item.lastPathComponent)", category: .assets)
             }
         }
 
@@ -204,7 +228,7 @@ enum ProjectMigration {
         }
     }
 
-    private static func moveOrCopyItem(from source: URL, to destination: URL) -> Bool {
+    private static func moveOrCopyItem(from source: URL, to destination: URL, alertCenter: EditorAlertCenter) -> Bool {
         do {
             try FileManager.default.moveItem(at: source, to: destination)
             return true
@@ -213,7 +237,7 @@ enum ProjectMigration {
                 try FileManager.default.copyItem(at: source, to: destination)
                 return true
             } catch {
-                EditorAlertCenter.shared.enqueueError("Failed to migrate item: \(error.localizedDescription)")
+                alertCenter.enqueueError("Failed to migrate item: \(error.localizedDescription)")
                 return false
             }
         }
@@ -237,7 +261,7 @@ enum ProjectMigration {
         return path.hasPrefix("/")
     }
 
-    private static func saveProject(_ project: ProjectDocument, to url: URL) -> Bool {
+    private static func saveProject(_ project: ProjectDocument, to url: URL, alertCenter: EditorAlertCenter) -> Bool {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         do {
@@ -245,7 +269,7 @@ enum ProjectMigration {
             try data.write(to: url, options: [.atomic])
             return true
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to save project: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to save project: \(error.localizedDescription)")
             return false
         }
     }

@@ -6,80 +6,101 @@ import Foundation
 import MetalCupEngine
 
 enum AssetOps {
-    private static func performAssetMutation(_ operation: () -> Bool) -> Bool {
-        EditorProjectManager.shared.performAssetMutation { operation() }
+    private static func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
+        guard let contextPtr else { return nil }
+        return Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
     }
 
-    static func createFolder(relativePath: String?, name: String?) -> Bool {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return false }
+    private static func performAssetMutation(_ projectManager: EditorProjectManager, _ operation: () -> Bool) -> Bool {
+        projectManager.performAssetMutation { operation() }
+    }
+
+    static func createFolder(context: UnsafeRawPointer?, relativePath: String?, name: String?) -> Bool {
+        guard let context = resolveContext(context) else { return false }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL() else { return false }
         let rel = relativePath ?? ""
         let folderName = name ?? "New Folder"
         guard let targetParent = resolveDirectoryURL(rootURL: rootURL, relativePath: rel) else { return false }
         let targetURL = targetParent.appendingPathComponent(folderName, isDirectory: true)
-        let ok = performAssetMutation {
+        let ok = performAssetMutation(projectManager) {
             do {
                 try FileManager.default.createDirectory(at: targetURL, withIntermediateDirectories: true)
                 return true
             } catch {
-                EditorAlertCenter.shared.enqueueError("Failed to create folder: \(error.localizedDescription)")
+                alertCenter.enqueueError("Failed to create folder: \(error.localizedDescription)")
                 return false
             }
         }
         if ok {
-            EditorLogCenter.shared.logInfo("Created folder: \(folderName)", category: .assets)
+            logCenter.logInfo("Created folder: \(folderName)", category: .assets)
         }
         return ok
     }
 
-    static func createScene(relativePath: String?, name: String?) -> Bool {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return false }
+    static func createScene(context: UnsafeRawPointer?, relativePath: String?, name: String?) -> Bool {
+        guard let context = resolveContext(context) else { return false }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL() else { return false }
         let rel = relativePath ?? ""
         let sceneName = name ?? "Untitled"
         guard let folderURL = resolveDirectoryURL(rootURL: rootURL, relativePath: rel) else { return false }
         let targetURL = folderURL.appendingPathComponent("\(sceneName).mcscene")
         let document = SceneDocument(id: UUID(), name: sceneName, entities: [])
         let scene = SerializedScene(document: document)
-        let ok = performAssetMutation {
+        let ok = performAssetMutation(projectManager) {
             do {
                 try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
                 try SceneSerializer.save(scene: scene, to: targetURL)
                 return true
             } catch {
-                EditorAlertCenter.shared.enqueueError("Failed to create scene: \(error.localizedDescription)")
+                alertCenter.enqueueError("Failed to create scene: \(error.localizedDescription)")
                 return false
             }
         }
         if ok {
-            EditorLogCenter.shared.logInfo("Created scene: \(sceneName)", category: .scene)
+            logCenter.logInfo("Created scene: \(sceneName)", category: .scene)
         }
         return ok
     }
 
-    static func createPrefab(relativePath: String?, name: String?) -> Bool {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return false }
+    static func createPrefab(context: UnsafeRawPointer?, relativePath: String?, name: String?) -> Bool {
+        guard let context = resolveContext(context) else { return false }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL() else { return false }
         let rel = (relativePath == nil || relativePath?.isEmpty == true) ? "Prefabs" : (relativePath ?? "")
         let prefabName = name ?? "Prefab"
         guard let folderURL = resolveDirectoryURL(rootURL: rootURL, relativePath: rel) else { return false }
         let targetURL = folderURL.appendingPathComponent("\(prefabName).prefab")
         let prefab = PrefabDocument(name: prefabName, entities: [])
-        let ok = performAssetMutation {
+        let ok = performAssetMutation(projectManager) {
             do {
                 try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
                 try PrefabSerializer.save(prefab: prefab, to: targetURL)
                 return true
             } catch {
-                EditorAlertCenter.shared.enqueueError("Failed to create prefab: \(error.localizedDescription)")
+                alertCenter.enqueueError("Failed to create prefab: \(error.localizedDescription)")
                 return false
             }
         }
         if ok {
-            EditorLogCenter.shared.logInfo("Created prefab: \(prefabName)", category: .assets)
+            logCenter.logInfo("Created prefab: \(prefabName)", category: .assets)
         }
         return ok
     }
 
-    static func createPrefab(prefab: PrefabDocument, relativePath: String?, name: String?) -> String? {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return nil }
+    static func createPrefab(context: UnsafeRawPointer?, prefab: PrefabDocument, relativePath: String?, name: String?) -> String? {
+        guard let context = resolveContext(context) else { return nil }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL() else { return nil }
         let rel = (relativePath == nil || relativePath?.isEmpty == true) ? "Prefabs" : (relativePath ?? "")
         let baseName = sanitizeName(name ?? prefab.name).isEmpty ? "Prefab" : sanitizeName(name ?? prefab.name)
         guard let folderURL = resolveDirectoryURL(rootURL: rootURL, relativePath: rel) else { return nil }
@@ -87,25 +108,29 @@ enum AssetOps {
         var finalPrefab = prefab
         finalPrefab.name = targetURL.deletingPathExtension().lastPathComponent
         var createdPath: String?
-        let ok = performAssetMutation {
+        let ok = performAssetMutation(projectManager) {
             do {
                 try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
                 try PrefabSerializer.save(prefab: finalPrefab, to: targetURL)
                 createdPath = PathUtils.relativePath(from: rootURL, to: targetURL)
                 return true
             } catch {
-                EditorAlertCenter.shared.enqueueError("Failed to create prefab: \(error.localizedDescription)")
+                alertCenter.enqueueError("Failed to create prefab: \(error.localizedDescription)")
                 return false
             }
         }
         if ok {
-            EditorLogCenter.shared.logInfo("Created prefab: \(finalPrefab.name)", category: .assets)
+            logCenter.logInfo("Created prefab: \(finalPrefab.name)", category: .assets)
         }
         return ok ? createdPath : nil
     }
 
-    static func createMaterial(named name: String, relativePath: String? = nil) -> AssetHandle? {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return nil }
+    static func createMaterial(context: UnsafeRawPointer?, named name: String, relativePath: String? = nil) -> AssetHandle? {
+        guard let context = resolveContext(context) else { return nil }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL() else { return nil }
         var rel = relativePath?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if rel.hasPrefix("Assets/") {
             rel = String(rel.dropFirst("Assets/".count))
@@ -116,7 +141,7 @@ enum AssetOps {
         do {
             try FileManager.default.createDirectory(at: materialsFolder, withIntermediateDirectories: true)
         } catch {
-            EditorAlertCenter.shared.enqueueError("Failed to create material folder: \(error.localizedDescription)")
+            alertCenter.enqueueError("Failed to create material folder: \(error.localizedDescription)")
             return nil
         }
 
@@ -124,37 +149,41 @@ enum AssetOps {
         let materialURL = uniqueFileURL(folder: materialsFolder, baseName: baseName, fileExtension: "mcmat")
         let handle = AssetHandle()
         let material = MaterialAsset.default(handle: handle, name: baseName)
-        let ok = performAssetMutation {
+        let ok = performAssetMutation(projectManager) {
             if !MaterialSerializer.save(material, to: materialURL) {
-                EditorAlertCenter.shared.enqueueError("Failed to save material file.")
+                alertCenter.enqueueError("Failed to save material file.")
                 return false
             }
-            registerMaterialMetadata(handle: handle, materialURL: materialURL, rootURL: rootURL)
+            registerMaterialMetadata(projectManager: projectManager, handle: handle, materialURL: materialURL, rootURL: rootURL)
             return true
         }
         if ok {
-            EditorLogCenter.shared.logInfo("Saved material: \(baseName)", category: .assets)
+            logCenter.logInfo("Saved material: \(baseName)", category: .assets)
         }
         return ok ? handle : nil
     }
 
-    static func renameMaterial(handle: AssetHandle, newName: String) -> Bool {
+    static func renameMaterial(context: UnsafeRawPointer?, handle: AssetHandle, newName: String) -> Bool {
+        guard let context = resolveContext(context) else { return false }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.editorLogCenter
         let sanitized = sanitizeName(newName)
         guard !sanitized.isEmpty else { return false }
-        guard let rootURL = EditorProjectManager.shared.assetRootURL(),
-              let metadata = metadata(for: handle),
-              let assetURL = EditorProjectManager.shared.assetURL(for: handle) else { return false }
+        guard let rootURL = projectManager.assetRootURL(),
+              let metadata = metadata(projectManager: projectManager, for: handle),
+              let assetURL = projectManager.assetURL(for: handle) else { return false }
         guard isProjectAssetURL(assetURL, rootURL: rootURL) else {
-            EditorAlertCenter.shared.enqueueError("Shared Assets are read-only.")
+            alertCenter.enqueueError("Shared Assets are read-only.")
             return false
         }
 
         let newURL = uniqueFileURL(folder: assetURL.deletingLastPathComponent(), baseName: sanitized, fileExtension: "mcmat")
-        let ok = performAssetMutation {
+        let ok = performAssetMutation(projectManager) {
             do {
                 try FileManager.default.moveItem(at: assetURL, to: newURL)
             } catch {
-                EditorAlertCenter.shared.enqueueError("Failed to rename material: \(error.localizedDescription)")
+                alertCenter.enqueueError("Failed to rename material: \(error.localizedDescription)")
                 return false
             }
 
@@ -164,9 +193,9 @@ enum AssetOps {
                 _ = MaterialSerializer.save(updated, to: newURL)
             }
 
-            let oldMetaURL = EditorProjectManager.shared.metaURLForAsset(assetURL: assetURL, relativePath: metadata.sourcePath)
+            let oldMetaURL = projectManager.metaURLForAsset(assetURL: assetURL, relativePath: metadata.sourcePath)
             let newRelativePath = newURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
-            let newMetaURL = EditorProjectManager.shared.metaURLForAsset(assetURL: newURL, relativePath: newRelativePath)
+            let newMetaURL = projectManager.metaURLForAsset(assetURL: newURL, relativePath: newRelativePath)
             if let oldMetaURL, let newMetaURL, FileManager.default.fileExists(atPath: oldMetaURL.path) {
                 try? FileManager.default.moveItem(at: oldMetaURL, to: newMetaURL)
             }
@@ -180,22 +209,26 @@ enum AssetOps {
                     dependencies: metadata.dependencies,
                     lastModified: Date().timeIntervalSince1970
                 )
-                EditorProjectManager.shared.saveMetadata(updatedMeta, to: newMetaURL)
+                projectManager.saveMetadata(updatedMeta, to: newMetaURL)
             }
             return true
         }
 
         if ok {
-            EditorLogCenter.shared.logInfo("Renamed material to: \(sanitized)", category: .assets)
+            logCenter.logInfo("Renamed material to: \(sanitized)", category: .assets)
         }
         return ok
     }
 
-    static func duplicateMaterial(handle: AssetHandle) -> AssetHandle? {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL(),
-              let assetURL = EditorProjectManager.shared.assetURL(for: handle) else { return nil }
+    static func duplicateMaterial(context: UnsafeRawPointer?, handle: AssetHandle) -> AssetHandle? {
+        guard let context = resolveContext(context) else { return nil }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL(),
+              let assetURL = projectManager.assetURL(for: handle) else { return nil }
         guard isProjectAssetURL(assetURL, rootURL: rootURL) else {
-            EditorAlertCenter.shared.enqueueError("Shared Assets are read-only.")
+            alertCenter.enqueueError("Shared Assets are read-only.")
             return nil
         }
         let baseName = assetURL.deletingPathExtension().lastPathComponent + " Copy"
@@ -206,48 +239,55 @@ enum AssetOps {
         var duplicate = material
         duplicate.handle = newHandle
         duplicate.name = baseName
-        let ok = performAssetMutation {
+        let ok = performAssetMutation(projectManager) {
             if !MaterialSerializer.save(duplicate, to: newURL) {
-                EditorAlertCenter.shared.enqueueError("Failed to duplicate material.")
+                alertCenter.enqueueError("Failed to duplicate material.")
                 return false
             }
-            registerMaterialMetadata(handle: newHandle, materialURL: newURL, rootURL: rootURL)
+            registerMaterialMetadata(projectManager: projectManager, handle: newHandle, materialURL: newURL, rootURL: rootURL)
             return true
         }
         if ok {
-            EditorLogCenter.shared.logInfo("Duplicated material: \(baseName)", category: .assets)
+            logCenter.logInfo("Duplicated material: \(baseName)", category: .assets)
         }
         return ok ? newHandle : nil
     }
 
-    static func deleteMaterial(handle: AssetHandle) -> Bool {
-        guard let metadata = metadata(for: handle),
-              let assetURL = EditorProjectManager.shared.assetURL(for: handle) else { return false }
-        if let rootURL = EditorProjectManager.shared.assetRootURL(),
+    static func deleteMaterial(context: UnsafeRawPointer?, handle: AssetHandle) -> Bool {
+        guard let context = resolveContext(context) else { return false }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.editorLogCenter
+        guard let metadata = metadata(projectManager: projectManager, for: handle),
+              let assetURL = projectManager.assetURL(for: handle) else { return false }
+        if let rootURL = projectManager.assetRootURL(),
            !isProjectAssetURL(assetURL, rootURL: rootURL) {
-            EditorAlertCenter.shared.enqueueError("Shared Assets are read-only.")
+            alertCenter.enqueueError("Shared Assets are read-only.")
             return false
         }
-        let ok = performAssetMutation {
+        let ok = performAssetMutation(projectManager) {
             do {
                 try FileManager.default.removeItem(at: assetURL)
             } catch {
-                EditorAlertCenter.shared.enqueueError("Failed to delete material: \(error.localizedDescription)")
+                alertCenter.enqueueError("Failed to delete material: \(error.localizedDescription)")
                 return false
             }
-            if let metaURL = EditorProjectManager.shared.metaURLForAsset(assetURL: assetURL, relativePath: metadata.sourcePath) {
+            if let metaURL = projectManager.metaURLForAsset(assetURL: assetURL, relativePath: metadata.sourcePath) {
                 try? FileManager.default.removeItem(at: metaURL)
             }
             return true
         }
         if ok {
-            EditorLogCenter.shared.logInfo("Deleted material.", category: .assets)
+            logCenter.logInfo("Deleted material.", category: .assets)
         }
         return ok
     }
 
-    static func renameAsset(relativePath: String, newName: String) -> URL? {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return nil }
+    static func renameAsset(context: UnsafeRawPointer?, relativePath: String, newName: String) -> URL? {
+        guard let context = resolveContext(context) else { return nil }
+        let projectManager = context.editorProjectManager
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL() else { return nil }
         guard let assetURL = resolveAssetURL(rootURL: rootURL, relativePath: relativePath) else { return nil }
 
         var isDirectory: ObjCBool = false
@@ -272,7 +312,7 @@ enum AssetOps {
         if newURL.standardizedFileURL.path == assetURL.standardizedFileURL.path { return newURL }
         if FileManager.default.fileExists(atPath: newURL.path) { return nil }
 
-        let ok = EditorProjectManager.shared.performAssetMutation {
+        let ok = projectManager.performAssetMutation {
             try FileManager.default.moveItem(at: assetURL, to: newURL)
             if !isDirectory.boolValue {
                 let oldMeta = AssetIO.metaURL(for: assetURL)
@@ -287,18 +327,21 @@ enum AssetOps {
         }
 
         guard ok else { return nil }
-        EditorLogCenter.shared.logInfo("Renamed asset: \(relativePath) -> \(newURL.lastPathComponent)", category: .assets)
+        logCenter.logInfo("Renamed asset: \(relativePath) -> \(newURL.lastPathComponent)", category: .assets)
         return newURL
     }
 
-    static func deleteAsset(relativePath: String) -> Bool {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return false }
+    static func deleteAsset(context: UnsafeRawPointer?, relativePath: String) -> Bool {
+        guard let context = resolveContext(context) else { return false }
+        let projectManager = context.editorProjectManager
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL() else { return false }
         guard let assetURL = resolveAssetURL(rootURL: rootURL, relativePath: relativePath) else { return false }
 
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: assetURL.path, isDirectory: &isDirectory) else { return false }
 
-        let ok = EditorProjectManager.shared.performAssetMutation {
+        let ok = projectManager.performAssetMutation {
             if isDirectory.boolValue {
                 try FileManager.default.removeItem(at: assetURL)
             } else {
@@ -312,14 +355,17 @@ enum AssetOps {
         }
 
         if ok {
-            EditorLogCenter.shared.logInfo("Deleted asset: \(relativePath)", category: .assets)
+            logCenter.logInfo("Deleted asset: \(relativePath)", category: .assets)
             return true
         }
         return false
     }
 
-    static func duplicateAsset(relativePath: String) -> URL? {
-        guard let rootURL = EditorProjectManager.shared.assetRootURL() else { return nil }
+    static func duplicateAsset(context: UnsafeRawPointer?, relativePath: String) -> URL? {
+        guard let context = resolveContext(context) else { return nil }
+        let projectManager = context.editorProjectManager
+        let logCenter = context.editorLogCenter
+        guard let rootURL = projectManager.assetRootURL() else { return nil }
         guard let assetURL = resolveAssetURL(rootURL: rootURL, relativePath: relativePath) else { return nil }
 
         var isDirectory: ObjCBool = false
@@ -331,14 +377,14 @@ enum AssetOps {
         if ext.lowercased() == "mcmat" { return nil }
 
         let newURL = uniqueCopyURL(folder: assetURL.deletingLastPathComponent(), baseName: baseName, fileExtension: ext)
-        let ok = EditorProjectManager.shared.performAssetMutation {
+        let ok = projectManager.performAssetMutation {
             try FileManager.default.copyItem(at: assetURL, to: newURL)
             AssetIO.updateSceneNameIfNeeded(url: newURL, newName: newURL.deletingPathExtension().lastPathComponent)
             return true
         }
 
         guard ok else { return nil }
-        EditorLogCenter.shared.logInfo("Duplicated asset: \(relativePath)", category: .assets)
+        logCenter.logInfo("Duplicated asset: \(relativePath)", category: .assets)
         return newURL
     }
 
@@ -373,9 +419,12 @@ enum AssetOps {
         return PathUtils.sanitizeRelativePath(path)
     }
 
-    private static func registerMaterialMetadata(handle: AssetHandle, materialURL: URL, rootURL: URL) {
+    private static func registerMaterialMetadata(projectManager: EditorProjectManager,
+                                                 handle: AssetHandle,
+                                                 materialURL: URL,
+                                                 rootURL: URL) {
         let relativePath = materialURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
-        guard let metaURL = EditorProjectManager.shared.metaURLForAsset(assetURL: materialURL, relativePath: relativePath) else { return }
+        guard let metaURL = projectManager.metaURLForAsset(assetURL: materialURL, relativePath: relativePath) else { return }
         let metadata = AssetMetadata(
             handle: handle,
             type: .material,
@@ -384,11 +433,11 @@ enum AssetOps {
             dependencies: [],
             lastModified: Date().timeIntervalSince1970
         )
-        EditorProjectManager.shared.saveMetadata(metadata, to: metaURL)
+        projectManager.saveMetadata(metadata, to: metaURL)
     }
 
-    private static func metadata(for handle: AssetHandle) -> AssetMetadata? {
-        let snapshot = EditorProjectManager.shared.assetMetadataSnapshot()
+    private static func metadata(projectManager: EditorProjectManager, for handle: AssetHandle) -> AssetMetadata? {
+        let snapshot = projectManager.assetMetadataSnapshot()
         return snapshot.first(where: { $0.handle == handle })
     }
 

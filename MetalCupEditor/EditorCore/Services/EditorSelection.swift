@@ -5,12 +5,10 @@
 import Foundation
 
 final class EditorSelection {
-    static let shared = EditorSelection()
-
     private(set) var selectedMaterialHandle: String = ""
     private var openMaterialEditorHandle: String = ""
 
-    private init() {}
+    init() {}
 
     func setSelectedMaterial(handle: String?) {
         selectedMaterialHandle = handle ?? ""

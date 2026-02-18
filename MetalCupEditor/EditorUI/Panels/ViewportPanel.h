@@ -11,11 +11,13 @@
 extern "C" {
 #endif
 
-void ImGuiViewportPanelDraw(id<MTLTexture> _Nullable sceneTexture,
+void ImGuiViewportPanelDraw(void *context,
+                            id<MTLTexture> _Nullable sceneTexture,
                             id<MTLTexture> _Nullable previewTexture,
                             const char * _Nullable selectedEntityId,
                             bool * _Nullable hovered,
                             bool * _Nullable focused,
+                            bool * _Nullable uiHovered,
                             CGSize * _Nullable contentSize,
                             CGPoint * _Nullable contentOrigin,
                             CGPoint * _Nullable imageOrigin,

@@ -54,7 +54,6 @@ struct EditorSettingsDocument: Codable {
 }
 
 final class EditorSettingsStore {
-    static let shared = EditorSettingsStore()
     private(set) var recentProjects: [String] = []
     private(set) var panelVisibility: [String: Bool] = [:]
     private(set) var headerStates: [String: Bool] = [:]
@@ -62,7 +61,7 @@ final class EditorSettingsStore {
     private(set) var lastContentBrowserPath: String = ""
     private(set) var layerNames: [String] = LayerCatalog.defaultNames()
 
-    private init() {}
+    init() {}
 
     func load() {
         let url = settingsURL()
@@ -153,15 +152,16 @@ final class EditorSettingsStore {
 }
 
 final class EditorAlertCenter {
-    static let shared = EditorAlertCenter()
-
     private var messages: [String] = []
+    private let logCenter: EditorLogCenter
 
-    private init() {}
+    init(logCenter: EditorLogCenter) {
+        self.logCenter = logCenter
+    }
 
     func enqueueError(_ message: String) {
         messages.append(message)
-        EditorLogCenter.shared.logError(message, category: .editor)
+        logCenter.logError(message, category: .editor)
     }
 
     func popNext() -> String? {
@@ -171,9 +171,12 @@ final class EditorAlertCenter {
 }
 
 @_cdecl("MCEEditorPopNextAlert")
-public func MCEEditorPopNextAlert(_ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> UInt32 {
+public func MCEEditorPopNextAlert(_ contextPtr: UnsafeMutableRawPointer,
+                                  _ buffer: UnsafeMutablePointer<CChar>?,
+                                  _ bufferSize: Int32) -> UInt32 {
     guard let buffer, bufferSize > 0 else { return 0 }
-    guard let message = EditorAlertCenter.shared.popNext() else { return 0 }
+    let context = Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
+    guard let message = context.editorAlertCenter.popNext() else { return 0 }
     return message.withCString { ptr in
         let length = min(Int(bufferSize - 1), strlen(ptr))
         if length > 0 {

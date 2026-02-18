@@ -5,145 +5,127 @@
 #pragma once
 
 #include <stdint.h>
+#include "MCEBridgeMacros.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-uint32_t MCERendererGetBloomEnabled(void);
-void MCERendererSetBloomEnabled(uint32_t value);
+uint32_t MCERendererGetBloomEnabled(MCE_CTX);
+void MCERendererSetBloomEnabled(MCE_CTX, uint32_t value);
 
-float MCERendererGetBloomThreshold(void);
-void MCERendererSetBloomThreshold(float value);
+float MCERendererGetBloomThreshold(MCE_CTX);
+void MCERendererSetBloomThreshold(MCE_CTX, float value);
 
-float MCERendererGetBloomKnee(void);
-void MCERendererSetBloomKnee(float value);
+float MCERendererGetBloomKnee(MCE_CTX);
+void MCERendererSetBloomKnee(MCE_CTX, float value);
 
-float MCERendererGetBloomIntensity(void);
-void MCERendererSetBloomIntensity(float value);
+float MCERendererGetBloomIntensity(MCE_CTX);
+void MCERendererSetBloomIntensity(MCE_CTX, float value);
 
-float MCERendererGetBloomUpsampleScale(void);
-void MCERendererSetBloomUpsampleScale(float value);
+float MCERendererGetBloomUpsampleScale(MCE_CTX);
+void MCERendererSetBloomUpsampleScale(MCE_CTX, float value);
 
-float MCERendererGetBloomDirtIntensity(void);
-void MCERendererSetBloomDirtIntensity(float value);
+float MCERendererGetBloomDirtIntensity(MCE_CTX);
+void MCERendererSetBloomDirtIntensity(MCE_CTX, float value);
 
-uint32_t MCERendererGetBlurPasses(void);
-void MCERendererSetBlurPasses(uint32_t value);
+uint32_t MCERendererGetBlurPasses(MCE_CTX);
+void MCERendererSetBlurPasses(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetBloomMaxMips(void);
-void MCERendererSetBloomMaxMips(uint32_t value);
+uint32_t MCERendererGetBloomMaxMips(MCE_CTX);
+void MCERendererSetBloomMaxMips(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetTonemap(void);
-void MCERendererSetTonemap(uint32_t value);
+uint32_t MCERendererGetTonemap(MCE_CTX);
+void MCERendererSetTonemap(MCE_CTX, uint32_t value);
 
-float MCERendererGetExposure(void);
-void MCERendererSetExposure(float value);
+float MCERendererGetExposure(MCE_CTX);
+void MCERendererSetExposure(MCE_CTX, float value);
 
-float MCERendererGetGamma(void);
-void MCERendererSetGamma(float value);
+float MCERendererGetGamma(MCE_CTX);
+void MCERendererSetGamma(MCE_CTX, float value);
 
-uint32_t MCERendererGetIBLEnabled(void);
-void MCERendererSetIBLEnabled(uint32_t value);
+uint32_t MCERendererGetIBLEnabled(MCE_CTX);
+void MCERendererSetIBLEnabled(MCE_CTX, uint32_t value);
 
-float MCERendererGetIBLIntensity(void);
-void MCERendererSetIBLIntensity(float value);
+float MCERendererGetIBLIntensity(MCE_CTX);
+void MCERendererSetIBLIntensity(MCE_CTX, float value);
 
-uint32_t MCERendererGetIBLQualityPreset(void);
-void MCERendererSetIBLQualityPreset(uint32_t value);
+uint32_t MCERendererGetIBLQualityPreset(MCE_CTX);
+void MCERendererSetIBLQualityPreset(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetHalfResBloom(void);
-void MCERendererSetHalfResBloom(uint32_t value);
+uint32_t MCERendererGetHalfResBloom(MCE_CTX);
+void MCERendererSetHalfResBloom(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetDisableSpecularAA(void);
-void MCERendererSetDisableSpecularAA(uint32_t value);
+uint32_t MCERendererGetDisableSpecularAA(MCE_CTX);
+void MCERendererSetDisableSpecularAA(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetDisableClearcoat(void);
-void MCERendererSetDisableClearcoat(uint32_t value);
+uint32_t MCERendererGetDisableClearcoat(MCE_CTX);
+void MCERendererSetDisableClearcoat(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetDisableSheen(void);
-void MCERendererSetDisableSheen(uint32_t value);
+uint32_t MCERendererGetDisableSheen(MCE_CTX);
+void MCERendererSetDisableSheen(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetSkipSpecIBLHighRoughness(void);
-void MCERendererSetSkipSpecIBLHighRoughness(uint32_t value);
+uint32_t MCERendererGetSkipSpecIBLHighRoughness(MCE_CTX);
+void MCERendererSetSkipSpecIBLHighRoughness(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetNormalFlipYGlobal(void);
-void MCERendererSetNormalFlipYGlobal(uint32_t value);
+uint32_t MCERendererGetNormalFlipYGlobal(MCE_CTX);
+void MCERendererSetNormalFlipYGlobal(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetShadingDebugMode(void);
-void MCERendererSetShadingDebugMode(uint32_t value);
+uint32_t MCERendererGetShadingDebugMode(MCE_CTX);
+void MCERendererSetShadingDebugMode(MCE_CTX, uint32_t value);
 
-float MCERendererGetIBLSpecularLodExponent(void);
-void MCERendererSetIBLSpecularLodExponent(float value);
-float MCERendererGetIBLSpecularLodBias(void);
-void MCERendererSetIBLSpecularLodBias(float value);
-float MCERendererGetIBLSpecularGrazingLodBias(void);
-void MCERendererSetIBLSpecularGrazingLodBias(float value);
-float MCERendererGetIBLSpecularMinRoughness(void);
-void MCERendererSetIBLSpecularMinRoughness(float value);
-float MCERendererGetSpecularAAStrength(void);
-void MCERendererSetSpecularAAStrength(float value);
-float MCERendererGetNormalMapMipBias(void);
-void MCERendererSetNormalMapMipBias(float value);
-float MCERendererGetNormalMapMipBiasGrazing(void);
-void MCERendererSetNormalMapMipBiasGrazing(float value);
+float MCERendererGetIBLSpecularLodExponent(MCE_CTX);
+void MCERendererSetIBLSpecularLodExponent(MCE_CTX, float value);
+float MCERendererGetIBLSpecularLodBias(MCE_CTX);
+void MCERendererSetIBLSpecularLodBias(MCE_CTX, float value);
+float MCERendererGetIBLSpecularGrazingLodBias(MCE_CTX);
+void MCERendererSetIBLSpecularGrazingLodBias(MCE_CTX, float value);
+float MCERendererGetIBLSpecularMinRoughness(MCE_CTX);
+void MCERendererSetIBLSpecularMinRoughness(MCE_CTX, float value);
+float MCERendererGetSpecularAAStrength(MCE_CTX);
+void MCERendererSetSpecularAAStrength(MCE_CTX, float value);
+float MCERendererGetNormalMapMipBias(MCE_CTX);
+void MCERendererSetNormalMapMipBias(MCE_CTX, float value);
+float MCERendererGetNormalMapMipBiasGrazing(MCE_CTX);
+void MCERendererSetNormalMapMipBiasGrazing(MCE_CTX, float value);
 
-uint32_t MCERendererGetOutlineEnabled(void);
-void MCERendererSetOutlineEnabled(uint32_t value);
-uint32_t MCERendererGetOutlineThickness(void);
-void MCERendererSetOutlineThickness(uint32_t value);
-float MCERendererGetOutlineOpacity(void);
-void MCERendererSetOutlineOpacity(float value);
-void MCERendererGetOutlineColor(float *r, float *g, float *b);
-void MCERendererSetOutlineColor(float r, float g, float b);
+uint32_t MCERendererGetOutlineEnabled(MCE_CTX);
+void MCERendererSetOutlineEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetOutlineThickness(MCE_CTX);
+void MCERendererSetOutlineThickness(MCE_CTX, uint32_t value);
+float MCERendererGetOutlineOpacity(MCE_CTX);
+void MCERendererSetOutlineOpacity(MCE_CTX, float value);
+void MCERendererGetOutlineColor(MCE_CTX, float *r, float *g, float *b);
+void MCERendererSetOutlineColor(MCE_CTX, float r, float g, float b);
 
-uint32_t MCERendererGetGridEnabled(void);
-void MCERendererSetGridEnabled(uint32_t value);
-float MCERendererGetGridOpacity(void);
-void MCERendererSetGridOpacity(float value);
-float MCERendererGetGridFadeDistance(void);
-void MCERendererSetGridFadeDistance(float value);
-float MCERendererGetGridMajorLineEvery(void);
-void MCERendererSetGridMajorLineEvery(float value);
+uint32_t MCERendererGetGridEnabled(MCE_CTX);
+void MCERendererSetGridEnabled(MCE_CTX, uint32_t value);
+float MCERendererGetGridOpacity(MCE_CTX);
+void MCERendererSetGridOpacity(MCE_CTX, float value);
+float MCERendererGetGridFadeDistance(MCE_CTX);
+void MCERendererSetGridFadeDistance(MCE_CTX, float value);
+float MCERendererGetGridMajorLineEvery(MCE_CTX);
+void MCERendererSetGridMajorLineEvery(MCE_CTX, float value);
 
-uint32_t MCERendererGetIBLFireflyClampEnabled(void);
-void MCERendererSetIBLFireflyClampEnabled(uint32_t value);
-float MCERendererGetIBLFireflyClamp(void);
-void MCERendererSetIBLFireflyClamp(float value);
-float MCERendererGetIBLSampleMultiplier(void);
-void MCERendererSetIBLSampleMultiplier(float value);
+uint32_t MCERendererGetIBLFireflyClampEnabled(MCE_CTX);
+void MCERendererSetIBLFireflyClampEnabled(MCE_CTX, uint32_t value);
+float MCERendererGetIBLFireflyClamp(MCE_CTX);
+void MCERendererSetIBLFireflyClamp(MCE_CTX, float value);
+float MCERendererGetIBLSampleMultiplier(MCE_CTX);
+void MCERendererSetIBLSampleMultiplier(MCE_CTX, float value);
 
-float MCERendererGetFrameMs(void);
-float MCERendererGetUpdateMs(void);
-float MCERendererGetSceneMs(void);
-float MCERendererGetRenderMs(void);
-float MCERendererGetBloomMs(void);
-float MCERendererGetBloomExtractMs(void);
-float MCERendererGetBloomDownsampleMs(void);
-float MCERendererGetBloomBlurMs(void);
-float MCERendererGetCompositeMs(void);
-float MCERendererGetOverlaysMs(void);
-float MCERendererGetPresentMs(void);
-float MCERendererGetGpuMs(void);
-
-uint32_t MCESkyHasSkyLight(void);
-uint32_t MCESkyGetEnabled(void);
-void MCESkySetEnabled(uint32_t value);
-uint32_t MCESkyGetMode(void);
-void MCESkySetMode(uint32_t value);
-float MCESkyGetIntensity(void);
-void MCESkySetIntensity(float value);
-void MCESkyGetTint(float *r, float *g, float *b);
-void MCESkySetTint(float r, float g, float b);
-float MCESkyGetTurbidity(void);
-void MCESkySetTurbidity(float value);
-float MCESkyGetAzimuthDegrees(void);
-void MCESkySetAzimuthDegrees(float value);
-float MCESkyGetElevationDegrees(void);
-void MCESkySetElevationDegrees(float value);
-uint32_t MCESkyGetRealtimeUpdate(void);
-void MCESkySetRealtimeUpdate(uint32_t value);
-void MCESkyRegenerate(void);
+float MCERendererGetFrameMs(MCE_CTX);
+float MCERendererGetUpdateMs(MCE_CTX);
+float MCERendererGetSceneMs(MCE_CTX);
+float MCERendererGetRenderMs(MCE_CTX);
+float MCERendererGetBloomMs(MCE_CTX);
+float MCERendererGetBloomExtractMs(MCE_CTX);
+float MCERendererGetBloomDownsampleMs(MCE_CTX);
+float MCERendererGetBloomBlurMs(MCE_CTX);
+float MCERendererGetCompositeMs(MCE_CTX);
+float MCERendererGetOverlaysMs(MCE_CTX);
+float MCERendererGetPresentMs(MCE_CTX);
+float MCERendererGetGpuMs(MCE_CTX);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -9,6 +9,8 @@ import MetalKit
 final class EditorApplication: Application, NSWindowDelegate {
     private var isShuttingDown = false
     private var editorLayer: ImGuiLayer?
+    private var context: MCEContext?
+    private var contextPtr: UnsafeMutableRawPointer?
 
     nonisolated override init(specification: ApplicationSpecification) {
         super.init(specification: specification)
@@ -17,18 +19,29 @@ final class EditorApplication: Application, NSWindowDelegate {
     nonisolated override func willCreateWindow() {
         Graphics.initialize()
         ResourceRegistry.resourcesRootURL = EditorFileSystem.resourcesRootURL(preferredFolderName: specification.resourcesFolderName)
-        EditorProjectManager.shared.bootstrap(resourcesRootURL: ResourceRegistry.resourcesRootURL)
+        let enginePtr = Unmanaged.passUnretained(engineContext).toOpaque()
+        let contextPtr = MCEContextCreate(enginePtr)
+        self.contextPtr = contextPtr
+        let context = Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
+        self.context = context
+        context.editorProjectManager.bootstrap(resourcesRootURL: ResourceRegistry.resourcesRootURL)
         Graphics.build()
     }
     
     nonisolated override func didCreateWindow() {
-        let layer = ImGuiLayer(name: "Sandbox")
+        guard let context, let contextPtr else {
+            fatalError("MCEContext not initialized.")
+        }
+        let layer = ImGuiLayer(name: "Sandbox", context: context, contextPtr: contextPtr)
         editorLayer = layer
         layerStack.pushLayer(layer)
         let appId = ObjectIdentifier(self)
         let layerId = ObjectIdentifier(layer)
         let stackId = ObjectIdentifier(layerStack)
-        NSLog("[MC] EditorApplication.didCreateWindow app=\(appId) layer=\(layerId) layerStack=\(stackId)")
+        engineContext.log.logDebug(
+            "Editor window created app=\(appId) layer=\(layerId) layerStack=\(stackId)",
+            category: .editor
+        )
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.mainWindow.nsWindow.delegate = self
@@ -36,10 +49,7 @@ final class EditorApplication: Application, NSWindowDelegate {
     }
 
     nonisolated override func activeScene() -> EngineScene? {
-        let scene = editorLayer?.activeScene()
-        let sceneId = scene.map { ObjectIdentifier($0) }
-        let sceneInfo = scene.map { "\($0.id)/\($0.name)" } ?? "nil"
-        return scene
+        editorLayer?.activeScene()
     }
 
     nonisolated override func buildSceneView() -> SceneView {
@@ -53,8 +63,9 @@ final class EditorApplication: Application, NSWindowDelegate {
     func windowShouldClose(_ sender: NSWindow) -> Bool {
         if isShuttingDown { return true }
 
-        let hasProject = EditorProjectManager.shared.isProjectOpen
-        let isDirty = EditorProjectManager.shared.isSceneDirty()
+        let manager = context?.editorProjectManager
+        let hasProject = manager?.isProjectOpen ?? false
+        let isDirty = manager?.isSceneDirty() ?? false
 
         if hasProject && isDirty {
             let alert = NSAlert()
@@ -83,19 +94,24 @@ final class EditorApplication: Application, NSWindowDelegate {
         guard !isShuttingDown else { return }
         isShuttingDown = true
 
-        EditorProjectManager.shared.saveSettings()
+        context?.editorProjectManager.saveSettings()
         if saveChanges {
-            EditorProjectManager.shared.saveAll()
+            context?.editorProjectManager.saveAll()
         }
 
-        if SceneManager.isPlaying {
-            SceneManager.stop()
+        if context?.editorSceneController.isPlaying == true {
+            context?.editorSceneController.stop()
         }
 
         mainWindow.mtkView.delegate = nil
         mainWindow.nsWindow.delegate = nil
 
-        EditorLogCenter.shared.logInfo("Editor exiting.", category: .editor)
+        context?.editorLogCenter.logInfo("Editor exiting.", category: .editor)
+        if let contextPtr {
+            MCEContextDestroy(contextPtr)
+            self.contextPtr = nil
+            self.context = nil
+        }
         DispatchQueue.main.async {
             NSApp.terminate(nil)
         }
@@ -103,7 +119,7 @@ final class EditorApplication: Application, NSWindowDelegate {
 }
 
 @_cdecl("MCEEditorRequestQuit")
-public func MCEEditorRequestQuit() {
+public func MCEEditorRequestQuit(_ contextPtr: UnsafeRawPointer?) {
     DispatchQueue.main.async {
         NSApp.mainWindow?.performClose(nil)
     }

@@ -30,11 +30,11 @@ namespace {
         return fabsf(a - b) <= epsilon;
     }
 
-    int ResolveBloomPresetIndex() {
-        const uint32_t halfRes = MCERendererGetHalfResBloom();
-        const uint32_t blurPasses = MCERendererGetBlurPasses();
-        const uint32_t maxMips = MCERendererGetBloomMaxMips();
-        const float upsampleScale = MCERendererGetBloomUpsampleScale();
+    int ResolveBloomPresetIndex(void *context) {
+        const uint32_t halfRes = MCERendererGetHalfResBloom(context);
+        const uint32_t blurPasses = MCERendererGetBlurPasses(context);
+        const uint32_t maxMips = MCERendererGetBloomMaxMips(context);
+        const float upsampleScale = MCERendererGetBloomUpsampleScale(context);
         for (int i = 0; i < static_cast<int>(IM_ARRAYSIZE(kBloomPresets)); ++i) {
             const BloomPreset &preset = kBloomPresets[i];
             if (preset.halfRes == halfRes &&
@@ -47,18 +47,18 @@ namespace {
         return 0;
     }
 
-    void ApplyBloomPreset(int presetIndex) {
+    void ApplyBloomPreset(void *context, int presetIndex) {
         if (presetIndex <= 0) { return; }
         const BloomPreset &preset = kBloomPresets[presetIndex - 1];
-        MCERendererSetHalfResBloom(preset.halfRes);
-        MCERendererSetBlurPasses(preset.blurPasses);
-        MCERendererSetBloomUpsampleScale(preset.upsampleScale);
-        MCERendererSetBloomMaxMips(preset.maxMips);
+        MCERendererSetHalfResBloom(context, preset.halfRes);
+        MCERendererSetBlurPasses(context, preset.blurPasses);
+        MCERendererSetBloomUpsampleScale(context, preset.upsampleScale);
+        MCERendererSetBloomMaxMips(context, preset.maxMips);
     }
 
 }
 
-void ImGuiRendererPanelDraw(bool *isOpen) {
+void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
     if (!isOpen || !*isOpen) { return; }
     if (!EditorUI::BeginPanel("Renderer", isOpen)) {
         EditorUI::EndPanel();
@@ -66,185 +66,185 @@ void ImGuiRendererPanelDraw(bool *isOpen) {
     }
     ImGui::BeginChild("RendererScroll", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
-    bool bloomOpen = EditorUI::BeginSection("Bloom", "Renderer.Bloom", true);
+    bool bloomOpen = EditorUI::BeginSection(context, "Bloom", "Renderer.Bloom", true);
     if (bloomOpen) {
         if (EditorUI::BeginPropertyTable("BloomTable")) {
-            bool bloomEnabled = MCERendererGetBloomEnabled() != 0;
+            bool bloomEnabled = MCERendererGetBloomEnabled(context) != 0;
             if (EditorUI::PropertyBool("Enable Bloom", &bloomEnabled)) {
-                MCERendererSetBloomEnabled(bloomEnabled ? 1 : 0);
+                MCERendererSetBloomEnabled(context, bloomEnabled ? 1 : 0);
             }
 
             const char* qualityItems[] = { "Custom", "Low", "Medium", "High", "Ultra" };
-            int qualityIndex = ResolveBloomPresetIndex();
+            int qualityIndex = ResolveBloomPresetIndex(context);
             if (EditorUI::PropertyCombo("Quality Preset", &qualityIndex, qualityItems, IM_ARRAYSIZE(qualityItems))) {
-                ApplyBloomPreset(qualityIndex);
+                ApplyBloomPreset(context, qualityIndex);
             }
 
-            float threshold = MCERendererGetBloomThreshold();
+            float threshold = MCERendererGetBloomThreshold(context);
             if (EditorUI::PropertyFloat("Threshold", &threshold, EditorUIConstants::kBloomThresholdStep,
                                         EditorUIConstants::kBloomThresholdMin, EditorUIConstants::kBloomThresholdMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomThreshold)) {
-                MCERendererSetBloomThreshold(threshold);
+                MCERendererSetBloomThreshold(context, threshold);
             }
-            float knee = MCERendererGetBloomKnee();
+            float knee = MCERendererGetBloomKnee(context);
             if (EditorUI::PropertyFloat("Knee", &knee, EditorUIConstants::kBloomKneeStep,
                                         EditorUIConstants::kBloomKneeMin, EditorUIConstants::kBloomKneeMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomKnee)) {
-                MCERendererSetBloomKnee(knee);
+                MCERendererSetBloomKnee(context, knee);
             }
-            float intensity = MCERendererGetBloomIntensity();
+            float intensity = MCERendererGetBloomIntensity(context);
             if (EditorUI::PropertyFloat("Intensity", &intensity, EditorUIConstants::kBloomIntensityStep,
                                         EditorUIConstants::kBloomIntensityMin, EditorUIConstants::kBloomIntensityMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomIntensity)) {
-                MCERendererSetBloomIntensity(intensity);
+                MCERendererSetBloomIntensity(context, intensity);
             }
-            float upsampleScale = MCERendererGetBloomUpsampleScale();
+            float upsampleScale = MCERendererGetBloomUpsampleScale(context);
             if (EditorUI::PropertyFloat("Upsample Scale", &upsampleScale, EditorUIConstants::kBloomUpsampleStep,
                                         EditorUIConstants::kBloomUpsampleMin, EditorUIConstants::kBloomUpsampleMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomUpsample)) {
-                MCERendererSetBloomUpsampleScale(upsampleScale);
+                MCERendererSetBloomUpsampleScale(context, upsampleScale);
             }
-            float dirtIntensity = MCERendererGetBloomDirtIntensity();
+            float dirtIntensity = MCERendererGetBloomDirtIntensity(context);
             if (EditorUI::PropertyFloat("Dirt Intensity", &dirtIntensity, EditorUIConstants::kBloomDirtStep,
                                         EditorUIConstants::kBloomDirtMin, EditorUIConstants::kBloomDirtMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomDirt)) {
-                MCERendererSetBloomDirtIntensity(dirtIntensity);
+                MCERendererSetBloomDirtIntensity(context, dirtIntensity);
             }
-            int blurPasses = static_cast<int>(MCERendererGetBlurPasses());
+            int blurPasses = static_cast<int>(MCERendererGetBlurPasses(context));
             if (EditorUI::PropertyInt("Blur Passes (per mip)", &blurPasses, 0, 8)) {
-                MCERendererSetBlurPasses(static_cast<uint32_t>(blurPasses));
+                MCERendererSetBlurPasses(context, static_cast<uint32_t>(blurPasses));
             }
-            int maxMips = static_cast<int>(MCERendererGetBloomMaxMips());
+            int maxMips = static_cast<int>(MCERendererGetBloomMaxMips(context));
             if (EditorUI::PropertyInt("Max Mip Levels", &maxMips, 1, 8)) {
-                MCERendererSetBloomMaxMips(static_cast<uint32_t>(maxMips));
+                MCERendererSetBloomMaxMips(context, static_cast<uint32_t>(maxMips));
             }
-            bool halfRes = MCERendererGetHalfResBloom() != 0;
+            bool halfRes = MCERendererGetHalfResBloom(context) != 0;
             if (EditorUI::PropertyBool("Half-Res Bloom", &halfRes)) {
-                MCERendererSetHalfResBloom(halfRes ? 1 : 0);
+                MCERendererSetHalfResBloom(context, halfRes ? 1 : 0);
             }
             EditorUI::EndPropertyTable();
         }
     }
 
-    bool tonemapOpen = EditorUI::BeginSection("Tonemap", "Renderer.Tonemap", true);
+    bool tonemapOpen = EditorUI::BeginSection(context, "Tonemap", "Renderer.Tonemap", true);
     if (tonemapOpen) {
         if (EditorUI::BeginPropertyTable("TonemapTable")) {
             const char* tonemapItems[] = { "None", "Reinhard", "ACES", "MetalCup Custom" };
-            int tonemap = static_cast<int>(MCERendererGetTonemap());
+            int tonemap = static_cast<int>(MCERendererGetTonemap(context));
             if (EditorUI::PropertyCombo("Tonemap", &tonemap, tonemapItems, IM_ARRAYSIZE(tonemapItems))) {
-                MCERendererSetTonemap(static_cast<uint32_t>(tonemap));
+                MCERendererSetTonemap(context, static_cast<uint32_t>(tonemap));
             }
-            float exposure = MCERendererGetExposure();
+            float exposure = MCERendererGetExposure(context);
             if (EditorUI::PropertyFloat("Exposure", &exposure, EditorUIConstants::kExposureStep,
                                         EditorUIConstants::kExposureMin, EditorUIConstants::kExposureMax, "%.3f", true, true, EditorUIConstants::kDefaultExposure)) {
-                MCERendererSetExposure(exposure);
+                MCERendererSetExposure(context, exposure);
             }
-            float gamma = MCERendererGetGamma();
+            float gamma = MCERendererGetGamma(context);
             if (EditorUI::PropertyFloat("Gamma", &gamma, EditorUIConstants::kGammaStep,
                                         EditorUIConstants::kGammaMin, EditorUIConstants::kGammaMax, "%.3f", true, true, EditorUIConstants::kDefaultGamma)) {
-                MCERendererSetGamma(gamma);
+                MCERendererSetGamma(context, gamma);
             }
             EditorUI::EndPropertyTable();
         }
     }
 
-    bool outlineOpen = EditorUI::BeginSection("Selection Outline", "Renderer.Outline", true);
+    bool outlineOpen = EditorUI::BeginSection(context, "Selection Outline", "Renderer.Outline", true);
     if (outlineOpen) {
         if (EditorUI::BeginPropertyTable("OutlineTable")) {
-            bool outlineEnabled = MCERendererGetOutlineEnabled() != 0;
+            bool outlineEnabled = MCERendererGetOutlineEnabled(context) != 0;
             if (EditorUI::PropertyBool("Enable Outline", &outlineEnabled)) {
-                MCERendererSetOutlineEnabled(outlineEnabled ? 1 : 0);
+                MCERendererSetOutlineEnabled(context, outlineEnabled ? 1 : 0);
             }
-            int thickness = static_cast<int>(MCERendererGetOutlineThickness());
+            int thickness = static_cast<int>(MCERendererGetOutlineThickness(context));
             if (EditorUI::PropertyInt("Thickness (px)", &thickness, 1, 4)) {
-                MCERendererSetOutlineThickness(static_cast<uint32_t>(thickness));
+                MCERendererSetOutlineThickness(context, static_cast<uint32_t>(thickness));
             }
-            float opacity = MCERendererGetOutlineOpacity();
+            float opacity = MCERendererGetOutlineOpacity(context);
             if (EditorUI::PropertyFloat("Opacity", &opacity, EditorUIConstants::kOutlineOpacityStep,
                                         EditorUIConstants::kOutlineOpacityMin, EditorUIConstants::kOutlineOpacityMax, "%.2f", true, true, EditorUIConstants::kDefaultOutlineOpacity)) {
-                MCERendererSetOutlineOpacity(opacity);
+                MCERendererSetOutlineOpacity(context, opacity);
             }
             float outlineColor[3];
-            MCERendererGetOutlineColor(&outlineColor[0], &outlineColor[1], &outlineColor[2]);
+            MCERendererGetOutlineColor(context, &outlineColor[0], &outlineColor[1], &outlineColor[2]);
             if (EditorUI::PropertyColor3("Color", outlineColor, EditorUIConstants::kDefaultOutlineColor, true)) {
-                MCERendererSetOutlineColor(outlineColor[0], outlineColor[1], outlineColor[2]);
+                MCERendererSetOutlineColor(context, outlineColor[0], outlineColor[1], outlineColor[2]);
             }
             EditorUI::EndPropertyTable();
         }
     }
 
-    bool gridOpen = EditorUI::BeginSection("Viewport Grid", "Renderer.Grid", true);
+    bool gridOpen = EditorUI::BeginSection(context, "Viewport Grid", "Renderer.Grid", true);
     if (gridOpen) {
         if (EditorUI::BeginPropertyTable("GridTable")) {
-            bool gridEnabled = MCERendererGetGridEnabled() != 0;
+            bool gridEnabled = MCERendererGetGridEnabled(context) != 0;
             if (EditorUI::PropertyBool("Enable Grid", &gridEnabled)) {
-                MCERendererSetGridEnabled(gridEnabled ? 1 : 0);
+                MCERendererSetGridEnabled(context, gridEnabled ? 1 : 0);
             }
-            float gridOpacity = MCERendererGetGridOpacity();
+            float gridOpacity = MCERendererGetGridOpacity(context);
             if (EditorUI::PropertyFloat("Opacity", &gridOpacity, EditorUIConstants::kGridOpacityStep,
                                         EditorUIConstants::kGridOpacityMin, EditorUIConstants::kGridOpacityMax, "%.2f", true, true, EditorUIConstants::kDefaultGridOpacity)) {
-                MCERendererSetGridOpacity(gridOpacity);
+                MCERendererSetGridOpacity(context, gridOpacity);
             }
-            float gridFade = MCERendererGetGridFadeDistance();
+            float gridFade = MCERendererGetGridFadeDistance(context);
             if (EditorUI::PropertyFloat("Fade Distance", &gridFade, EditorUIConstants::kGridFadeStep,
                                         EditorUIConstants::kGridFadeMin, EditorUIConstants::kGridFadeMax, "%.1f", true, true, EditorUIConstants::kDefaultGridFadeDistance)) {
-                MCERendererSetGridFadeDistance(gridFade);
+                MCERendererSetGridFadeDistance(context, gridFade);
             }
-            float gridMajor = MCERendererGetGridMajorLineEvery();
+            float gridMajor = MCERendererGetGridMajorLineEvery(context);
             if (EditorUI::PropertyFloat("Major Line Every", &gridMajor, EditorUIConstants::kGridMajorLineStep,
                                         EditorUIConstants::kGridMajorLineMin, EditorUIConstants::kGridMajorLineMax, "%.0f", true, true, EditorUIConstants::kDefaultGridMajorLineEvery)) {
-                MCERendererSetGridMajorLineEvery(gridMajor);
+                MCERendererSetGridMajorLineEvery(context, gridMajor);
             }
             EditorUI::EndPropertyTable();
         }
     }
 
-    bool iblOpen = EditorUI::BeginSection("IBL", "Renderer.IBL", true);
+    bool iblOpen = EditorUI::BeginSection(context, "IBL", "Renderer.IBL", true);
     if (iblOpen) {
         if (EditorUI::BeginPropertyTable("IBLTable")) {
-            bool iblEnabled = MCERendererGetIBLEnabled() != 0;
+            bool iblEnabled = MCERendererGetIBLEnabled(context) != 0;
             if (EditorUI::PropertyBool("Enable IBL", &iblEnabled)) {
-                MCERendererSetIBLEnabled(iblEnabled ? 1 : 0);
+                MCERendererSetIBLEnabled(context, iblEnabled ? 1 : 0);
             }
-            float iblIntensity = MCERendererGetIBLIntensity();
+            float iblIntensity = MCERendererGetIBLIntensity(context);
             if (EditorUI::PropertyFloat("IBL Intensity", &iblIntensity, EditorUIConstants::kIBLIntensityStep,
                                         EditorUIConstants::kIBLIntensityMin, EditorUIConstants::kIBLIntensityMax, "%.3f", true, true, EditorUIConstants::kDefaultIBLIntensity)) {
-                MCERendererSetIBLIntensity(iblIntensity);
+                MCERendererSetIBLIntensity(context, iblIntensity);
             }
             const char* iblItems[] = { "Low", "Medium", "High", "Ultra", "Custom" };
-            int iblPreset = static_cast<int>(MCERendererGetIBLQualityPreset());
+            int iblPreset = static_cast<int>(MCERendererGetIBLQualityPreset(context));
             if (iblPreset < 0 || iblPreset > 4) { iblPreset = 4; }
             if (EditorUI::PropertyCombo("IBL Quality", &iblPreset, iblItems, IM_ARRAYSIZE(iblItems))) {
-                MCERendererSetIBLQualityPreset(static_cast<uint32_t>(iblPreset));
+                MCERendererSetIBLQualityPreset(context, static_cast<uint32_t>(iblPreset));
             }
             EditorUI::EndPropertyTable();
         }
     }
 
-    bool materialsOpen = EditorUI::BeginSection("Materials", "Renderer.Materials", true);
+    bool materialsOpen = EditorUI::BeginSection(context, "Materials", "Renderer.Materials", true);
     if (materialsOpen) {
         if (EditorUI::BeginPropertyTable("MaterialSettingsTable")) {
-            bool globalFlip = MCERendererGetNormalFlipYGlobal() != 0;
+            bool globalFlip = MCERendererGetNormalFlipYGlobal(context) != 0;
             if (EditorUI::PropertyBool("Global Normal Flip (Y)", &globalFlip)) {
-                MCERendererSetNormalFlipYGlobal(globalFlip ? 1 : 0);
+                MCERendererSetNormalFlipYGlobal(context, globalFlip ? 1 : 0);
             }
             EditorUI::EndPropertyTable();
         }
     }
 
-    bool performanceOpen = EditorUI::BeginSection("Performance", "Renderer.Performance", true);
+    bool performanceOpen = EditorUI::BeginSection(context, "Performance", "Renderer.Performance", true);
     if (performanceOpen) {
         if (EditorUI::BeginPropertyTable("PerformanceTable")) {
-            bool disableSpecAA = MCERendererGetDisableSpecularAA() != 0;
+            bool disableSpecAA = MCERendererGetDisableSpecularAA(context) != 0;
             if (EditorUI::PropertyBool("Disable Specular AA", &disableSpecAA)) {
-                MCERendererSetDisableSpecularAA(disableSpecAA ? 1 : 0);
+                MCERendererSetDisableSpecularAA(context, disableSpecAA ? 1 : 0);
             }
-            bool disableClearcoat = MCERendererGetDisableClearcoat() != 0;
+            bool disableClearcoat = MCERendererGetDisableClearcoat(context) != 0;
             if (EditorUI::PropertyBool("Disable Clearcoat", &disableClearcoat)) {
-                MCERendererSetDisableClearcoat(disableClearcoat ? 1 : 0);
+                MCERendererSetDisableClearcoat(context, disableClearcoat ? 1 : 0);
             }
-            bool disableSheen = MCERendererGetDisableSheen() != 0;
+            bool disableSheen = MCERendererGetDisableSheen(context) != 0;
             if (EditorUI::PropertyBool("Disable Sheen", &disableSheen)) {
-                MCERendererSetDisableSheen(disableSheen ? 1 : 0);
+                MCERendererSetDisableSheen(context, disableSheen ? 1 : 0);
             }
-            bool skipSpecIBL = MCERendererGetSkipSpecIBLHighRoughness() != 0;
+            bool skipSpecIBL = MCERendererGetSkipSpecIBLHighRoughness(context) != 0;
             if (EditorUI::PropertyBool("Skip Spec IBL (Rough>0.9)", &skipSpecIBL)) {
-                MCERendererSetSkipSpecIBLHighRoughness(skipSpecIBL ? 1 : 0);
+                MCERendererSetSkipSpecIBLHighRoughness(context, skipSpecIBL ? 1 : 0);
             }
             EditorUI::EndPropertyTable();
         }
