@@ -468,16 +468,17 @@ static void DrawProfilingPanel(void *context, bool *isOpen) {
     if (!isOpen || !*isOpen) { return; }
     ImGui::Begin("Profiling", isOpen);
 
-    float frameMs = MCERendererGetFrameMs(context);
-    float gpuMs = MCERendererGetGpuMs(context);
+    void *engineContext = MCEContextGetEngineContext(context);
+    float frameMs = MCERendererGetFrameMs(engineContext);
+    float gpuMs = MCERendererGetGpuMs(engineContext);
     static float frameHistory[120] = {0};
     static float updateHistory[120] = {0};
     static float renderHistory[120] = {0};
     static float postHistory[120] = {0};
     static int frameOffset = 0;
-    const float updateMs = MCERendererGetUpdateMs(context);
-    const float renderMs = MCERendererGetRenderMs(context);
-    const float postMs = MCERendererGetBloomMs(context) + MCERendererGetCompositeMs(context) + MCERendererGetOverlaysMs(context);
+    const float updateMs = MCERendererGetUpdateMs(engineContext);
+    const float renderMs = MCERendererGetRenderMs(engineContext);
+    const float postMs = MCERendererGetBloomMs(engineContext) + MCERendererGetCompositeMs(engineContext) + MCERendererGetOverlaysMs(engineContext);
     frameHistory[frameOffset] = frameMs;
     updateHistory[frameOffset] = updateMs;
     renderHistory[frameOffset] = renderMs;
@@ -554,16 +555,16 @@ static void DrawProfilingPanel(void *context, bool *isOpen) {
 
     ImGui::Separator();
     ImGui::TextUnformatted("CPU Breakdown");
-    ImGui::Text("Update:     %.2f ms", MCERendererGetUpdateMs(context));
-    ImGui::Text("Scene:      %.2f ms", MCERendererGetSceneMs(context));
-    ImGui::Text("Render:     %.2f ms", MCERendererGetRenderMs(context));
-    ImGui::Text("Bloom:      %.2f ms", MCERendererGetBloomMs(context));
-    ImGui::Text("  Extract:  %.2f ms", MCERendererGetBloomExtractMs(context));
-    ImGui::Text("  Downsample: %.2f ms", MCERendererGetBloomDownsampleMs(context));
-    ImGui::Text("  Blur:     %.2f ms", MCERendererGetBloomBlurMs(context));
-    ImGui::Text("Composite:  %.2f ms", MCERendererGetCompositeMs(context));
-    ImGui::Text("Overlays:   %.2f ms", MCERendererGetOverlaysMs(context));
-    ImGui::Text("Present:    %.2f ms", MCERendererGetPresentMs(context));
+    ImGui::Text("Update:     %.2f ms", MCERendererGetUpdateMs(engineContext));
+    ImGui::Text("Scene:      %.2f ms", MCERendererGetSceneMs(engineContext));
+    ImGui::Text("Render:     %.2f ms", MCERendererGetRenderMs(engineContext));
+    ImGui::Text("Bloom:      %.2f ms", MCERendererGetBloomMs(engineContext));
+    ImGui::Text("  Extract:  %.2f ms", MCERendererGetBloomExtractMs(engineContext));
+    ImGui::Text("  Downsample: %.2f ms", MCERendererGetBloomDownsampleMs(engineContext));
+    ImGui::Text("  Blur:     %.2f ms", MCERendererGetBloomBlurMs(engineContext));
+    ImGui::Text("Composite:  %.2f ms", MCERendererGetCompositeMs(engineContext));
+    ImGui::Text("Overlays:   %.2f ms", MCERendererGetOverlaysMs(engineContext));
+    ImGui::Text("Present:    %.2f ms", MCERendererGetPresentMs(engineContext));
 
     ImGui::End();
 }

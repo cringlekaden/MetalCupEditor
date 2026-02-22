@@ -40,7 +40,7 @@ public func MCEEditorGetAssetAt(_ contextPtr: UnsafeRawPointer?,
     _ = writeCString(meta.handle.rawValue.uuidString, to: handleBuffer, max: handleBufferSize)
     _ = writeCString(meta.sourcePath, to: pathBuffer, max: pathBufferSize)
 
-    let displayName = AssetIO.assetDisplayName(for: meta)
+    let displayName = AssetIO.assetDisplayName(for: meta, assetManager: context.engineContext.assets)
     _ = writeCString(displayName, to: nameBuffer, max: nameBufferSize)
 
     typeOut?.pointee = AssetTypes.code(for: meta.type)
@@ -59,7 +59,7 @@ public func MCEEditorGetAssetDisplayName(_ contextPtr: UnsafeRawPointer?,
     let assetHandle = AssetHandle(rawValue: uuid)
     refreshAssetSnapshotIfNeeded(context)
     guard let metadata = context.assetSnapshotStore.snapshot.first(where: { $0.handle == assetHandle }) else { return 0 }
-    let name = AssetIO.assetDisplayName(for: metadata)
+    let name = AssetIO.assetDisplayName(for: metadata, assetManager: context.engineContext.assets)
     return name.withCString { ptr in
         let length = min(Int(bufferSize - 1), strlen(ptr))
         if length > 0 { memcpy(buffer, ptr, length) }
@@ -143,7 +143,8 @@ public func MCEEditorGetMaterialAsset(
     let handleString = String(cString: handle)
     guard let uuid = UUID(uuidString: handleString) else { return 0 }
     let assetHandle = AssetHandle(rawValue: uuid)
-    guard let material = AssetManager.material(handle: assetHandle) else { return 0 }
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    guard let material = context.engineContext.assets.material(handle: assetHandle) else { return 0 }
 
     _ = writeCString(material.name, to: nameBuffer, max: nameBufferSize)
     version?.pointee = Int32(material.version)
@@ -200,7 +201,7 @@ public func MCEEditorSetMaterialAsset(
     let assetHandle = AssetHandle(rawValue: uuid)
     guard let assetURL = context.editorProjectManager.assetURL(for: assetHandle) else { return 0 }
 
-    var material = AssetManager.material(handle: assetHandle)
+    var material = context.engineContext.assets.material(handle: assetHandle)
         ?? MaterialAsset.default(handle: assetHandle, name: name != nil ? String(cString: name!) : "Material")
 
     if let name {

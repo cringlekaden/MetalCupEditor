@@ -14,6 +14,8 @@
 #include <vector>
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
+#include <cmath>
 
 extern "C" uint32_t MCEEditorEntityHasComponent(MCE_CTX,  const char *entityId, int32_t componentType);
 extern "C" uint32_t MCEEditorAddComponent(MCE_CTX,  const char *entityId, int32_t componentType);
@@ -57,19 +59,44 @@ extern "C" void MCEEditorSetMaterialComponent(MCE_CTX,  const char *entityId, co
 
 extern "C" uint32_t MCEEditorGetLight(MCE_CTX,  const char *entityId, int32_t *type, float *colorX, float *colorY, float *colorZ,
                                       float *brightness, float *range, float *innerCos, float *outerCos,
-                                      float *dirX, float *dirY, float *dirZ);
+                                      float *dirX, float *dirY, float *dirZ, uint32_t *castsShadows);
 extern "C" void MCEEditorSetLight(MCE_CTX,  const char *entityId, int32_t type, float colorX, float colorY, float colorZ,
                                   float brightness, float range, float innerCos, float outerCos,
-                                  float dirX, float dirY, float dirZ);
+                                  float dirX, float dirY, float dirZ, uint32_t castsShadows);
 
 extern "C" uint32_t MCEEditorGetSkyLight(MCE_CTX,  const char *entityId, int32_t *mode, uint32_t *enabled,
                                          float *intensity, float *tintX, float *tintY, float *tintZ,
-                                         float *turbidity, float *azimuth, float *elevation,
+                                         float *turbidity, float *azimuth, float *elevation, float *sunSize,
+                                         float *zenithTintX, float *zenithTintY, float *zenithTintZ,
+                                         float *horizonTintX, float *horizonTintY, float *horizonTintZ,
+                                         float *gradientStrength,
+                                         float *hazeDensity, float *hazeFalloff, float *hazeHeight,
+                                         float *ozoneStrength, float *ozoneTintX, float *ozoneTintY, float *ozoneTintZ,
+                                         float *sunHaloSize, float *sunHaloIntensity, float *sunHaloSoftness,
+                                         uint32_t *cloudsEnabled, float *cloudsCoverage, float *cloudsSoftness,
+                                         float *cloudsScale, float *cloudsSpeed,
+                                         float *cloudsWindX, float *cloudsWindY,
+                                         float *cloudsHeight, float *cloudsThickness,
+                                         float *cloudsBrightness, float *cloudsSunInfluence,
+                                         uint32_t *autoRebuild, uint32_t *needsRebuild,
                                          char *hdriHandle, int32_t hdriHandleSize);
 extern "C" void MCEEditorSetSkyLight(MCE_CTX,  const char *entityId, int32_t mode, uint32_t enabled,
                                      float intensity, float tintX, float tintY, float tintZ,
-                                     float turbidity, float azimuth, float elevation,
+                                     float turbidity, float azimuth, float elevation, float sunSize,
+                                     float zenithTintX, float zenithTintY, float zenithTintZ,
+                                     float horizonTintX, float horizonTintY, float horizonTintZ,
+                                     float gradientStrength,
+                                     float hazeDensity, float hazeFalloff, float hazeHeight,
+                                     float ozoneStrength, float ozoneTintX, float ozoneTintY, float ozoneTintZ,
+                                     float sunHaloSize, float sunHaloIntensity, float sunHaloSoftness,
+                                     uint32_t cloudsEnabled, float cloudsCoverage, float cloudsSoftness,
+                                     float cloudsScale, float cloudsSpeed,
+                                     float cloudsWindX, float cloudsWindY,
+                                     float cloudsHeight, float cloudsThickness,
+                                     float cloudsBrightness, float cloudsSunInfluence,
+                                     uint32_t autoRebuild,
                                      const char *hdriHandle);
+extern "C" void MCEEditorRequestSkyRebuild(MCE_CTX,  const char *entityId);
 extern "C" uint32_t MCEEditorGetMaterialAsset(MCE_CTX, 
     const char *handle,
     char *nameBuffer, int32_t nameBufferSize,
@@ -145,6 +172,103 @@ namespace {
     InspectorState &GetInspectorState(void *context) {
         auto *state = static_cast<MCEPanelState::EditorUIPanelState *>(MCEContextGetUIPanelState(context));
         return state->inspector;
+    }
+
+    struct SkyPreset {
+        const char *name;
+        int32_t mode;
+        uint32_t enabled;
+        float intensity;
+        float tintX;
+        float tintY;
+        float tintZ;
+        float turbidity;
+        float azimuth;
+        float elevation;
+        float sunSize;
+        float zenithTintX;
+        float zenithTintY;
+        float zenithTintZ;
+        float horizonTintX;
+        float horizonTintY;
+        float horizonTintZ;
+        float gradientStrength;
+        float hazeDensity;
+        float hazeFalloff;
+        float hazeHeight;
+        float ozoneStrength;
+        float ozoneTintX;
+        float ozoneTintY;
+        float ozoneTintZ;
+        float sunHaloSize;
+        float sunHaloIntensity;
+        float sunHaloSoftness;
+        uint32_t cloudsEnabled;
+        float cloudsCoverage;
+        float cloudsSoftness;
+        float cloudsScale;
+        float cloudsSpeed;
+        float cloudsWindX;
+        float cloudsWindY;
+        float cloudsHeight;
+        float cloudsThickness;
+        float cloudsBrightness;
+        float cloudsSunInfluence;
+    };
+
+    static const SkyPreset kSkyPresets[] = {
+        {"Clear Day", 1, 1, 1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 0.0f, 35.0f, 0.5f,
+         0.24f, 0.45f, 0.95f, 0.95f, 0.75f, 0.55f, 1.0f, 0.25f, 2.0f, 0.0f, 0.35f, 0.55f, 0.7f, 1.0f,
+         2.5f, 0.5f, 1.2f, 1, 0.3f, 0.6f, 1.0f, 0.02f, 1.0f, 0.0f, 0.3f, 0.35f, 1.0f, 1.0f},
+        {"Golden Hour", 1, 1, 1.2f, 1.0f, 0.95f, 0.85f, 3.2f, 20.0f, 10.0f, 0.6f,
+         0.18f, 0.32f, 0.75f, 1.0f, 0.65f, 0.35f, 1.2f, 0.55f, 2.8f, 0.1f, 0.6f, 0.6f, 0.55f, 0.9f,
+         3.0f, 0.9f, 1.4f, 1, 0.4f, 0.65f, 1.2f, 0.03f, 0.7f, 0.2f, 0.25f, 0.4f, 1.2f, 1.4f},
+        {"Blue Hour", 1, 1, 0.8f, 0.9f, 0.95f, 1.0f, 2.5f, 10.0f, 5.0f, 0.4f,
+         0.15f, 0.28f, 0.8f, 0.5f, 0.6f, 1.0f, 1.1f, 0.3f, 2.6f, 0.0f, 0.8f, 0.45f, 0.65f, 1.0f,
+         2.0f, 0.4f, 1.4f, 0, 0.0f, 0.6f, 1.0f, 0.0f, 1.0f, 0.0f, 0.3f, 0.3f, 0.9f, 0.8f},
+        {"Overcast", 1, 1, 0.9f, 0.9f, 0.92f, 0.95f, 6.0f, 0.0f, 45.0f, 0.7f,
+         0.2f, 0.35f, 0.8f, 0.8f, 0.85f, 0.9f, 0.6f, 0.7f, 3.5f, 0.0f, 0.25f, 0.6f, 0.7f, 1.0f,
+         2.0f, 0.2f, 1.6f, 1, 0.75f, 0.8f, 1.8f, 0.01f, 1.0f, 0.0f, 0.2f, 0.6f, 1.1f, 0.6f},
+        {"Stormy", 1, 1, 0.75f, 0.85f, 0.9f, 1.0f, 8.0f, 15.0f, 20.0f, 0.6f,
+         0.12f, 0.2f, 0.6f, 0.5f, 0.6f, 0.7f, 0.5f, 0.9f, 4.0f, 0.0f, 0.1f, 0.45f, 0.6f, 0.9f,
+         1.8f, 0.3f, 2.0f, 1, 0.85f, 0.75f, 2.2f, 0.02f, 0.3f, 0.2f, 0.15f, 0.7f, 0.8f, 0.3f},
+        {"Desert Haze", 1, 1, 1.1f, 1.0f, 0.98f, 0.92f, 4.5f, 0.0f, 45.0f, 0.55f,
+         0.2f, 0.35f, 0.85f, 1.0f, 0.75f, 0.45f, 1.0f, 0.9f, 3.0f, 0.15f, 0.4f, 0.6f, 0.6f, 0.85f,
+         2.8f, 0.7f, 1.1f, 0, 0.0f, 0.6f, 1.0f, 0.0f, 1.0f, 0.0f, 0.2f, 0.2f, 1.0f, 0.7f},
+        {"Winter Cold", 1, 1, 0.95f, 0.95f, 1.0f, 1.05f, 2.8f, 0.0f, 35.0f, 0.45f,
+         0.18f, 0.3f, 0.9f, 0.7f, 0.8f, 1.1f, 1.2f, 0.25f, 2.4f, 0.0f, 0.7f, 0.45f, 0.7f, 1.05f,
+         2.2f, 0.45f, 1.3f, 1, 0.4f, 0.65f, 1.1f, 0.015f, 0.9f, 0.1f, 0.3f, 0.3f, 1.0f, 0.9f},
+        {"Stylized", 1, 1, 1.1f, 0.9f, 0.9f, 1.1f, 1.5f, 220.0f, 35.0f, 0.8f,
+         0.15f, 0.55f, 1.1f, 1.2f, 0.4f, 0.9f, 1.6f, 0.2f, 1.6f, 0.0f, 0.3f, 0.4f, 0.8f, 1.2f,
+         3.5f, 1.2f, 0.9f, 1, 0.2f, 0.5f, 1.6f, 0.03f, -0.2f, 1.0f, 0.35f, 0.25f, 1.4f, 1.2f},
+        {"Alien", 1, 1, 0.9f, 0.7f, 0.95f, 0.6f, 2.2f, 140.0f, 25.0f, 1.2f,
+         0.1f, 0.7f, 0.4f, 0.9f, 0.2f, 0.8f, 1.4f, 0.3f, 2.0f, 0.0f, 0.6f, 0.4f, 0.8f, 0.6f,
+         4.0f, 1.0f, 1.2f, 1, 0.5f, 0.6f, 1.8f, 0.02f, 0.7f, -0.3f, 0.25f, 0.4f, 1.2f, 1.5f},
+        {"Night Sky", 1, 1, 0.35f, 0.7f, 0.75f, 1.0f, 1.2f, 0.0f, 5.0f, 0.3f,
+         0.05f, 0.08f, 0.2f, 0.2f, 0.2f, 0.5f, 0.9f, 0.1f, 2.5f, 0.0f, 0.9f, 0.25f, 0.4f, 0.9f,
+         1.0f, 0.25f, 1.6f, 0, 0.0f, 0.6f, 1.0f, 0.0f, 1.0f, 0.0f, 0.25f, 0.2f, 0.6f, 0.5f}
+    };
+
+    static const char *kSkyPresetNames[] = {
+        "Clear Day",
+        "Golden Hour",
+        "Blue Hour",
+        "Overcast",
+        "Stormy",
+        "Desert Haze",
+        "Winter Cold",
+        "Stylized",
+        "Alien",
+        "Night Sky"
+    };
+
+    static float RandomRange(float minValue, float maxValue) {
+        const float t = static_cast<float>(rand()) / static_cast<float>(RAND_MAX);
+        return minValue + (maxValue - minValue) * t;
+    }
+
+    static float ClampFloat(float value, float minValue, float maxValue) {
+        return std::max(minValue, std::min(value, maxValue));
     }
 
     bool LoadMaterialState(void *context, const char *materialHandle, MaterialEditorState &state) {
@@ -1060,7 +1184,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             "LightContext",
             [&]() {
                 if (ImGui::MenuItem("Reset")) {
-                    MCEEditorSetLight(context, selectedEntityId, 0, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.95f, 0.9f, 0.0f, -1.0f, 0.0f);
+                    MCEEditorSetLight(context, selectedEntityId, 0, 1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.95f, 0.9f, 0.0f, -1.0f, 0.0f, 0);
                 }
                 if (ImGui::MenuItem("Remove")) {
                     MCEEditorRemoveComponent(context, selectedEntityId, ComponentLight);
@@ -1072,7 +1196,8 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             float colorX = 1, colorY = 1, colorZ = 1;
             float brightness = 1, range = 0, innerCos = 0.95f, outerCos = 0.9f;
             float dirX = 0, dirY = -1, dirZ = 0;
-            if (MCEEditorGetLight(context, selectedEntityId, &type, &colorX, &colorY, &colorZ, &brightness, &range, &innerCos, &outerCos, &dirX, &dirY, &dirZ) != 0) {
+            uint32_t castsShadows = 0;
+            if (MCEEditorGetLight(context, selectedEntityId, &type, &colorX, &colorY, &colorZ, &brightness, &range, &innerCos, &outerCos, &dirX, &dirY, &dirZ, &castsShadows) != 0) {
                 const char* types[] = {"Point", "Spot", "Directional"};
                 bool dirty = false;
                 if (EditorUI::BeginPropertyTable("LightProps")) {
@@ -1089,10 +1214,17 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     dirty |= EditorUI::PropertyFloat("Range", &range, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 0.0f);
                     dirty |= EditorUI::PropertyFloat("Inner Cone", &innerCos, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.95f);
                     dirty |= EditorUI::PropertyFloat("Outer Cone", &outerCos, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.9f);
+                    if (type == 2) {
+                        bool castsShadowsBool = castsShadows != 0;
+                        if (EditorUI::PropertyBool("Casts Shadows", &castsShadowsBool)) {
+                            castsShadows = castsShadowsBool ? 1 : 0;
+                            dirty = true;
+                        }
+                    }
                     EditorUI::EndPropertyTable();
                 }
                 if (dirty) {
-                    MCEEditorSetLight(context, selectedEntityId, type, colorX, colorY, colorZ, brightness, range, innerCos, outerCos, dirX, dirY, dirZ);
+                    MCEEditorSetLight(context, selectedEntityId, type, colorX, colorY, colorZ, brightness, range, innerCos, outerCos, dirX, dirY, dirZ, castsShadows);
                 }
             }
             if (ImGui::Button("Remove Light")) {
@@ -1109,7 +1241,34 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             [&]() {
                 if (ImGui::MenuItem("Reset")) {
                     const char *empty = "";
-                    MCEEditorSetSkyLight(context, selectedEntityId, 0, 1, 1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 0.0f, 30.0f, empty);
+                    MCEEditorSetSkyLight(context, selectedEntityId, 0, 1,
+                                         1.0f, 1.0f, 1.0f, 1.0f,
+                                         2.0f, 0.0f, 30.0f,
+                                         EditorUIConstants::kDefaultSkySunSize,
+                                         0.24f, 0.45f, 0.95f,
+                                         0.95f, 0.75f, 0.55f,
+                                         EditorUIConstants::kDefaultSkyGradientStrength,
+                                         EditorUIConstants::kDefaultSkyHazeDensity,
+                                         EditorUIConstants::kDefaultSkyHazeFalloff,
+                                         EditorUIConstants::kDefaultSkyHazeHeight,
+                                         EditorUIConstants::kDefaultSkyOzoneStrength,
+                                         0.55f, 0.7f, 1.0f,
+                                         EditorUIConstants::kDefaultSkySunHaloSize,
+                                         EditorUIConstants::kDefaultSkySunHaloIntensity,
+                                         EditorUIConstants::kDefaultSkySunHaloSoftness,
+                                         0,
+                                         EditorUIConstants::kDefaultCloudCoverage,
+                                         EditorUIConstants::kDefaultCloudSoftness,
+                                         EditorUIConstants::kDefaultCloudScale,
+                                         EditorUIConstants::kDefaultCloudSpeed,
+                                         EditorUIConstants::kDefaultCloudWindX,
+                                         EditorUIConstants::kDefaultCloudWindY,
+                                         EditorUIConstants::kDefaultCloudHeight,
+                                         EditorUIConstants::kDefaultCloudThickness,
+                                         EditorUIConstants::kDefaultCloudBrightness,
+                                         EditorUIConstants::kDefaultCloudSunInfluence,
+                                         1,
+                                         empty);
                 }
                 if (ImGui::MenuItem("Remove")) {
                     MCEEditorRemoveComponent(context, selectedEntityId, ComponentSkyLight);
@@ -1138,41 +1297,254 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             float azimuth = 0.0f;
             float elevation = 30.0f;
             char hdriHandle[64] = {0};
-            if (MCEEditorGetSkyLight(context, selectedEntityId, &mode, &enabled, &intensity, &tintX, &tintY, &tintZ, &turbidity, &azimuth, &elevation, hdriHandle, sizeof(hdriHandle)) != 0) {
+            float sunSize = 0.535f;
+            float zenithTintX = 0.24f, zenithTintY = 0.45f, zenithTintZ = 0.95f;
+            float horizonTintX = 0.95f, horizonTintY = 0.75f, horizonTintZ = 0.55f;
+            float gradientStrength = 1.0f;
+            float hazeDensity = 0.35f;
+            float hazeFalloff = 2.2f;
+            float hazeHeight = 0.0f;
+            float ozoneStrength = 0.35f;
+            float ozoneTintX = 0.55f, ozoneTintY = 0.7f, ozoneTintZ = 1.0f;
+            float sunHaloSize = 2.5f;
+            float sunHaloIntensity = 0.5f;
+            float sunHaloSoftness = 1.2f;
+            uint32_t cloudsEnabled = 0;
+            float cloudsCoverage = 0.35f;
+            float cloudsSoftness = 0.6f;
+            float cloudsScale = 1.0f;
+            float cloudsSpeed = 0.02f;
+            float cloudsWindX = 1.0f;
+            float cloudsWindY = 0.0f;
+            float cloudsHeight = 0.25f;
+            float cloudsThickness = 0.35f;
+            float cloudsBrightness = 1.0f;
+            float cloudsSunInfluence = 1.0f;
+            uint32_t autoRebuild = 1;
+            uint32_t needsRebuild = 0;
+            if (MCEEditorGetSkyLight(context, selectedEntityId, &mode, &enabled, &intensity, &tintX, &tintY, &tintZ,
+                                     &turbidity, &azimuth, &elevation, &sunSize,
+                                     &zenithTintX, &zenithTintY, &zenithTintZ,
+                                     &horizonTintX, &horizonTintY, &horizonTintZ,
+                                     &gradientStrength,
+                                     &hazeDensity, &hazeFalloff, &hazeHeight,
+                                     &ozoneStrength, &ozoneTintX, &ozoneTintY, &ozoneTintZ,
+                                     &sunHaloSize, &sunHaloIntensity, &sunHaloSoftness,
+                                     &cloudsEnabled, &cloudsCoverage, &cloudsSoftness,
+                                     &cloudsScale, &cloudsSpeed,
+                                     &cloudsWindX, &cloudsWindY,
+                                     &cloudsHeight, &cloudsThickness,
+                                     &cloudsBrightness, &cloudsSunInfluence,
+                                     &autoRebuild, &needsRebuild,
+                                     hdriHandle, sizeof(hdriHandle)) != 0) {
                 const char* modes[] = {"HDRI", "Procedural"};
-                bool enabledBool = enabled != 0;
                 PendingSkyState &pending = GetPendingSkyState(state);
                 if (strncmp(pending.entityId, selectedEntityId, sizeof(pending.entityId)) != 0) {
                     memset(&pending, 0, sizeof(pending));
                     strncpy(pending.entityId, selectedEntityId, sizeof(pending.entityId) - 1);
-                    pending.autoApply = false;
                 }
 
-                int32_t editMode = pending.hasPending ? pending.mode : mode;
-
-                uint32_t editEnabled = pending.hasPending ? pending.enabled : enabled;
-                float editIntensity = pending.hasPending ? pending.intensity : intensity;
-                float editTintX = pending.hasPending ? pending.tintX : tintX;
-                float editTintY = pending.hasPending ? pending.tintY : tintY;
-                float editTintZ = pending.hasPending ? pending.tintZ : tintZ;
-                float editTurbidity = pending.hasPending ? pending.turbidity : turbidity;
-                float editAzimuth = pending.hasPending ? pending.azimuth : azimuth;
-                float editElevation = pending.hasPending ? pending.elevation : elevation;
+                int32_t editMode = mode;
+                uint32_t editEnabled = enabled;
+                float editIntensity = intensity;
+                float editTintX = tintX;
+                float editTintY = tintY;
+                float editTintZ = tintZ;
+                float editTurbidity = turbidity;
+                float editAzimuth = azimuth;
+                float editElevation = elevation;
+                float editSunSize = sunSize;
+                float editZenithTintX = zenithTintX;
+                float editZenithTintY = zenithTintY;
+                float editZenithTintZ = zenithTintZ;
+                float editHorizonTintX = horizonTintX;
+                float editHorizonTintY = horizonTintY;
+                float editHorizonTintZ = horizonTintZ;
+                float editGradientStrength = gradientStrength;
+                float editHazeDensity = hazeDensity;
+                float editHazeFalloff = hazeFalloff;
+                float editHazeHeight = hazeHeight;
+                float editOzoneStrength = ozoneStrength;
+                float editOzoneTintX = ozoneTintX;
+                float editOzoneTintY = ozoneTintY;
+                float editOzoneTintZ = ozoneTintZ;
+                float editSunHaloSize = sunHaloSize;
+                float editSunHaloIntensity = sunHaloIntensity;
+                float editSunHaloSoftness = sunHaloSoftness;
+                uint32_t editCloudsEnabled = cloudsEnabled;
+                float editCloudsCoverage = cloudsCoverage;
+                float editCloudsSoftness = cloudsSoftness;
+                float editCloudsScale = cloudsScale;
+                float editCloudsSpeed = cloudsSpeed;
+                float editCloudsWindX = cloudsWindX;
+                float editCloudsWindY = cloudsWindY;
+                float editCloudsHeight = cloudsHeight;
+                float editCloudsThickness = cloudsThickness;
+                float editCloudsBrightness = cloudsBrightness;
+                float editCloudsSunInfluence = cloudsSunInfluence;
                 EnvironmentPickerState &envPicker = GetEnvironmentPickerState(state);
                 const bool envPickerDirty = envPicker.didPick && (strcmp(envPicker.entityId, selectedEntityId) == 0);
-                if (!pending.hasPending && !envPickerDirty) {
+                if (!envPickerDirty) {
                     strncpy(pending.hdriHandle, hdriHandle, sizeof(pending.hdriHandle) - 1);
                     pending.hdriHandle[sizeof(pending.hdriHandle) - 1] = 0;
                 }
                 char *editHdriHandle = pending.hdriHandle;
 
                 bool dirty = false;
-                if (EditorUI::BeginPropertyTable("SkyProps")) {
+                int presetIndex = pending.presetIndex;
+                if (presetIndex < 0 || presetIndex >= IM_ARRAYSIZE(kSkyPresetNames)) {
+                    presetIndex = 0;
+                    pending.presetIndex = 0;
+                }
+
+                if (editMode == 1) {
+                    ImGui::TextDisabled("Mood Presets");
+                    if (EditorUI::BeginPropertyTable("SkyPresetProps")) {
+                        if (EditorUI::PropertyCombo("Preset", &presetIndex, kSkyPresetNames, IM_ARRAYSIZE(kSkyPresetNames))) {
+                            pending.presetIndex = presetIndex;
+                        }
+                        EditorUI::EndPropertyTable();
+                    }
+                    if (ImGui::Button("Apply Preset")) {
+                        const SkyPreset &preset = kSkyPresets[presetIndex];
+                        editMode = preset.mode;
+                        editEnabled = preset.enabled;
+                        editIntensity = preset.intensity;
+                        editTintX = preset.tintX;
+                        editTintY = preset.tintY;
+                        editTintZ = preset.tintZ;
+                        editTurbidity = preset.turbidity;
+                        editAzimuth = preset.azimuth;
+                        editElevation = preset.elevation;
+                        editSunSize = preset.sunSize;
+                        editZenithTintX = preset.zenithTintX;
+                        editZenithTintY = preset.zenithTintY;
+                        editZenithTintZ = preset.zenithTintZ;
+                        editHorizonTintX = preset.horizonTintX;
+                        editHorizonTintY = preset.horizonTintY;
+                        editHorizonTintZ = preset.horizonTintZ;
+                        editGradientStrength = preset.gradientStrength;
+                        editHazeDensity = preset.hazeDensity;
+                        editHazeFalloff = preset.hazeFalloff;
+                        editHazeHeight = preset.hazeHeight;
+                        editOzoneStrength = preset.ozoneStrength;
+                        editOzoneTintX = preset.ozoneTintX;
+                        editOzoneTintY = preset.ozoneTintY;
+                        editOzoneTintZ = preset.ozoneTintZ;
+                        editSunHaloSize = preset.sunHaloSize;
+                        editSunHaloIntensity = preset.sunHaloIntensity;
+                        editSunHaloSoftness = preset.sunHaloSoftness;
+                        editCloudsEnabled = preset.cloudsEnabled;
+                        editCloudsCoverage = preset.cloudsCoverage;
+                        editCloudsSoftness = preset.cloudsSoftness;
+                        editCloudsScale = preset.cloudsScale;
+                        editCloudsSpeed = preset.cloudsSpeed;
+                        editCloudsWindX = preset.cloudsWindX;
+                        editCloudsWindY = preset.cloudsWindY;
+                        editCloudsHeight = preset.cloudsHeight;
+                        editCloudsThickness = preset.cloudsThickness;
+                        editCloudsBrightness = preset.cloudsBrightness;
+                        editCloudsSunInfluence = preset.cloudsSunInfluence;
+                        dirty = true;
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Randomize Slightly")) {
+                        editIntensity = ClampFloat(editIntensity * (1.0f + RandomRange(-0.12f, 0.12f)),
+                                                   EditorUIConstants::kSkyIntensityMin,
+                                                   EditorUIConstants::kSkyIntensityMax);
+                        editTurbidity = ClampFloat(editTurbidity + RandomRange(-0.5f, 0.5f),
+                                                   EditorUIConstants::kSkyTurbidityMin,
+                                                   EditorUIConstants::kSkyTurbidityMax);
+                        editAzimuth = fmodf(editAzimuth + RandomRange(-12.0f, 12.0f) + 360.0f, 360.0f);
+                        editElevation = ClampFloat(editElevation + RandomRange(-4.0f, 4.0f),
+                                                   EditorUIConstants::kSkyElevationMin,
+                                                   EditorUIConstants::kSkyElevationMax);
+                        editSunSize = ClampFloat(editSunSize * (1.0f + RandomRange(-0.15f, 0.15f)),
+                                                 EditorUIConstants::kSkySunSizeMin,
+                                                 EditorUIConstants::kSkySunSizeMax);
+                        editGradientStrength = ClampFloat(editGradientStrength + RandomRange(-0.15f, 0.15f),
+                                                          EditorUIConstants::kSkyGradientStrengthMin,
+                                                          EditorUIConstants::kSkyGradientStrengthMax);
+                        editHazeDensity = ClampFloat(editHazeDensity + RandomRange(-0.08f, 0.08f),
+                                                     EditorUIConstants::kSkyHazeDensityMin,
+                                                     EditorUIConstants::kSkyHazeDensityMax);
+                        editHazeFalloff = ClampFloat(editHazeFalloff + RandomRange(-0.4f, 0.4f),
+                                                     EditorUIConstants::kSkyHazeFalloffMin,
+                                                     EditorUIConstants::kSkyHazeFalloffMax);
+                        editHazeHeight = ClampFloat(editHazeHeight + RandomRange(-0.04f, 0.04f),
+                                                    EditorUIConstants::kSkyHazeHeightMin,
+                                                    EditorUIConstants::kSkyHazeHeightMax);
+                        editOzoneStrength = ClampFloat(editOzoneStrength + RandomRange(-0.15f, 0.15f),
+                                                       EditorUIConstants::kSkyOzoneStrengthMin,
+                                                       EditorUIConstants::kSkyOzoneStrengthMax);
+                        editSunHaloSize = ClampFloat(editSunHaloSize + RandomRange(-0.3f, 0.3f),
+                                                     EditorUIConstants::kSkySunHaloSizeMin,
+                                                     EditorUIConstants::kSkySunHaloSizeMax);
+                        editSunHaloIntensity = ClampFloat(editSunHaloIntensity + RandomRange(-0.2f, 0.2f),
+                                                          EditorUIConstants::kSkySunHaloIntensityMin,
+                                                          EditorUIConstants::kSkySunHaloIntensityMax);
+                        editSunHaloSoftness = ClampFloat(editSunHaloSoftness + RandomRange(-0.2f, 0.2f),
+                                                         EditorUIConstants::kSkySunHaloSoftnessMin,
+                                                         EditorUIConstants::kSkySunHaloSoftnessMax);
+                        editTintX = ClampFloat(editTintX + RandomRange(-0.05f, 0.05f), 0.0f, 1.0f);
+                        editTintY = ClampFloat(editTintY + RandomRange(-0.05f, 0.05f), 0.0f, 1.0f);
+                        editTintZ = ClampFloat(editTintZ + RandomRange(-0.05f, 0.05f), 0.0f, 1.0f);
+                        editZenithTintX = ClampFloat(editZenithTintX + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        editZenithTintY = ClampFloat(editZenithTintY + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        editZenithTintZ = ClampFloat(editZenithTintZ + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        editHorizonTintX = ClampFloat(editHorizonTintX + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        editHorizonTintY = ClampFloat(editHorizonTintY + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        editHorizonTintZ = ClampFloat(editHorizonTintZ + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        editOzoneTintX = ClampFloat(editOzoneTintX + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        editOzoneTintY = ClampFloat(editOzoneTintY + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        editOzoneTintZ = ClampFloat(editOzoneTintZ + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
+                        if (editCloudsEnabled != 0) {
+                            editCloudsCoverage = ClampFloat(editCloudsCoverage + RandomRange(-0.08f, 0.08f),
+                                                            EditorUIConstants::kCloudCoverageMin,
+                                                            EditorUIConstants::kCloudCoverageMax);
+                            editCloudsSoftness = ClampFloat(editCloudsSoftness + RandomRange(-0.08f, 0.08f),
+                                                            EditorUIConstants::kCloudSoftnessMin,
+                                                            EditorUIConstants::kCloudSoftnessMax);
+                            editCloudsScale = ClampFloat(editCloudsScale * (1.0f + RandomRange(-0.2f, 0.2f)),
+                                                         EditorUIConstants::kCloudScaleMin,
+                                                         EditorUIConstants::kCloudScaleMax);
+                            editCloudsSpeed = ClampFloat(editCloudsSpeed + RandomRange(-0.03f, 0.03f),
+                                                         EditorUIConstants::kCloudSpeedMin,
+                                                         EditorUIConstants::kCloudSpeedMax);
+                            float windX = editCloudsWindX + RandomRange(-0.2f, 0.2f);
+                            float windY = editCloudsWindY + RandomRange(-0.2f, 0.2f);
+                            float windLen = sqrtf(windX * windX + windY * windY);
+                            if (windLen > 0.001f) {
+                                windX /= windLen;
+                                windY /= windLen;
+                            }
+                            editCloudsWindX = ClampFloat(windX, EditorUIConstants::kCloudWindMin, EditorUIConstants::kCloudWindMax);
+                            editCloudsWindY = ClampFloat(windY, EditorUIConstants::kCloudWindMin, EditorUIConstants::kCloudWindMax);
+                            editCloudsHeight = ClampFloat(editCloudsHeight + RandomRange(-0.05f, 0.05f),
+                                                          EditorUIConstants::kCloudHeightMin,
+                                                          EditorUIConstants::kCloudHeightMax);
+                            editCloudsThickness = ClampFloat(editCloudsThickness + RandomRange(-0.06f, 0.06f),
+                                                             EditorUIConstants::kCloudThicknessMin,
+                                                             EditorUIConstants::kCloudThicknessMax);
+                            editCloudsBrightness = ClampFloat(editCloudsBrightness + RandomRange(-0.15f, 0.15f),
+                                                              EditorUIConstants::kCloudBrightnessMin,
+                                                              EditorUIConstants::kCloudBrightnessMax);
+                            editCloudsSunInfluence = ClampFloat(editCloudsSunInfluence + RandomRange(-0.2f, 0.2f),
+                                                                EditorUIConstants::kCloudSunInfluenceMin,
+                                                                EditorUIConstants::kCloudSunInfluenceMax);
+                        }
+                        dirty = true;
+                    }
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Art Direction (Live)");
+                if (EditorUI::BeginPropertyTable("SkyArtProps")) {
+                    bool enabledBool = editEnabled != 0;
                     if (EditorUI::PropertyBool("Enabled", &enabledBool)) {
                         editEnabled = enabledBool ? 1 : 0;
                         dirty = true;
                     }
-                    dirty |= EditorUI::PropertyCombo("Mode", &editMode, modes, IM_ARRAYSIZE(modes));
                     dirty |= EditorUI::PropertyFloat("Intensity",
                                                      &editIntensity,
                                                      EditorUIConstants::kSkyIntensityStep,
@@ -1191,15 +1563,6 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                         dirty = true;
                     }
                     if (editMode == 1) {
-                        dirty |= EditorUI::PropertyFloat("Turbidity",
-                                                         &editTurbidity,
-                                                         EditorUIConstants::kSkyTurbidityStep,
-                                                         EditorUIConstants::kSkyTurbidityMin,
-                                                         EditorUIConstants::kSkyTurbidityMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyTurbidity);
                         dirty |= EditorUI::PropertyFloat("Azimuth",
                                                          &editAzimuth,
                                                          EditorUIConstants::kSkyAzimuthStep,
@@ -1218,80 +1581,299 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                          true,
                                                          true,
                                                          EditorUIConstants::kDefaultSkyElevation);
-                    } else {
+                        dirty |= EditorUI::PropertyFloat("Turbidity",
+                                                         &editTurbidity,
+                                                         EditorUIConstants::kSkyTurbidityStep,
+                                                         EditorUIConstants::kSkyTurbidityMin,
+                                                         EditorUIConstants::kSkyTurbidityMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkyTurbidity);
+                        dirty |= EditorUI::PropertyFloat("Sun Size (deg)",
+                                                         &editSunSize,
+                                                         EditorUIConstants::kSkySunSizeStep,
+                                                         EditorUIConstants::kSkySunSizeMin,
+                                                         EditorUIConstants::kSkySunSizeMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkySunSize);
+                        float zenithTint[3] = {editZenithTintX, editZenithTintY, editZenithTintZ};
+                        const float zenithDefault[3] = {0.24f, 0.45f, 0.95f};
+                        if (EditorUI::PropertyColor3("Zenith Tint", zenithTint, zenithDefault, true)) {
+                            editZenithTintX = zenithTint[0];
+                            editZenithTintY = zenithTint[1];
+                            editZenithTintZ = zenithTint[2];
+                            dirty = true;
+                        }
+                        float horizonTint[3] = {editHorizonTintX, editHorizonTintY, editHorizonTintZ};
+                        const float horizonDefault[3] = {0.95f, 0.75f, 0.55f};
+                        if (EditorUI::PropertyColor3("Horizon Tint", horizonTint, horizonDefault, true)) {
+                            editHorizonTintX = horizonTint[0];
+                            editHorizonTintY = horizonTint[1];
+                            editHorizonTintZ = horizonTint[2];
+                            dirty = true;
+                        }
+                        dirty |= EditorUI::PropertyFloat("Gradient Strength",
+                                                         &editGradientStrength,
+                                                         EditorUIConstants::kSkyGradientStrengthStep,
+                                                         EditorUIConstants::kSkyGradientStrengthMin,
+                                                         EditorUIConstants::kSkyGradientStrengthMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkyGradientStrength);
+                        dirty |= EditorUI::PropertyFloat("Haze Density",
+                                                         &editHazeDensity,
+                                                         EditorUIConstants::kSkyHazeDensityStep,
+                                                         EditorUIConstants::kSkyHazeDensityMin,
+                                                         EditorUIConstants::kSkyHazeDensityMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkyHazeDensity);
+                        dirty |= EditorUI::PropertyFloat("Haze Falloff",
+                                                         &editHazeFalloff,
+                                                         EditorUIConstants::kSkyHazeFalloffStep,
+                                                         EditorUIConstants::kSkyHazeFalloffMin,
+                                                         EditorUIConstants::kSkyHazeFalloffMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkyHazeFalloff);
+                        dirty |= EditorUI::PropertyFloat("Haze Height",
+                                                         &editHazeHeight,
+                                                         EditorUIConstants::kSkyHazeHeightStep,
+                                                         EditorUIConstants::kSkyHazeHeightMin,
+                                                         EditorUIConstants::kSkyHazeHeightMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkyHazeHeight);
+                        dirty |= EditorUI::PropertyFloat("Ozone Strength",
+                                                         &editOzoneStrength,
+                                                         EditorUIConstants::kSkyOzoneStrengthStep,
+                                                         EditorUIConstants::kSkyOzoneStrengthMin,
+                                                         EditorUIConstants::kSkyOzoneStrengthMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkyOzoneStrength);
+                        float ozoneTint[3] = {editOzoneTintX, editOzoneTintY, editOzoneTintZ};
+                        const float ozoneDefault[3] = {0.55f, 0.7f, 1.0f};
+                        if (EditorUI::PropertyColor3("Ozone Tint", ozoneTint, ozoneDefault, true)) {
+                            editOzoneTintX = ozoneTint[0];
+                            editOzoneTintY = ozoneTint[1];
+                            editOzoneTintZ = ozoneTint[2];
+                            dirty = true;
+                        }
+                        dirty |= EditorUI::PropertyFloat("Sun Halo Size",
+                                                         &editSunHaloSize,
+                                                         EditorUIConstants::kSkySunHaloSizeStep,
+                                                         EditorUIConstants::kSkySunHaloSizeMin,
+                                                         EditorUIConstants::kSkySunHaloSizeMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkySunHaloSize);
+                        dirty |= EditorUI::PropertyFloat("Sun Halo Intensity",
+                                                         &editSunHaloIntensity,
+                                                         EditorUIConstants::kSkySunHaloIntensityStep,
+                                                         EditorUIConstants::kSkySunHaloIntensityMin,
+                                                         EditorUIConstants::kSkySunHaloIntensityMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkySunHaloIntensity);
+                        dirty |= EditorUI::PropertyFloat("Sun Halo Softness",
+                                                         &editSunHaloSoftness,
+                                                         EditorUIConstants::kSkySunHaloSoftnessStep,
+                                                         EditorUIConstants::kSkySunHaloSoftnessMin,
+                                                         EditorUIConstants::kSkySunHaloSoftnessMax,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         EditorUIConstants::kDefaultSkySunHaloSoftness);
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+
+                if (editMode == 1) {
+                    ImGui::Spacing();
+                    ImGui::TextDisabled("Clouds (Live)");
+                    if (EditorUI::BeginPropertyTable("SkyCloudProps")) {
+                        bool cloudsEnabledBool = editCloudsEnabled != 0;
+                        if (EditorUI::PropertyBool("Enabled", &cloudsEnabledBool)) {
+                            editCloudsEnabled = cloudsEnabledBool ? 1 : 0;
+                            dirty = true;
+                        }
+                        if (editCloudsEnabled != 0) {
+                            dirty |= EditorUI::PropertyFloat("Coverage",
+                                                             &editCloudsCoverage,
+                                                             EditorUIConstants::kCloudCoverageStep,
+                                                             EditorUIConstants::kCloudCoverageMin,
+                                                             EditorUIConstants::kCloudCoverageMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudCoverage);
+                            dirty |= EditorUI::PropertyFloat("Softness",
+                                                             &editCloudsSoftness,
+                                                             EditorUIConstants::kCloudSoftnessStep,
+                                                             EditorUIConstants::kCloudSoftnessMin,
+                                                             EditorUIConstants::kCloudSoftnessMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudSoftness);
+                            dirty |= EditorUI::PropertyFloat("Scale",
+                                                             &editCloudsScale,
+                                                             EditorUIConstants::kCloudScaleStep,
+                                                             EditorUIConstants::kCloudScaleMin,
+                                                             EditorUIConstants::kCloudScaleMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudScale);
+                            dirty |= EditorUI::PropertyFloat("Speed",
+                                                             &editCloudsSpeed,
+                                                             EditorUIConstants::kCloudSpeedStep,
+                                                             EditorUIConstants::kCloudSpeedMin,
+                                                             EditorUIConstants::kCloudSpeedMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudSpeed);
+                            dirty |= EditorUI::PropertyFloat("Wind X",
+                                                             &editCloudsWindX,
+                                                             EditorUIConstants::kCloudWindStep,
+                                                             EditorUIConstants::kCloudWindMin,
+                                                             EditorUIConstants::kCloudWindMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudWindX);
+                            dirty |= EditorUI::PropertyFloat("Wind Y",
+                                                             &editCloudsWindY,
+                                                             EditorUIConstants::kCloudWindStep,
+                                                             EditorUIConstants::kCloudWindMin,
+                                                             EditorUIConstants::kCloudWindMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudWindY);
+                            dirty |= EditorUI::PropertyFloat("Height",
+                                                             &editCloudsHeight,
+                                                             EditorUIConstants::kCloudHeightStep,
+                                                             EditorUIConstants::kCloudHeightMin,
+                                                             EditorUIConstants::kCloudHeightMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudHeight);
+                            dirty |= EditorUI::PropertyFloat("Thickness",
+                                                             &editCloudsThickness,
+                                                             EditorUIConstants::kCloudThicknessStep,
+                                                             EditorUIConstants::kCloudThicknessMin,
+                                                             EditorUIConstants::kCloudThicknessMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudThickness);
+                            dirty |= EditorUI::PropertyFloat("Brightness",
+                                                             &editCloudsBrightness,
+                                                             EditorUIConstants::kCloudBrightnessStep,
+                                                             EditorUIConstants::kCloudBrightnessMin,
+                                                             EditorUIConstants::kCloudBrightnessMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudBrightness);
+                            dirty |= EditorUI::PropertyFloat("Sun Influence",
+                                                             &editCloudsSunInfluence,
+                                                             EditorUIConstants::kCloudSunInfluenceStep,
+                                                             EditorUIConstants::kCloudSunInfluenceMin,
+                                                             EditorUIConstants::kCloudSunInfluenceMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultCloudSunInfluence);
+                        }
+                        EditorUI::EndPropertyTable();
+                    }
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Rebuild-required");
+                if (EditorUI::BeginPropertyTable("SkyRebuildProps")) {
+                    dirty |= EditorUI::PropertyCombo("Mode", &editMode, modes, IM_ARRAYSIZE(modes));
+                    if (editMode == 0) {
                         dirty |= DrawEnvironmentHandleRow(context, state, "HDRI", editHdriHandle, sizeof(pending.hdriHandle), "MCE_ASSET_ENVIRONMENT", selectedEntityId);
                     }
                     EditorUI::EndPropertyTable();
                 }
+
                 if (envPickerDirty) {
                     envPicker.didPick = false;
                     dirty = true;
                 }
-                if (dirty) {
-                    if (editMode == 1 && !pending.autoApply) {
-                        pending.hasPending = true;
-                        pending.mode = editMode;
-                        pending.enabled = editEnabled;
-                        pending.intensity = editIntensity;
-                        pending.tintX = editTintX;
-                        pending.tintY = editTintY;
-                        pending.tintZ = editTintZ;
-                        pending.turbidity = editTurbidity;
-                        pending.azimuth = editAzimuth;
-                        pending.elevation = editElevation;
-                        strncpy(pending.hdriHandle, editHdriHandle, sizeof(pending.hdriHandle) - 1);
-                    } else {
-                        pending.hasPending = false;
-                        MCEEditorSetSkyLight(context, selectedEntityId,
-                                             editMode,
-                                             editEnabled,
-                                             editIntensity,
-                                             editTintX,
-                                             editTintY,
-                                             editTintZ,
-                                             editTurbidity,
-                                             editAzimuth,
-                                             editElevation,
-                                             editHdriHandle);
-                    }
+
+                bool autoRebuildBool = autoRebuild != 0;
+                if (ImGui::Checkbox("Auto Rebuild", &autoRebuildBool)) {
+                    autoRebuild = autoRebuildBool ? 1 : 0;
+                    dirty = true;
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Rebuild IBL")) {
+                    MCEEditorRequestSkyRebuild(context, selectedEntityId);
+                }
+                if (needsRebuild != 0) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "IBL rebuild required.");
                 }
 
-                if (editMode == 1) {
-                    bool autoApply = pending.autoApply;
-                    if (ImGui::Checkbox("Auto-Apply", &autoApply)) {
-                        pending.autoApply = autoApply;
-                        if (pending.autoApply && pending.hasPending) {
-                            MCEEditorSetSkyLight(context, selectedEntityId,
-                                                 pending.mode,
-                                                 pending.enabled,
-                                                 pending.intensity,
-                                                 pending.tintX,
-                                                 pending.tintY,
-                                                 pending.tintZ,
-                                                 pending.turbidity,
-                                                 pending.azimuth,
-                                                 pending.elevation,
-                                                 pending.hdriHandle);
-                            pending.hasPending = false;
-                        }
-                    }
-                    if (pending.hasPending) {
-                        ImGui::SameLine();
-                        if (ImGui::Button("Apply Sky Changes (Rebuild IBL)")) {
-                            MCEEditorSetSkyLight(context, selectedEntityId,
-                                                 pending.mode,
-                                                 pending.enabled,
-                                                 pending.intensity,
-                                                 pending.tintX,
-                                                 pending.tintY,
-                                                 pending.tintZ,
-                                                 pending.turbidity,
-                                                 pending.azimuth,
-                                                 pending.elevation,
-                                                 pending.hdriHandle);
-                            pending.hasPending = false;
-                        }
-                    }
+                if (dirty) {
+                    MCEEditorSetSkyLight(context, selectedEntityId,
+                                         editMode,
+                                         editEnabled,
+                                         editIntensity,
+                                         editTintX,
+                                         editTintY,
+                                         editTintZ,
+                                         editTurbidity,
+                                         editAzimuth,
+                                         editElevation,
+                                         editSunSize,
+                                         editZenithTintX,
+                                         editZenithTintY,
+                                         editZenithTintZ,
+                                         editHorizonTintX,
+                                         editHorizonTintY,
+                                         editHorizonTintZ,
+                                         editGradientStrength,
+                                         editHazeDensity,
+                                         editHazeFalloff,
+                                         editHazeHeight,
+                                         editOzoneStrength,
+                                         editOzoneTintX,
+                                         editOzoneTintY,
+                                         editOzoneTintZ,
+                                         editSunHaloSize,
+                                         editSunHaloIntensity,
+                                         editSunHaloSoftness,
+                                         editCloudsEnabled,
+                                         editCloudsCoverage,
+                                         editCloudsSoftness,
+                                         editCloudsScale,
+                                         editCloudsSpeed,
+                                         editCloudsWindX,
+                                         editCloudsWindY,
+                                         editCloudsHeight,
+                                         editCloudsThickness,
+                                         editCloudsBrightness,
+                                         editCloudsSunInfluence,
+                                         autoRebuild,
+                                         editHdriHandle);
                 }
             }
             if (ImGui::Button("Remove Sky")) {

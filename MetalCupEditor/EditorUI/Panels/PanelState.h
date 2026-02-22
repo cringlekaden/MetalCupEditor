@@ -161,18 +161,8 @@ namespace MCEPanelState {
 
     struct PendingSkyState {
         char entityId[64] = {0};
-        bool hasPending = false;
-        bool autoApply = false;
-        int32_t mode = 0;
-        uint32_t enabled = 1;
-        float intensity = 1.0f;
-        float tintX = 1.0f;
-        float tintY = 1.0f;
-        float tintZ = 1.0f;
-        float turbidity = 2.0f;
-        float azimuth = 0.0f;
-        float elevation = 30.0f;
         char hdriHandle[64] = {0};
+        int presetIndex = 0;
     };
 
     struct InspectorState {

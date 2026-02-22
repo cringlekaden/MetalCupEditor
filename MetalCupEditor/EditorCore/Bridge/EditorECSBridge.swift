@@ -16,21 +16,12 @@ private enum EditorComponentType: Int32 {
     case camera = 6
 }
 
-#if DEBUG
-private enum ResolveContextDebug {
-    static var invalidCount: Int = 0
-}
-#endif
-
 private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
     guard let contextPtr else { return nil }
     let raw = UInt(bitPattern: contextPtr)
     if raw < 0x1000 {
         #if DEBUG
-        if ResolveContextDebug.invalidCount == 0 {
-            ResolveContextDebug.invalidCount += 1
-            assertionFailure("Invalid MCEContext pointer (too small) passed to bridge.")
-        }
+        assertionFailure("Invalid MCEContext pointer (too small) passed to bridge.")
         #endif
         return nil
     }
@@ -42,10 +33,7 @@ private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
     #if DEBUG
     if context.debugMagic != MCEContext.debugMagicExpected ||
         context.debugVersion != MCEContext.debugVersionExpected {
-        if ResolveContextDebug.invalidCount == 0 {
-            ResolveContextDebug.invalidCount += 1
-            assertionFailure("Invalid MCEContext pointer passed to bridge.")
-        }
+        assertionFailure("Invalid MCEContext pointer passed to bridge.")
         return nil
     }
     #endif
@@ -123,7 +111,8 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
                 direction: Vector3DTO(component.direction),
                 range: component.range,
                 innerConeCos: component.innerConeCos,
-                outerConeCos: component.outerConeCos
+                outerConeCos: component.outerConeCos,
+                castsShadows: component.castsShadows
             )
         },
         lightOrbit: ecs.get(LightOrbitComponent.self, for: entity).map { component in
@@ -144,6 +133,29 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
                 turbidity: component.turbidity,
                 azimuthDegrees: component.azimuthDegrees,
                 elevationDegrees: component.elevationDegrees,
+                sunSizeDegrees: component.sunSizeDegrees,
+                zenithTint: Vector3DTO(component.zenithTint),
+                horizonTint: Vector3DTO(component.horizonTint),
+                gradientStrength: component.gradientStrength,
+                hazeDensity: component.hazeDensity,
+                hazeFalloff: component.hazeFalloff,
+                hazeHeight: component.hazeHeight,
+                ozoneStrength: component.ozoneStrength,
+                ozoneTint: Vector3DTO(component.ozoneTint),
+                sunHaloSize: component.sunHaloSize,
+                sunHaloIntensity: component.sunHaloIntensity,
+                sunHaloSoftness: component.sunHaloSoftness,
+                cloudsEnabled: component.cloudsEnabled,
+                cloudsCoverage: component.cloudsCoverage,
+                cloudsSoftness: component.cloudsSoftness,
+                cloudsScale: component.cloudsScale,
+                cloudsSpeed: component.cloudsSpeed,
+                cloudsWindX: component.cloudsWindDirection.x,
+                cloudsWindY: component.cloudsWindDirection.y,
+                cloudsHeight: component.cloudsHeight,
+                cloudsThickness: component.cloudsThickness,
+                cloudsBrightness: component.cloudsBrightness,
+                cloudsSunInfluence: component.cloudsSunInfluence,
                 hdriHandle: component.hdriHandle,
                 realtimeUpdate: component.realtimeUpdate
             )
@@ -176,7 +188,7 @@ private func setActiveSky(ecs: SceneECS, entity: Entity, logger: EngineLogger) {
     }
     ecs.add(SkyLightTag(), to: entity)
     if var sky = ecs.get(SkyLightComponent.self, for: entity) {
-        sky.needsRegenerate = true
+        sky.needsRebuild = true
         ecs.add(sky, to: entity)
         logger.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
@@ -309,10 +321,10 @@ public func MCEEditorCreateMeshEntity(_ contextPtr: UnsafeRawPointer?,
         meshHandle = BuiltinAssets.cubeMesh
     case 1:
         entity = ecs.createEntity(name: "Sphere")
-        meshHandle = AssetManager.handle(forSourcePath: "sphere/sphere.obj")
+        meshHandle = context.engineContext.assets.handle(forSourcePath: "sphere/sphere.obj")
     case 2:
         entity = ecs.createEntity(name: "Plane")
-        meshHandle = BuiltinAssets.planeMesh
+        meshHandle = BuiltinAssets.editorPlaneMesh
     default:
         entity = ecs.createEntity(name: "Mesh")
         meshHandle = nil
@@ -426,7 +438,7 @@ public func MCEEditorCreateSkyEntity(_ contextPtr: UnsafeRawPointer?,
     let entity = ecs.createEntity(name: "Sky")
     var sky = SkyLightComponent()
     sky.mode = .procedural
-    sky.needsRegenerate = true
+    sky.needsRebuild = true
     ecs.add(sky, to: entity)
     setActiveSky(ecs: ecs, entity: entity, logger: context.engineContext.log)
     context.editorProjectManager.notifySceneMutation()
@@ -526,7 +538,7 @@ public func MCEEditorAddComponent(_ contextPtr: UnsafeRawPointer?,
     case .skyLight:
         var sky = SkyLightComponent()
         sky.mode = .procedural
-        sky.needsRegenerate = true
+        sky.needsRebuild = true
         ecs.add(sky, to: entity)
         ecs.add(SkyLightTag(), to: entity)
     case .material:
@@ -926,7 +938,8 @@ public func MCEEditorGetLight(_ contextPtr: UnsafeRawPointer?,
                               _ entityId: UnsafePointer<CChar>?, _ type: UnsafeMutablePointer<Int32>?,
                               _ colorX: UnsafeMutablePointer<Float>?, _ colorY: UnsafeMutablePointer<Float>?, _ colorZ: UnsafeMutablePointer<Float>?,
                               _ brightness: UnsafeMutablePointer<Float>?, _ range: UnsafeMutablePointer<Float>?, _ innerCos: UnsafeMutablePointer<Float>?, _ outerCos: UnsafeMutablePointer<Float>?,
-                              _ dirX: UnsafeMutablePointer<Float>?, _ dirY: UnsafeMutablePointer<Float>?, _ dirZ: UnsafeMutablePointer<Float>?) -> UInt32 {
+                              _ dirX: UnsafeMutablePointer<Float>?, _ dirY: UnsafeMutablePointer<Float>?, _ dirZ: UnsafeMutablePointer<Float>?,
+                              _ castsShadows: UnsafeMutablePointer<UInt32>?) -> UInt32 {
     guard let context = resolveContext(contextPtr),
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
@@ -951,6 +964,7 @@ public func MCEEditorGetLight(_ contextPtr: UnsafeRawPointer?,
     dirX?.pointee = light.direction.x
     dirY?.pointee = light.direction.y
     dirZ?.pointee = light.direction.z
+    castsShadows?.pointee = light.castsShadows ? 1 : 0
     return 1
 }
 
@@ -959,7 +973,8 @@ public func MCEEditorSetLight(_ contextPtr: UnsafeRawPointer?,
                               _ entityId: UnsafePointer<CChar>?, _ type: Int32,
                               _ colorX: Float, _ colorY: Float, _ colorZ: Float,
                               _ brightness: Float, _ range: Float, _ innerCos: Float, _ outerCos: Float,
-                              _ dirX: Float, _ dirY: Float, _ dirZ: Float) {
+                              _ dirX: Float, _ dirY: Float, _ dirZ: Float,
+                              _ castsShadows: UInt32) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
           let ecs = editorECS(context),
@@ -976,7 +991,13 @@ public func MCEEditorSetLight(_ contextPtr: UnsafeRawPointer?,
     light.innerConeCos = innerCos
     light.outerConeCos = outerCos
     light.direction = SIMD3<Float>(dirX, dirY, dirZ)
+    light.castsShadows = castsShadows != 0
     ecs.add(light, to: entity)
+    if ecs.has(PrefabInstanceComponent.self, entity) {
+        var overrides = ecs.get(PrefabOverrideComponent.self, for: entity) ?? PrefabOverrideComponent()
+        overrides.overridden.insert(.light)
+        ecs.add(overrides, to: entity)
+    }
     context.editorProjectManager.notifySceneMutation()
 }
 
@@ -984,7 +1005,19 @@ public func MCEEditorSetLight(_ contextPtr: UnsafeRawPointer?,
 public func MCEEditorGetSkyLight(_ contextPtr: UnsafeRawPointer?,
                                  _ entityId: UnsafePointer<CChar>?, _ mode: UnsafeMutablePointer<Int32>?, _ enabled: UnsafeMutablePointer<UInt32>?,
                                  _ intensity: UnsafeMutablePointer<Float>?, _ tintX: UnsafeMutablePointer<Float>?, _ tintY: UnsafeMutablePointer<Float>?, _ tintZ: UnsafeMutablePointer<Float>?,
-                                 _ turbidity: UnsafeMutablePointer<Float>?, _ azimuth: UnsafeMutablePointer<Float>?, _ elevation: UnsafeMutablePointer<Float>?,
+                                 _ turbidity: UnsafeMutablePointer<Float>?, _ azimuth: UnsafeMutablePointer<Float>?, _ elevation: UnsafeMutablePointer<Float>?, _ sunSize: UnsafeMutablePointer<Float>?,
+                                 _ zenithTintX: UnsafeMutablePointer<Float>?, _ zenithTintY: UnsafeMutablePointer<Float>?, _ zenithTintZ: UnsafeMutablePointer<Float>?,
+                                 _ horizonTintX: UnsafeMutablePointer<Float>?, _ horizonTintY: UnsafeMutablePointer<Float>?, _ horizonTintZ: UnsafeMutablePointer<Float>?,
+                                 _ gradientStrength: UnsafeMutablePointer<Float>?,
+                                 _ hazeDensity: UnsafeMutablePointer<Float>?, _ hazeFalloff: UnsafeMutablePointer<Float>?, _ hazeHeight: UnsafeMutablePointer<Float>?,
+                                 _ ozoneStrength: UnsafeMutablePointer<Float>?, _ ozoneTintX: UnsafeMutablePointer<Float>?, _ ozoneTintY: UnsafeMutablePointer<Float>?, _ ozoneTintZ: UnsafeMutablePointer<Float>?,
+                                 _ sunHaloSize: UnsafeMutablePointer<Float>?, _ sunHaloIntensity: UnsafeMutablePointer<Float>?, _ sunHaloSoftness: UnsafeMutablePointer<Float>?,
+                                 _ cloudsEnabled: UnsafeMutablePointer<UInt32>?, _ cloudsCoverage: UnsafeMutablePointer<Float>?, _ cloudsSoftness: UnsafeMutablePointer<Float>?,
+                                 _ cloudsScale: UnsafeMutablePointer<Float>?, _ cloudsSpeed: UnsafeMutablePointer<Float>?,
+                                 _ cloudsWindX: UnsafeMutablePointer<Float>?, _ cloudsWindY: UnsafeMutablePointer<Float>?,
+                                 _ cloudsHeight: UnsafeMutablePointer<Float>?, _ cloudsThickness: UnsafeMutablePointer<Float>?,
+                                 _ cloudsBrightness: UnsafeMutablePointer<Float>?, _ cloudsSunInfluence: UnsafeMutablePointer<Float>?,
+                                 _ autoRebuild: UnsafeMutablePointer<UInt32>?, _ needsRebuild: UnsafeMutablePointer<UInt32>?,
                                  _ hdriHandle: UnsafeMutablePointer<CChar>?, _ hdriHandleSize: Int32) -> UInt32 {
     guard let context = resolveContext(contextPtr),
           let ecs = editorECS(context),
@@ -999,6 +1032,37 @@ public func MCEEditorGetSkyLight(_ contextPtr: UnsafeRawPointer?,
     turbidity?.pointee = sky.turbidity
     azimuth?.pointee = sky.azimuthDegrees
     elevation?.pointee = sky.elevationDegrees
+    sunSize?.pointee = sky.sunSizeDegrees
+    zenithTintX?.pointee = sky.zenithTint.x
+    zenithTintY?.pointee = sky.zenithTint.y
+    zenithTintZ?.pointee = sky.zenithTint.z
+    horizonTintX?.pointee = sky.horizonTint.x
+    horizonTintY?.pointee = sky.horizonTint.y
+    horizonTintZ?.pointee = sky.horizonTint.z
+    gradientStrength?.pointee = sky.gradientStrength
+    hazeDensity?.pointee = sky.hazeDensity
+    hazeFalloff?.pointee = sky.hazeFalloff
+    hazeHeight?.pointee = sky.hazeHeight
+    ozoneStrength?.pointee = sky.ozoneStrength
+    ozoneTintX?.pointee = sky.ozoneTint.x
+    ozoneTintY?.pointee = sky.ozoneTint.y
+    ozoneTintZ?.pointee = sky.ozoneTint.z
+    sunHaloSize?.pointee = sky.sunHaloSize
+    sunHaloIntensity?.pointee = sky.sunHaloIntensity
+    sunHaloSoftness?.pointee = sky.sunHaloSoftness
+    cloudsEnabled?.pointee = sky.cloudsEnabled ? 1 : 0
+    cloudsCoverage?.pointee = sky.cloudsCoverage
+    cloudsSoftness?.pointee = sky.cloudsSoftness
+    cloudsScale?.pointee = sky.cloudsScale
+    cloudsSpeed?.pointee = sky.cloudsSpeed
+    cloudsWindX?.pointee = sky.cloudsWindDirection.x
+    cloudsWindY?.pointee = sky.cloudsWindDirection.y
+    cloudsHeight?.pointee = sky.cloudsHeight
+    cloudsThickness?.pointee = sky.cloudsThickness
+    cloudsBrightness?.pointee = sky.cloudsBrightness
+    cloudsSunInfluence?.pointee = sky.cloudsSunInfluence
+    autoRebuild?.pointee = sky.realtimeUpdate ? 1 : 0
+    needsRebuild?.pointee = sky.needsRebuild ? 1 : 0
     let hdriString = sky.hdriHandle?.rawValue.uuidString ?? ""
     _ = writeCString(hdriString, to: hdriHandle, max: hdriHandleSize)
     return 1
@@ -1008,13 +1072,26 @@ public func MCEEditorGetSkyLight(_ contextPtr: UnsafeRawPointer?,
 public func MCEEditorSetSkyLight(_ contextPtr: UnsafeRawPointer?,
                                  _ entityId: UnsafePointer<CChar>?, _ mode: Int32, _ enabled: UInt32,
                                  _ intensity: Float, _ tintX: Float, _ tintY: Float, _ tintZ: Float,
-                                 _ turbidity: Float, _ azimuth: Float, _ elevation: Float,
+                                 _ turbidity: Float, _ azimuth: Float, _ elevation: Float, _ sunSize: Float,
+                                 _ zenithTintX: Float, _ zenithTintY: Float, _ zenithTintZ: Float,
+                                 _ horizonTintX: Float, _ horizonTintY: Float, _ horizonTintZ: Float,
+                                 _ gradientStrength: Float,
+                                 _ hazeDensity: Float, _ hazeFalloff: Float, _ hazeHeight: Float,
+                                 _ ozoneStrength: Float, _ ozoneTintX: Float, _ ozoneTintY: Float, _ ozoneTintZ: Float,
+                                 _ sunHaloSize: Float, _ sunHaloIntensity: Float, _ sunHaloSoftness: Float,
+                                 _ cloudsEnabled: UInt32, _ cloudsCoverage: Float, _ cloudsSoftness: Float,
+                                 _ cloudsScale: Float, _ cloudsSpeed: Float,
+                                 _ cloudsWindX: Float, _ cloudsWindY: Float,
+                                 _ cloudsHeight: Float, _ cloudsThickness: Float,
+                                 _ cloudsBrightness: Float, _ cloudsSunInfluence: Float,
+                                 _ autoRebuild: UInt32,
                                  _ hdriHandle: UnsafePointer<CChar>?) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return }
-    var sky = ecs.get(SkyLightComponent.self, for: entity) ?? SkyLightComponent()
+    let previous = ecs.get(SkyLightComponent.self, for: entity) ?? SkyLightComponent()
+    var sky = previous
     sky.mode = SkyMode(rawValue: UInt32(max(0, mode))) ?? .hdri
     sky.enabled = enabled != 0
     sky.intensity = max(0.0, intensity)
@@ -1022,17 +1099,69 @@ public func MCEEditorSetSkyLight(_ contextPtr: UnsafeRawPointer?,
     sky.turbidity = max(1.0, turbidity)
     sky.azimuthDegrees = azimuth
     sky.elevationDegrees = elevation
+    sky.sunSizeDegrees = max(0.01, sunSize)
+    sky.zenithTint = SIMD3<Float>(max(0.0, zenithTintX), max(0.0, zenithTintY), max(0.0, zenithTintZ))
+    sky.horizonTint = SIMD3<Float>(max(0.0, horizonTintX), max(0.0, horizonTintY), max(0.0, horizonTintZ))
+    sky.gradientStrength = max(0.0, gradientStrength)
+    sky.hazeDensity = max(0.0, hazeDensity)
+    sky.hazeFalloff = max(0.01, hazeFalloff)
+    sky.hazeHeight = hazeHeight
+    sky.ozoneStrength = max(0.0, ozoneStrength)
+    sky.ozoneTint = SIMD3<Float>(max(0.0, ozoneTintX), max(0.0, ozoneTintY), max(0.0, ozoneTintZ))
+    sky.sunHaloSize = max(0.1, sunHaloSize)
+    sky.sunHaloIntensity = max(0.0, sunHaloIntensity)
+    sky.sunHaloSoftness = max(0.05, sunHaloSoftness)
+    sky.cloudsEnabled = cloudsEnabled != 0
+    sky.cloudsCoverage = max(0.0, min(cloudsCoverage, 1.0))
+    sky.cloudsSoftness = max(0.01, min(cloudsSoftness, 1.0))
+    sky.cloudsScale = max(0.01, cloudsScale)
+    sky.cloudsSpeed = cloudsSpeed
+    sky.cloudsWindDirection = SIMD2<Float>(cloudsWindX, cloudsWindY)
+    sky.cloudsHeight = max(0.0, min(cloudsHeight, 1.0))
+    sky.cloudsThickness = max(0.0, min(cloudsThickness, 1.0))
+    sky.cloudsBrightness = max(0.0, cloudsBrightness)
+    sky.cloudsSunInfluence = max(0.0, cloudsSunInfluence)
+    sky.realtimeUpdate = autoRebuild != 0
     if let hdriHandle {
         let hdriString = String(cString: hdriHandle)
         sky.hdriHandle = handleFromString(hdriString)
     } else {
         sky.hdriHandle = nil
     }
-    sky.needsRegenerate = true
+    if SkySystem.requiresIBLRebuild(previous: previous, next: sky) {
+        sky.needsRebuild = true
+        sky.rebuildRequested = false
+    }
     ecs.add(sky, to: entity)
-    if sky.needsRegenerate {
+    if sky.needsRebuild {
         context.engineContext.log.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorRequestSkyRebuild")
+public func MCEEditorRequestSkyRebuild(_ contextPtr: UnsafeRawPointer?,
+                                       _ entityId: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var sky = ecs.get(SkyLightComponent.self, for: entity) else { return }
+    sky.needsRebuild = true
+    sky.rebuildRequested = true
+    ecs.add(sky, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorRequestActiveSkyRebuild")
+public func MCEEditorRequestActiveSkyRebuild(_ contextPtr: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let (entity, sky) = ecs.activeSkyLight() else { return }
+    var updated = sky
+    updated.needsRebuild = true
+    ecs.add(updated, to: entity)
     context.editorProjectManager.notifySceneMutation()
 }
 

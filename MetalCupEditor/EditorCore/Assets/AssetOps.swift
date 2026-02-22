@@ -51,7 +51,7 @@ enum AssetOps {
         guard let folderURL = resolveDirectoryURL(rootURL: rootURL, relativePath: rel) else { return false }
         let targetURL = folderURL.appendingPathComponent("\(sceneName).mcscene")
         let document = SceneDocument(id: UUID(), name: sceneName, entities: [])
-        let scene = SerializedScene(document: document)
+        let scene = SerializedScene(document: document, engineContext: context.engineContext)
         let ok = performAssetMutation(projectManager) {
             do {
                 try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)

@@ -17,15 +17,15 @@ final class EditorApplication: Application, NSWindowDelegate {
     }
     
     nonisolated override func willCreateWindow() {
-        Graphics.initialize()
-        ResourceRegistry.resourcesRootURL = EditorFileSystem.resourcesRootURL(preferredFolderName: specification.resourcesFolderName)
+        let resourcesRoot = EditorFileSystem.resourcesRootURL(preferredFolderName: specification.resourcesFolderName)
+        engineContext.resources.resourcesRootURL = resourcesRoot
         let enginePtr = Unmanaged.passUnretained(engineContext).toOpaque()
         let contextPtr = MCEContextCreate(enginePtr)
         self.contextPtr = contextPtr
         let context = Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
         self.context = context
-        context.editorProjectManager.bootstrap(resourcesRootURL: ResourceRegistry.resourcesRootURL)
-        Graphics.build()
+        context.editorProjectManager.bootstrap(resourcesRootURL: resourcesRoot)
+        engineContext.graphics.build()
     }
     
     nonisolated override func didCreateWindow() {
@@ -52,8 +52,11 @@ final class EditorApplication: Application, NSWindowDelegate {
         editorLayer?.activeScene()
     }
 
-    nonisolated override func buildSceneView() -> SceneView {
-        return editorLayer?.buildSceneView() ?? SceneView(viewportSize: Renderer.ViewportSize)
+    nonisolated override func buildSceneView(renderer: Renderer) -> SceneView {
+        let viewport = (renderer.viewportSize.x > 1 && renderer.viewportSize.y > 1)
+            ? renderer.viewportSize
+            : renderer.drawableSize
+        return editorLayer?.buildSceneView() ?? SceneView(viewportSize: viewport)
     }
 
     nonisolated override func handlePickResult(_ result: PickResult) {

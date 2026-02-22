@@ -8,9 +8,11 @@ import MetalCupEngine
 
 final class EditorSceneController {
     private let prefabSystem: PrefabSystem
+    private weak var engineContext: EngineContext?
 
-    init(prefabSystem: PrefabSystem) {
+    init(prefabSystem: PrefabSystem, engineContext: EngineContext) {
         self.prefabSystem = prefabSystem
+        self.engineContext = engineContext
     }
 
     private(set) var editorScene: EngineScene?
@@ -30,6 +32,7 @@ final class EditorSceneController {
     // MARK: - Scene Accessors
 
     func setScene(_ scene: EngineScene) {
+        scene.engineContext = engineContext
         editorScene = scene
     }
 
@@ -52,7 +55,6 @@ final class EditorSceneController {
     }
 
     func updateViewportSize(_ size: SIMD2<Float>) {
-        Renderer.ViewportSize = size
         activeScene()?.updateAspectRatio()
     }
 
@@ -65,12 +67,21 @@ final class EditorSceneController {
     func play() {
         if isPlaying { return }
         guard let editorScene else { return }
-        editorSnapshot = editorScene.toDocument(rendererSettingsOverride: RendererSettingsDTO(settings: Renderer.settings))
+        let settings = engineContext?.rendererSettings ?? RendererSettings()
+        editorSnapshot = editorScene.toDocument(rendererSettingsOverride: RendererSettingsDTO(settings: settings))
         if let snapshot = editorSnapshot {
-            runtimeScene = SerializedScene(document: snapshot, prefabSystem: prefabSystem)
+            runtimeScene = SerializedScene(
+                document: snapshot,
+                prefabSystem: prefabSystem,
+                engineContext: engineContext
+            )
         } else {
             let empty = SceneDocument(id: UUID(), name: "Untitled", entities: [])
-            runtimeScene = SerializedScene(document: empty, prefabSystem: prefabSystem)
+            runtimeScene = SerializedScene(
+                document: empty,
+                prefabSystem: prefabSystem,
+                engineContext: engineContext
+            )
         }
         resetTimingBase()
         fixedAccumulator = 0.0
@@ -83,7 +94,7 @@ final class EditorSceneController {
         if let snapshot = editorSnapshot, let editorScene {
             editorScene.apply(document: snapshot)
             if let settings = snapshot.rendererSettingsOverride {
-                Renderer.settings = settings.makeRendererSettings()
+                engineContext?.rendererSettings = settings.makeRendererSettings()
             }
         }
         editorSnapshot = nil
@@ -114,12 +125,20 @@ final class EditorSceneController {
     func loadScene(from url: URL) throws {
         let document = try SceneSerializer.load(from: url)
         if let settings = document.rendererSettingsOverride {
-            Renderer.settings = settings.makeRendererSettings()
+            engineContext?.rendererSettings = settings.makeRendererSettings()
         }
-        let scene = SerializedScene(document: document, prefabSystem: prefabSystem)
+        let scene = SerializedScene(
+            document: document,
+            prefabSystem: prefabSystem,
+            engineContext: engineContext
+        )
         editorScene = scene
         if isPlaying {
-            runtimeScene = SerializedScene(document: document, prefabSystem: prefabSystem)
+            runtimeScene = SerializedScene(
+                document: document,
+                prefabSystem: prefabSystem,
+                engineContext: engineContext
+            )
         }
     }
 

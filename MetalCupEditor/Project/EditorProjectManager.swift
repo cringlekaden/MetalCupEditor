@@ -13,6 +13,7 @@ final class EditorProjectManager {
     private let alertCenter: EditorAlertCenter
     private let sceneController: EditorSceneController
     private let layerCatalog: LayerCatalog
+    private let engineContext: EngineContext
 
     private(set) var projectURL: URL?
     private(set) var projectRootURL: URL?
@@ -39,13 +40,15 @@ final class EditorProjectManager {
          logCenter: EngineLogger,
          alertCenter: EditorAlertCenter,
          sceneController: EditorSceneController,
-         layerCatalog: LayerCatalog) {
+         layerCatalog: LayerCatalog,
+         engineContext: EngineContext) {
         self.settingsStore = settingsStore
         self.uiState = uiState
         self.logCenter = logCenter
         self.alertCenter = alertCenter
         self.sceneController = sceneController
         self.layerCatalog = layerCatalog
+        self.engineContext = engineContext
     }
 
     private struct ProjectListItem {
@@ -348,18 +351,19 @@ final class EditorProjectManager {
         registry.onChange = { [weak self] in
             guard let self else { return }
             self.assetRevision &+= 1
-            AssetManager.clearCache()
-            AssetManager.preload(from: registry)
+            self.engineContext.assets.clearCache()
+            self.engineContext.assets.preload(from: registry)
             let prefabHandles = registry.allMetadata().filter { $0.type == .prefab }.map { $0.handle }
             self.sceneController.markPrefabsDirty(handles: prefabHandles)
             self.logCenter.logInfo("Assets reloaded.", category: .assets)
         }
         assetRegistry = registry
-        Engine.assetDatabase = registry
-        AssetManager.preload(from: registry)
+        engineContext.assetDatabase = registry
+        engineContext.assets.assetDatabase = registry
+        engineContext.assets.preload(from: registry)
 
-        ResourceRegistry.resourcesRootURL = resourcesRootURL
-        ResourceRegistry.shaderRootURLs = [resolvedAssetRoot.appendingPathComponent("Shaders", isDirectory: true)]
+        engineContext.resources.resourcesRootURL = resourcesRootURL
+        engineContext.resources.shaderRootURLs = [resolvedAssetRoot.appendingPathComponent("Shaders", isDirectory: true)]
     }
 
     private func loadScene(relativePath: String) {
@@ -604,7 +608,7 @@ final class EditorProjectManager {
 
     private func saveEmptyScene(to url: URL, name: String) {
         let document = SceneDocument(id: UUID(), name: name, entities: [])
-        let scene = SerializedScene(document: document)
+        let scene = SerializedScene(document: document, engineContext: engineContext)
         do {
             try SceneSerializer.save(scene: scene, to: url)
         } catch {
@@ -615,7 +619,7 @@ final class EditorProjectManager {
     private func setEmptyScene() {
         layerCatalog.setNames(settingsStore.layerNames)
         let document = SceneDocument(id: UUID(), name: "Untitled", entities: [])
-        let scene = SerializedScene(document: document)
+        let scene = SerializedScene(document: document, engineContext: engineContext)
         sceneController.setScene(scene)
     }
 

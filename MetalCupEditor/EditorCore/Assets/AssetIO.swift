@@ -6,20 +6,13 @@ import Foundation
 import MetalCupEngine
 
 enum AssetIO {
-    private struct DisplayNameCacheEntry {
-        let modifiedTime: TimeInterval
-        let displayName: String
-    }
-
-    private static var displayNameCache: [String: DisplayNameCacheEntry] = [:]
-
     static func metaURL(for assetURL: URL) -> URL {
         URL(fileURLWithPath: assetURL.path + ".meta")
     }
 
-    static func assetDisplayName(for metadata: AssetMetadata) -> String {
+    static func assetDisplayName(for metadata: AssetMetadata, assetManager: AssetManager?) -> String {
         if metadata.type == .material,
-           let material = AssetManager.material(handle: metadata.handle) {
+           let material = assetManager?.material(handle: metadata.handle) {
             return material.name
         }
         let filename = URL(fileURLWithPath: metadata.sourcePath).deletingPathExtension().lastPathComponent
@@ -27,11 +20,6 @@ enum AssetIO {
     }
 
     static func displayNameForFile(url: URL, modifiedTime: TimeInterval) -> String {
-        let key = url.standardizedFileURL.path
-        if let cached = displayNameCache[key], cached.modifiedTime == modifiedTime {
-            return cached.displayName
-        }
-
         let ext = url.pathExtension.lowercased()
         var displayName = url.deletingPathExtension().lastPathComponent
         if ext == "mcmat" {
@@ -49,8 +37,6 @@ enum AssetIO {
                 }
             }
         }
-
-        displayNameCache[key] = DisplayNameCacheEntry(modifiedTime: modifiedTime, displayName: displayName)
         return displayName
     }
 
@@ -78,6 +64,6 @@ enum AssetIO {
     }
 
     static func clearDisplayNameCache() {
-        displayNameCache.removeAll()
+        // Cache removed; intentionally empty.
     }
 }

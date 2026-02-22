@@ -41,7 +41,7 @@ final class ImGuiLayer: Layer {
     }
 
     nonisolated override func onUpdate(frame: FrameContext) {
-        DebugDraw.beginFrame()
+        context.engineContext.debugDraw.beginFrame()
         lastFrameTime = frame.time
         sceneContext.editorScene = context.editorSceneController.editorScene
         sceneContext.runtimeScene = context.editorSceneController.runtimeScene
@@ -54,16 +54,16 @@ final class ImGuiLayer: Layer {
             context.editorSceneController.updateViewportSize(SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height)))
             let origin = SIMD2<Float>(Float(viewportOrigin.x), Float(viewportOrigin.y))
             let size = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
-            Renderer.activeRenderer?.inputAccumulator?.setViewportRect(origin: origin, size: size)
+            context.engineContext.renderer?.inputAccumulator?.setViewportRect(origin: origin, size: size)
         }
         sceneContext.viewportOrigin = SIMD2<Float>(Float(viewportOrigin.x), Float(viewportOrigin.y))
         sceneContext.viewportSize = SIMD2<Float>(Float(viewportSize.width), Float(viewportSize.height))
         context.editorSceneController.update(frame: frame)
         if !context.editorSceneController.isPlaying,
            let scene = sceneContext.activeScene {
-            DebugDraw.submitGridXZ(SceneRenderer.gridParams(scene: scene))
+            context.engineContext.debugDraw.submitGridXZ(SceneRenderer.gridParams(scene: scene))
         }
-        DebugDraw.endFrame()
+        context.engineContext.debugDraw.endFrame()
 
         if let selected = context.editorSceneController.selectedEntityUUID() {
             if sceneContext.selectedEntityIds.first != selected {
@@ -96,7 +96,7 @@ final class ImGuiLayer: Layer {
         imguiBridge.setup(with: view)
         let deltaTime = lastFrameTime?.deltaTime ?? 0.0
         imguiBridge.newFrame(with: view, deltaTime: deltaTime)
-        let sceneTex = AssetManager.texture(handle: BuiltinAssets.finalColorRender)
+        let sceneTex = context.engineContext.assets.texture(handle: BuiltinAssets.finalColorRender)
         let previewTex = updateCameraPreviewIfNeeded(view: view, commandBuffer: commandBuffer, frameContext: frameContext)
         imguiBridge.buildUI(withSceneTexture: sceneTex, previewTexture: previewTex)
         if let rpd = view.currentRenderPassDescriptor {
@@ -114,7 +114,7 @@ final class ImGuiLayer: Layer {
             if viewportHovered && !viewportUIHovered && !wantsMouse {
                 let viewportOrigin = imguiBridge.viewportImageOrigin()
                 let viewportImageSize = imguiBridge.viewportImageSize()
-                let pickTexture = AssetManager.texture(handle: BuiltinAssets.pickIdRender)
+                let pickTexture = context.engineContext.assets.texture(handle: BuiltinAssets.pickIdRender)
                 let textureWidth = Float(pickTexture?.width ?? 0)
                 let textureHeight = Float(pickTexture?.height ?? 0)
                 let mousePos = imguiBridge.mousePosition()
@@ -141,7 +141,7 @@ final class ImGuiLayer: Layer {
 
                     if !viewportUIHovered {
                         sceneContext.pendingPickRequest = SIMD2<Int>(clampedX, clampedY)
-                        PickingSystem.requestPick(pixel: SIMD2<Int>(clampedX, clampedY), mask: .all)
+                        context.engineContext.pickingSystem.requestPick(pixel: SIMD2<Int>(clampedX, clampedY), mask: .all)
                     }
                 }
             }
@@ -162,9 +162,10 @@ final class ImGuiLayer: Layer {
             if sceneContext.viewportSize.x > 1, sceneContext.viewportSize.y > 1 {
                 return sceneContext.viewportSize
             }
-            let fallback = (Renderer.DrawableSize.x > 1 && Renderer.DrawableSize.y > 1)
-                ? Renderer.DrawableSize
-                : Renderer.ViewportSize
+            let renderer = context.engineContext.renderer
+            let fallback = (renderer?.drawableSize.x ?? 0 > 1 && renderer?.drawableSize.y ?? 0 > 1)
+                ? (renderer?.drawableSize ?? .zero)
+                : (renderer?.viewportSize ?? .zero)
             return SIMD2<Float>(max(1, fallback.x), max(1, fallback.y))
         }()
         let activeScene = sceneContext.activeScene
@@ -196,7 +197,7 @@ final class ImGuiLayer: Layer {
             imguiBridge.setSelectedEntityId("")
             return
         }
-        if let entity = PickingSystem.entity(for: result.pickedId),
+        if let entity = context.engineContext.pickingSystem.entity(for: result.pickedId),
            let hit = scene.raycast(hitEntity: entity, mask: result.mask) {
             sceneContext.selectedEntityIds = [hit.id]
             sceneContext.lastPickResult = hit.id

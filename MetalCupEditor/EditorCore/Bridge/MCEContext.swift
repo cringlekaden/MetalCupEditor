@@ -54,14 +54,15 @@ final class MCEContext {
         self.assetSnapshotStore = EditorAssetSnapshotStore()
         self.directorySnapshotStore = EditorDirectorySnapshotStore()
         self.panelState = MCEUIPanelStateCreate()
-        self.editorSceneController = EditorSceneController(prefabSystem: engineContext.prefabSystem)
+        self.editorSceneController = EditorSceneController(prefabSystem: engineContext.prefabSystem, engineContext: engineContext)
         self.editorProjectManager = EditorProjectManager(
             settingsStore: editorSettingsStore,
             uiState: editorUIState,
             logCenter: engineContext.log,
             alertCenter: editorAlertCenter,
             sceneController: editorSceneController,
-            layerCatalog: engineContext.layerCatalog
+            layerCatalog: engineContext.layerCatalog,
+            engineContext: engineContext
         )
     }
 
@@ -88,6 +89,13 @@ public func MCEContextGetUIPanelState(_ contextPtr: UnsafeMutableRawPointer?) ->
     guard let contextPtr else { return nil }
     let context = Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
     return context.panelState
+}
+
+@_cdecl("MCEContextGetEngineContext")
+public func MCEContextGetEngineContext(_ contextPtr: UnsafeMutableRawPointer?) -> UnsafeMutableRawPointer? {
+    guard let contextPtr else { return nil }
+    let context = Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
+    return Unmanaged.passUnretained(context.engineContext).toOpaque()
 }
 
 @_cdecl("MCEImGuiSetGizmoCapture")

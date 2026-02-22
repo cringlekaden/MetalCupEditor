@@ -11,6 +11,8 @@
 extern "C" {
 #endif
 
+void *MCEContextGetEngineContext(MCE_CTX);
+
 uint32_t MCERendererGetBloomEnabled(MCE_CTX);
 void MCERendererSetBloomEnabled(MCE_CTX, uint32_t value);
 
@@ -68,9 +70,6 @@ void MCERendererSetDisableSheen(MCE_CTX, uint32_t value);
 uint32_t MCERendererGetSkipSpecIBLHighRoughness(MCE_CTX);
 void MCERendererSetSkipSpecIBLHighRoughness(MCE_CTX, uint32_t value);
 
-uint32_t MCERendererGetNormalFlipYGlobal(MCE_CTX);
-void MCERendererSetNormalFlipYGlobal(MCE_CTX, uint32_t value);
-
 uint32_t MCERendererGetShadingDebugMode(MCE_CTX);
 void MCERendererSetShadingDebugMode(MCE_CTX, uint32_t value);
 
@@ -113,7 +112,45 @@ float MCERendererGetIBLFireflyClamp(MCE_CTX);
 void MCERendererSetIBLFireflyClamp(MCE_CTX, float value);
 float MCERendererGetIBLSampleMultiplier(MCE_CTX);
 void MCERendererSetIBLSampleMultiplier(MCE_CTX, float value);
+float MCERendererGetSkyboxMipBias(MCE_CTX);
+void MCERendererSetSkyboxMipBias(MCE_CTX, float value);
 
+uint32_t MCERendererGetShadowsEnabled(MCE_CTX);
+void MCERendererSetShadowsEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetDirectionalShadowsEnabled(MCE_CTX);
+void MCERendererSetDirectionalShadowsEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetShadowMapResolution(MCE_CTX);
+void MCERendererSetShadowMapResolution(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetShadowCascadeCount(MCE_CTX);
+void MCERendererSetShadowCascadeCount(MCE_CTX, uint32_t value);
+float MCERendererGetShadowSplitLambda(MCE_CTX);
+void MCERendererSetShadowSplitLambda(MCE_CTX, float value);
+float MCERendererGetShadowDepthBias(MCE_CTX);
+void MCERendererSetShadowDepthBias(MCE_CTX, float value);
+float MCERendererGetShadowNormalBias(MCE_CTX);
+void MCERendererSetShadowNormalBias(MCE_CTX, float value);
+float MCERendererGetShadowPCFRadius(MCE_CTX);
+void MCERendererSetShadowPCFRadius(MCE_CTX, float value);
+uint32_t MCERendererGetShadowFilterMode(MCE_CTX);
+void MCERendererSetShadowFilterMode(MCE_CTX, uint32_t value);
+float MCERendererGetShadowMaxDistance(MCE_CTX);
+void MCERendererSetShadowMaxDistance(MCE_CTX, float value);
+float MCERendererGetShadowFadeOutDistance(MCE_CTX);
+void MCERendererSetShadowFadeOutDistance(MCE_CTX, float value);
+float MCERendererGetShadowPCSSLightWorldSize(MCE_CTX);
+void MCERendererSetShadowPCSSLightWorldSize(MCE_CTX, float value);
+float MCERendererGetShadowPCSSMinRadius(MCE_CTX);
+void MCERendererSetShadowPCSSMinRadius(MCE_CTX, float value);
+float MCERendererGetShadowPCSSMaxRadius(MCE_CTX);
+void MCERendererSetShadowPCSSMaxRadius(MCE_CTX, float value);
+float MCERendererGetShadowPCSSBlockerRadius(MCE_CTX);
+void MCERendererSetShadowPCSSBlockerRadius(MCE_CTX, float value);
+uint32_t MCERendererGetShadowPCSSBlockerSamples(MCE_CTX);
+void MCERendererSetShadowPCSSBlockerSamples(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetShadowPCSSFilterSamples(MCE_CTX);
+void MCERendererSetShadowPCSSFilterSamples(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetShadowPCSSNoiseEnabled(MCE_CTX);
+void MCERendererSetShadowPCSSNoiseEnabled(MCE_CTX, uint32_t value);
 float MCERendererGetFrameMs(MCE_CTX);
 float MCERendererGetUpdateMs(MCE_CTX);
 float MCERendererGetSceneMs(MCE_CTX);
