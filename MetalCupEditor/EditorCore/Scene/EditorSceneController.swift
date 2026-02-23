@@ -3,6 +3,7 @@
 /// Created by refactor.
 
 import Foundation
+import QuartzCore
 import simd
 import MetalCupEngine
 
@@ -155,14 +156,16 @@ final class EditorSceneController {
     // MARK: - Internals
 
     private func updateRuntimeScene(_ scene: EngineScene, frame: FrameContext) {
-        scene.onUpdate(frame: frame, isPlaying: true, isPaused: isPaused)
         scene.runtime.play()
         if isPaused {
             scene.runtime.pause()
         } else {
             scene.runtime.resume()
         }
-        scene.runtime.update(scene: scene, frame: frame)
+        // Order: variable-dt update, then fixed-step simulation.
+        recordProfilerScope(.sceneUpdate) {
+            scene.runtime.update(scene: scene, frame: frame)
+        }
 
         if isPaused {
             _ = consumeFixedSteps(frameTime: frame.time)
@@ -170,16 +173,19 @@ final class EditorSceneController {
         }
         let steps = consumeFixedSteps(frameTime: frame.time)
         if steps > 0 {
+            let fixedStart = CACurrentMediaTime()
             for _ in 0..<steps {
                 scene.runtime.fixedUpdate(scene: scene)
             }
+            engineContext?.renderer?.profiler.record(.fixedUpdate, seconds: CACurrentMediaTime() - fixedStart)
         }
     }
 
     private func updateEditorScene(_ scene: EngineScene, frame: FrameContext) {
-        scene.onUpdate(frame: frame, isPlaying: false, isPaused: false)
         scene.runtime.stop()
-        scene.runtime.update(scene: scene, frame: frame)
+        recordProfilerScope(.sceneUpdate) {
+            scene.runtime.update(scene: scene, frame: frame)
+        }
     }
 
     private func adjustFrame(_ frame: FrameContext) -> FrameContext {
@@ -221,5 +227,15 @@ final class EditorSceneController {
         timeBaseTotal = lastFrameTime.totalTime
         timeBaseUnscaled = lastFrameTime.unscaledTotalTime
         timeBaseFrameCount = lastFrameTime.frameCount
+    }
+
+    private func recordProfilerScope(_ scope: RendererProfiler.Scope, _ body: () -> Void) {
+        guard let profiler = engineContext?.renderer?.profiler else {
+            body()
+            return
+        }
+        let start = CACurrentMediaTime()
+        body()
+        profiler.record(scope, seconds: CACurrentMediaTime() - start)
     }
 }

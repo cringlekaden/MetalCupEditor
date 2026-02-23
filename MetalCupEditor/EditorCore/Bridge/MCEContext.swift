@@ -41,6 +41,7 @@ final class MCEContext {
     let editorLogCenter: EditorLogCenter
     let assetSnapshotStore: EditorAssetSnapshotStore
     let directorySnapshotStore: EditorDirectorySnapshotStore
+    let importController: ImportController
     let panelState: UnsafeMutableRawPointer
     var imguiBridge: ImGuiBridge?
 
@@ -64,6 +65,7 @@ final class MCEContext {
             layerCatalog: engineContext.layerCatalog,
             engineContext: engineContext
         )
+        self.importController = ImportController(projectManager: editorProjectManager, logCenter: engineContext.log)
     }
 
     deinit {

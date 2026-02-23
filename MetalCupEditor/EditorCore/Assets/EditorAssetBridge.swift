@@ -497,6 +497,241 @@ public func MCEEditorDuplicateAsset(_ contextPtr: UnsafeRawPointer?,
     }
 }
 
+@_cdecl("MCEImportBeginForHandle")
+public func MCEImportBeginForHandle(_ contextPtr: UnsafeRawPointer?,
+                                    _ handle: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    guard let handle else { return 0 }
+    let handleString = String(cString: handle)
+    guard let uuid = UUID(uuidString: handleString) else { return 0 }
+    let assetHandle = AssetHandle(rawValue: uuid)
+    return context.importController.beginImport(handle: assetHandle) ? 1 : 0
+}
+
+@_cdecl("MCEImportCanReimportHandle")
+public func MCEImportCanReimportHandle(_ contextPtr: UnsafeRawPointer?,
+                                       _ handle: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    guard let handle else { return 0 }
+    let handleString = String(cString: handle)
+    guard let uuid = UUID(uuidString: handleString) else { return 0 }
+    let assetHandle = AssetHandle(rawValue: uuid)
+    guard let metadata = context.editorProjectManager.assetMetadataSnapshot().first(where: { $0.handle == assetHandle }) else { return 0 }
+    let hasSource = !(metadata.importSettings["sourcePathAbs"] ?? "").isEmpty
+    let isSupported = metadata.type == .texture || metadata.type == .environment || metadata.type == .model
+    return (hasSource && isSupported) ? 1 : 0
+}
+
+@_cdecl("MCEImportIsOpen")
+public func MCEImportIsOpen(_ contextPtr: UnsafeRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return context.importController.isOpen ? 1 : 0
+}
+
+@_cdecl("MCEImportIsReimport")
+public func MCEImportIsReimport(_ contextPtr: UnsafeRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return context.importController.isReimport ? 1 : 0
+}
+
+@_cdecl("MCEImportCancel")
+public func MCEImportCancel(_ contextPtr: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr) else { return }
+    context.importController.cancel()
+}
+
+@_cdecl("MCEImportCommit")
+public func MCEImportCommit(_ contextPtr: UnsafeRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return context.importController.commit() ? 1 : 0
+}
+
+@_cdecl("MCEImportGetPendingAssetType")
+public func MCEImportGetPendingAssetType(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return AssetTypes.code(for: .unknown) }
+    return AssetTypes.code(for: context.importController.assetType())
+}
+
+@_cdecl("MCEImportGetSourceFilename")
+public func MCEImportGetSourceFilename(_ contextPtr: UnsafeRawPointer?,
+                                       _ buffer: UnsafeMutablePointer<CChar>?,
+                                       _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return writeCString(context.importController.sourceFilename(), to: buffer, max: bufferSize) > 0 ? 1 : 0
+}
+
+@_cdecl("MCEImportGetDestinationFolder")
+public func MCEImportGetDestinationFolder(_ contextPtr: UnsafeRawPointer?,
+                                          _ buffer: UnsafeMutablePointer<CChar>?,
+                                          _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return writeCString(context.importController.destinationFolderName(), to: buffer, max: bufferSize) > 0 ? 1 : 0
+}
+
+@_cdecl("MCEImportGetOptionBool")
+public func MCEImportGetOptionBool(_ contextPtr: UnsafeRawPointer?,
+                                   _ key: UnsafePointer<CChar>?,
+                                   _ defaultValue: UInt32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return defaultValue }
+    guard let key else { return defaultValue }
+    let value = context.importController.optionBool(String(cString: key), default: defaultValue != 0)
+    return value ? 1 : 0
+}
+
+@_cdecl("MCEImportSetOptionBool")
+public func MCEImportSetOptionBool(_ contextPtr: UnsafeRawPointer?,
+                                   _ key: UnsafePointer<CChar>?,
+                                   _ value: UInt32) {
+    guard let context = resolveContext(contextPtr) else { return }
+    guard let key else { return }
+    context.importController.setOptionBool(String(cString: key), value: value != 0)
+}
+
+@_cdecl("MCEImportGetOptionString")
+public func MCEImportGetOptionString(_ contextPtr: UnsafeRawPointer?,
+                                     _ key: UnsafePointer<CChar>?,
+                                     _ buffer: UnsafeMutablePointer<CChar>?,
+                                     _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    guard let key else { return 0 }
+    let value = context.importController.optionString(String(cString: key))
+    return writeCString(value, to: buffer, max: bufferSize) > 0 ? 1 : 0
+}
+
+@_cdecl("MCEImportSetOptionString")
+public func MCEImportSetOptionString(_ contextPtr: UnsafeRawPointer?,
+                                     _ key: UnsafePointer<CChar>?,
+                                     _ value: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr) else { return }
+    guard let key, let value else { return }
+    context.importController.setOptionString(String(cString: key), value: String(cString: value))
+}
+
+@_cdecl("MCEImportGetOptionFloat")
+public func MCEImportGetOptionFloat(_ contextPtr: UnsafeRawPointer?,
+                                    _ key: UnsafePointer<CChar>?,
+                                    _ defaultValue: Float) -> Float {
+    guard let context = resolveContext(contextPtr) else { return defaultValue }
+    guard let key else { return defaultValue }
+    return context.importController.optionFloat(String(cString: key), default: defaultValue)
+}
+
+@_cdecl("MCEImportSetOptionFloat")
+public func MCEImportSetOptionFloat(_ contextPtr: UnsafeRawPointer?,
+                                    _ key: UnsafePointer<CChar>?,
+                                    _ value: Float) {
+    guard let context = resolveContext(contextPtr) else { return }
+    guard let key else { return }
+    context.importController.setOptionFloat(String(cString: key), value: value)
+}
+
+@_cdecl("MCEImportGetMeshCount")
+public func MCEImportGetMeshCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return Int32(context.importController.meshCount())
+}
+
+@_cdecl("MCEImportGetSubmeshCount")
+public func MCEImportGetSubmeshCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return Int32(context.importController.submeshCount())
+}
+
+@_cdecl("MCEImportGetMaterialCount")
+public func MCEImportGetMaterialCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return Int32(context.importController.materialCount())
+}
+
+@_cdecl("MCEImportGetMaterialNameAt")
+public func MCEImportGetMaterialNameAt(_ contextPtr: UnsafeRawPointer?,
+                                       _ index: Int32,
+                                       _ buffer: UnsafeMutablePointer<CChar>?,
+                                       _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    let name = context.importController.materialName(at: Int(index))
+    return writeCString(name, to: buffer, max: bufferSize) > 0 ? 1 : 0
+}
+
+@_cdecl("MCEImportGetTextureCount")
+public func MCEImportGetTextureCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return Int32(context.importController.textureCount())
+}
+
+@_cdecl("MCEImportGetTextureNameAt")
+public func MCEImportGetTextureNameAt(_ contextPtr: UnsafeRawPointer?,
+                                      _ index: Int32,
+                                      _ buffer: UnsafeMutablePointer<CChar>?,
+                                      _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    let name = context.importController.textureName(at: Int(index))
+    return writeCString(name, to: buffer, max: bufferSize) > 0 ? 1 : 0
+}
+
+@_cdecl("MCEImportGetWarningCount")
+public func MCEImportGetWarningCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return Int32(context.importController.warningCount())
+}
+
+@_cdecl("MCEImportGetWarningAt")
+public func MCEImportGetWarningAt(_ contextPtr: UnsafeRawPointer?,
+                                  _ index: Int32,
+                                  _ buffer: UnsafeMutablePointer<CChar>?,
+                                  _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    let warning = context.importController.warning(at: Int(index))
+    return writeCString(warning, to: buffer, max: bufferSize) > 0 ? 1 : 0
+}
+
+@_cdecl("MCEImportGetMeshHasUVs")
+public func MCEImportGetMeshHasUVs(_ contextPtr: UnsafeRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return context.importController.hasUVs() ? 1 : 0
+}
+
+@_cdecl("MCEImportGetMeshHasNormals")
+public func MCEImportGetMeshHasNormals(_ contextPtr: UnsafeRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return context.importController.hasNormals() ? 1 : 0
+}
+
+@_cdecl("MCEImportGetMeshHasTangents")
+public func MCEImportGetMeshHasTangents(_ contextPtr: UnsafeRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return context.importController.hasTangents() ? 1 : 0
+}
+
+@_cdecl("MCEImportGetCommitHandle")
+public func MCEImportGetCommitHandle(_ contextPtr: UnsafeRawPointer?,
+                                     _ buffer: UnsafeMutablePointer<CChar>?,
+                                     _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    guard let result = context.importController.commitResult else { return 0 }
+    return writeCString(result.primaryHandle.rawValue.uuidString, to: buffer, max: bufferSize) > 0 ? 1 : 0
+}
+
+@_cdecl("MCEImportGetCommitAssetType")
+public func MCEImportGetCommitAssetType(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return AssetTypes.code(for: .unknown) }
+    return AssetTypes.code(for: context.importController.commitAssetType)
+}
+
+@_cdecl("MCEImportClearCommitResult")
+public func MCEImportClearCommitResult(_ contextPtr: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr) else { return }
+    context.importController.clearCommitResult()
+}
+
+@_cdecl("MCEImportGetLastError")
+public func MCEImportGetLastError(_ contextPtr: UnsafeRawPointer?,
+                                  _ buffer: UnsafeMutablePointer<CChar>?,
+                                  _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return writeCString(context.importController.lastErrorMessage, to: buffer, max: bufferSize) > 0 ? 1 : 0
+}
+
 private func handleFromCString(_ cString: UnsafePointer<CChar>?) -> AssetHandle? {
     guard let cString else { return nil }
     let value = String(cString: cString)

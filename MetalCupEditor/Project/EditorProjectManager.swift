@@ -345,6 +345,8 @@ final class EditorProjectManager {
         if !FileManager.default.fileExists(atPath: resolvedAssetRoot.path) {
             try? FileManager.default.createDirectory(at: resolvedAssetRoot, withIntermediateDirectories: true)
         }
+        ensureProjectAssetFolders(projectAssetsURL: resolvedAssetRoot)
+        migrateResourcesAssetsIfNeeded(projectAssetsURL: resolvedAssetRoot)
         let registry = AssetRegistry(projectAssetRootURL: resolvedAssetRoot, logCenter: logCenter)
         registry.startWatching()
         assetRevision = 1
@@ -455,6 +457,10 @@ final class EditorProjectManager {
 
     func assetMetadataSnapshot() -> [AssetMetadata] {
         assetRegistry?.allMetadata() ?? []
+    }
+
+    func metadataForSourcePathAbs(_ sourcePathAbs: String) -> AssetMetadata? {
+        assetRegistry?.metadata(forSourcePathAbs: sourcePathAbs)
     }
 
     func assetURL(for handle: AssetHandle) -> URL? {
@@ -683,12 +689,98 @@ final class EditorProjectManager {
     }
 
     private func ensureProjectAssetFolders(projectAssetsURL: URL) {
-        let folders = ["Materials", "Textures", "Meshes", "Scenes"]
+        let folders = ["Materials", "Textures", "Meshes", "Environments", "Prefabs", "Scenes"]
         for folder in folders {
             let url = projectAssetsURL.appendingPathComponent(folder, isDirectory: true)
             if !FileManager.default.fileExists(atPath: url.path) {
                 PathUtils.ensureDirectoryExists(url)
             }
+        }
+    }
+
+    private func migrateResourcesAssetsIfNeeded(projectAssetsURL: URL) {
+        let fileManager = FileManager.default
+        let resourcesURL = projectAssetsURL.appendingPathComponent("Resources", isDirectory: true)
+        guard fileManager.fileExists(atPath: resourcesURL.path) else { return }
+        guard let enumerator = fileManager.enumerator(at: resourcesURL, includingPropertiesForKeys: [.isDirectoryKey]) else { return }
+
+        var migratedCount = 0
+        var errorCount = 0
+
+        for case let url as URL in enumerator {
+            let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
+            if values?.isDirectory == true { continue }
+            if url.lastPathComponent.hasPrefix(".") { continue }
+            if url.pathExtension.lowercased() == "meta" { continue }
+
+            let assetType = AssetTypes.type(for: url)
+            guard let destinationFolder = destinationFolderName(for: assetType) else { continue }
+
+            let baseFolder = projectAssetsURL.appendingPathComponent(destinationFolder, isDirectory: true)
+            let relativePath = PathUtils.relativePath(from: resourcesURL, to: url) ?? url.lastPathComponent
+            let relativeDir = (relativePath as NSString).deletingLastPathComponent
+            let targetFolder = (relativeDir.isEmpty || relativeDir == ".")
+                ? baseFolder
+                : baseFolder.appendingPathComponent(relativeDir, isDirectory: true)
+            if !fileManager.fileExists(atPath: targetFolder.path) {
+                PathUtils.ensureDirectoryExists(targetFolder)
+            }
+
+            let baseName = url.deletingPathExtension().lastPathComponent
+            let fileExtension = url.pathExtension
+            let targetURL = uniqueDestinationURL(folder: targetFolder, baseName: baseName, fileExtension: fileExtension)
+
+            let sourceMetaURL = URL(fileURLWithPath: url.path + ".meta")
+            let targetMetaURL = URL(fileURLWithPath: targetURL.path + ".meta")
+
+            do {
+                try fileManager.moveItem(at: url, to: targetURL)
+                if fileManager.fileExists(atPath: sourceMetaURL.path) {
+                    try fileManager.moveItem(at: sourceMetaURL, to: targetMetaURL)
+                }
+                migratedCount += 1
+            } catch {
+                errorCount += 1
+                logCenter.logWarning("Asset migration failed for \(url.lastPathComponent): \(error.localizedDescription)", category: .assets)
+            }
+        }
+
+        if migratedCount > 0 || errorCount > 0 {
+            logCenter.logInfo("Migrated \(migratedCount) asset(s) from Resources (errors: \(errorCount)).", category: .assets)
+        }
+    }
+
+    private func destinationFolderName(for assetType: AssetType) -> String? {
+        switch assetType {
+        case .texture:
+            return "Textures"
+        case .environment:
+            return "Environments"
+        case .model:
+            return "Meshes"
+        case .material:
+            return "Materials"
+        case .prefab:
+            return "Prefabs"
+        case .scene:
+            return "Scenes"
+        case .unknown:
+            return nil
+        @unknown default:
+            return nil
+        }
+    }
+
+    private func uniqueDestinationURL(folder: URL, baseName: String, fileExtension: String) -> URL {
+        let fm = FileManager.default
+        var candidate = folder.appendingPathComponent("\(baseName).\(fileExtension)")
+        if !fm.fileExists(atPath: candidate.path) { return candidate }
+        var index = 1
+        while true {
+            let name = "\(baseName) \(index)"
+            candidate = folder.appendingPathComponent("\(name).\(fileExtension)")
+            if !fm.fileExists(atPath: candidate.path) { return candidate }
+            index += 1
         }
     }
 

@@ -15,6 +15,7 @@ final class AssetRegistry: AssetDatabase {
 
     private var metadataByHandle: [AssetHandle: AssetMetadata] = [:]
     private var metadataByPath: [String: AssetMetadata] = [:]
+    private var metadataBySourcePathAbs: [String: AssetMetadata] = [:]
     private var watcher: DispatchSourceFileSystemObject?
     private var watcherDescriptor: Int32 = -1
 
@@ -43,6 +44,10 @@ final class AssetRegistry: AssetDatabase {
 
     func allMetadata() -> [AssetMetadata] {
         return Array(metadataByHandle.values)
+    }
+
+    func metadata(forSourcePathAbs sourcePathAbs: String) -> AssetMetadata? {
+        return metadataBySourcePathAbs[sourcePathAbs]
     }
 
     func refresh() {
@@ -99,6 +104,7 @@ final class AssetRegistry: AssetDatabase {
 
         var newByHandle: [AssetHandle: AssetMetadata] = [:]
         var newByPath: [String: AssetMetadata] = [:]
+        var newBySourceAbs: [String: AssetMetadata] = [:]
 
         for case let url as URL in enumerator {
             if url.hasDirectoryPath { continue }
@@ -119,10 +125,14 @@ final class AssetRegistry: AssetDatabase {
             )
             newByHandle[metadata.handle] = metadata
             newByPath[relativePath] = metadata
+            if let sourceAbs = metadata.importSettings["sourcePathAbs"], !sourceAbs.isEmpty {
+                newBySourceAbs[sourceAbs] = metadata
+            }
         }
 
         metadataByHandle = newByHandle
         metadataByPath = newByPath
+        metadataBySourcePathAbs = newBySourceAbs
     }
 
     private func loadOrCreateMetadata(for assetURL: URL, relativePath: String, metaURL: URL, assetType: AssetType, lastModified: TimeInterval) -> AssetMetadata {

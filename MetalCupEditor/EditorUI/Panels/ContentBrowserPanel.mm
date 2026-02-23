@@ -39,6 +39,8 @@ extern "C" uint32_t MCEEditorDuplicateAsset(MCE_CTX,  const char *relativePath, 
 extern "C" uint32_t MCEEditorDuplicateMaterial(MCE_CTX,  const char *handle, char *outHandle, int32_t outHandleSize);
 extern "C" uint32_t MCEEditorDeleteMaterial(MCE_CTX,  const char *handle);
 extern "C" uint32_t MCEEditorGetAssetPathForHandle(MCE_CTX,  const char *handle, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEImportBeginForHandle(MCE_CTX, const char *handle);
+extern "C" uint32_t MCEImportCanReimportHandle(MCE_CTX, const char *handle);
 extern "C" uint32_t MCEEditorGetLastContentBrowserPath(MCE_CTX,  char *buffer, int32_t bufferSize);
 extern "C" void MCEEditorSetLastContentBrowserPath(MCE_CTX,  const char *value);
 extern "C" void MCEEditorLogMessage(MCE_CTX,  int32_t level, int32_t category, const char *message);
@@ -418,6 +420,12 @@ namespace {
                         } else {
                             LogAssetError(context, "Duplicate failed.");
                         }
+                    }
+                }
+                if (!entry.handle.empty() &&
+                    MCEImportCanReimportHandle(context, entry.handle.c_str()) != 0) {
+                    if (ImGui::MenuItem("Reimport")) {
+                        MCEImportBeginForHandle(context, entry.handle.c_str());
                     }
                 }
             }

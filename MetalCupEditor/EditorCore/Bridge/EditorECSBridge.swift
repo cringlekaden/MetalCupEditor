@@ -69,6 +69,19 @@ private func handleFromString(_ string: String) -> AssetHandle? {
     return AssetHandle(rawValue: uuid)
 }
 
+private func parseSubmeshMaterialHandles(_ raw: String) -> [AssetHandle?] {
+    let parts = raw.components(separatedBy: ",")
+    return parts.map { part in
+        let trimmed = part.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.isEmpty { return nil }
+        return AssetHandle(string: trimmed)
+    }
+}
+
+private func metadata(for handle: AssetHandle, projectManager: EditorProjectManager) -> AssetMetadata? {
+    return projectManager.assetMetadataSnapshot().first { $0.handle == handle }
+}
+
 private func prefabURL(from handleString: String, context: MCEContext) -> URL? {
     guard let handle = handleFromString(handleString) else { return nil }
     return context.editorProjectManager.assetURL(for: handle)
@@ -91,12 +104,14 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
             MeshRendererComponentDTO(
                 meshHandle: component.meshHandle,
                 materialHandle: component.materialHandle,
+                submeshMaterialHandles: component.submeshMaterialHandles,
                 material: component.material.map { MaterialDTO(material: $0) },
                 albedoMapHandle: component.albedoMapHandle,
                 normalMapHandle: component.normalMapHandle,
                 metallicMapHandle: component.metallicMapHandle,
                 roughnessMapHandle: component.roughnessMapHandle,
                 mrMapHandle: component.mrMapHandle,
+                ormMapHandle: component.ormMapHandle,
                 aoMapHandle: component.aoMapHandle,
                 emissiveMapHandle: component.emissiveMapHandle
             )
@@ -349,6 +364,42 @@ public func MCEEditorCreateMeshEntityFromHandle(_ contextPtr: UnsafeRawPointer?,
     let entity = ecs.createEntity(name: "Mesh")
     ecs.add(TransformComponent(), to: entity)
     ecs.add(MeshRendererComponent(meshHandle: meshHandleValue), to: entity)
+    context.editorProjectManager.notifySceneMutation()
+    return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
+}
+
+@_cdecl("MCEEditorCreateMeshEntityFromHandleWithMaterials")
+public func MCEEditorCreateMeshEntityFromHandleWithMaterials(_ contextPtr: UnsafeRawPointer?,
+                                                             _ meshHandle: UnsafePointer<CChar>?,
+                                                             _ outId: UnsafeMutablePointer<CChar>?,
+                                                             _ outIdSize: Int32) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context) else { return 0 }
+    let meshString = meshHandle != nil ? String(cString: meshHandle!) : ""
+    let meshHandleValue = handleFromString(meshString)
+    let entity = ecs.createEntity(name: "Mesh")
+    ecs.add(TransformComponent(), to: entity)
+
+    var submeshMaterials: [AssetHandle?]? = nil
+    var primaryMaterial: AssetHandle? = nil
+    if let meshHandleValue,
+       let meshMetadata = metadata(for: meshHandleValue, projectManager: context.editorProjectManager),
+       let raw = meshMetadata.importSettings["submeshMaterials"],
+       !raw.isEmpty {
+        let parsed = parseSubmeshMaterialHandles(raw)
+        if !parsed.isEmpty {
+            submeshMaterials = parsed
+            primaryMaterial = parsed.compactMap { $0 }.first
+        }
+    }
+
+    var meshRenderer = MeshRendererComponent(meshHandle: meshHandleValue)
+    meshRenderer.submeshMaterialHandles = submeshMaterials
+    if let primaryMaterial {
+        meshRenderer.materialHandle = primaryMaterial
+    }
+    ecs.add(meshRenderer, to: entity)
     context.editorProjectManager.notifySceneMutation()
     return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
 }

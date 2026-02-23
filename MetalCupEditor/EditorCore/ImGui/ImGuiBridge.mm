@@ -61,6 +61,8 @@ extern "C" void MCESceneResume(MCE_CTX);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsPaused(MCE_CTX);
 extern "C" uint32_t MCESceneIsDirty(MCE_CTX);
+extern "C" int32_t MCEEditorCreateMeshEntityFromHandle(MCE_CTX,  const char *meshHandle, char *outId, int32_t outIdSize);
+extern "C" int32_t MCEEditorCreateMeshEntityFromHandleWithMaterials(MCE_CTX,  const char *meshHandle, char *outId, int32_t outIdSize);
 extern "C" uint32_t MCEEditorPopNextAlert(MCE_CTX,  char *buffer, int32_t bufferSize);
 extern "C" uint32_t MCEEditorGetImGuiIniPath(MCE_CTX, char *buffer, int32_t bufferSize);
 extern "C" uint32_t MCEEditorGetPanelVisibility(MCE_CTX,  const char *panelId, uint32_t defaultValue);
@@ -75,6 +77,34 @@ extern "C" uint32_t MCEEditorLogEntryAt(MCE_CTX,  int32_t index, int32_t *levelO
 extern "C" uint64_t MCEEditorLogRevision(MCE_CTX);
 extern "C" void MCEEditorLogClear(MCE_CTX);
 extern "C" void MCEEditorRequestQuit(MCE_CTX);
+extern "C" uint32_t MCEImportIsOpen(MCE_CTX);
+extern "C" uint32_t MCEImportIsReimport(MCE_CTX);
+extern "C" void MCEImportCancel(MCE_CTX);
+extern "C" uint32_t MCEImportCommit(MCE_CTX);
+extern "C" int32_t MCEImportGetPendingAssetType(MCE_CTX);
+extern "C" uint32_t MCEImportGetSourceFilename(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEImportGetDestinationFolder(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEImportGetOptionBool(MCE_CTX, const char *key, uint32_t defaultValue);
+extern "C" void MCEImportSetOptionBool(MCE_CTX, const char *key, uint32_t value);
+extern "C" uint32_t MCEImportGetOptionString(MCE_CTX, const char *key, char *buffer, int32_t bufferSize);
+extern "C" void MCEImportSetOptionString(MCE_CTX, const char *key, const char *value);
+extern "C" float MCEImportGetOptionFloat(MCE_CTX, const char *key, float defaultValue);
+extern "C" void MCEImportSetOptionFloat(MCE_CTX, const char *key, float value);
+extern "C" int32_t MCEImportGetMeshCount(MCE_CTX);
+extern "C" int32_t MCEImportGetSubmeshCount(MCE_CTX);
+extern "C" int32_t MCEImportGetMaterialCount(MCE_CTX);
+extern "C" uint32_t MCEImportGetMaterialNameAt(MCE_CTX, int32_t index, char *buffer, int32_t bufferSize);
+extern "C" int32_t MCEImportGetTextureCount(MCE_CTX);
+extern "C" uint32_t MCEImportGetTextureNameAt(MCE_CTX, int32_t index, char *buffer, int32_t bufferSize);
+extern "C" int32_t MCEImportGetWarningCount(MCE_CTX);
+extern "C" uint32_t MCEImportGetWarningAt(MCE_CTX, int32_t index, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEImportGetMeshHasUVs(MCE_CTX);
+extern "C" uint32_t MCEImportGetMeshHasNormals(MCE_CTX);
+extern "C" uint32_t MCEImportGetMeshHasTangents(MCE_CTX);
+extern "C" uint32_t MCEImportGetCommitHandle(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" int32_t MCEImportGetCommitAssetType(MCE_CTX);
+extern "C" void MCEImportClearCommitResult(MCE_CTX);
+extern "C" uint32_t MCEImportGetLastError(MCE_CTX, char *buffer, int32_t bufferSize);
 extern bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view);
 
 extern "C" bool MCEImGuiHandleEvent(void *event, void *view) {
@@ -464,6 +494,195 @@ static void DrawLogsPanel(ImGuiBridge *bridge, bool *isOpen) {
     ImGui::End();
 }
 
+static void DrawImportModal(void *context) {
+    if (MCEImportIsOpen(context) != 0) {
+        ImGui::OpenPopup("Import Asset");
+    }
+
+    if (!ImGui::BeginPopupModal("Import Asset", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+
+    char filename[256] = {0};
+    char destination[128] = {0};
+    MCEImportGetSourceFilename(context, filename, sizeof(filename));
+    MCEImportGetDestinationFolder(context, destination, sizeof(destination));
+    int32_t typeCode = MCEImportGetPendingAssetType(context);
+    const bool isReimport = MCEImportIsReimport(context) != 0;
+
+    ImGui::Text("Source: %s", filename[0] != 0 ? filename : "Unknown");
+    ImGui::Text("Destination: %s", destination[0] != 0 ? destination : "Assets");
+    if (isReimport) {
+        ImGui::TextColored(ImVec4(0.75f, 0.82f, 0.9f, 1.0f), "Reimport (preserve handles)");
+    }
+    ImGui::Separator();
+
+    if (typeCode == 0) {
+        bool srgb = MCEImportGetOptionBool(context, "srgb", 1) != 0;
+        if (ImGui::Checkbox("sRGB", &srgb)) {
+            MCEImportSetOptionBool(context, "srgb", srgb ? 1 : 0);
+        }
+        bool mipmaps = MCEImportGetOptionBool(context, "mipmaps", 1) != 0;
+        if (ImGui::Checkbox("Generate Mipmaps", &mipmaps)) {
+            MCEImportSetOptionBool(context, "mipmaps", mipmaps ? 1 : 0);
+        }
+
+        const char *semanticOptions[] = {
+            "Auto", "Albedo", "Normal", "Roughness", "Metallic", "Occlusion", "Height", "Emissive", "ORM"
+        };
+        char semanticValue[64] = {0};
+        MCEImportGetOptionString(context, "semantic", semanticValue, sizeof(semanticValue));
+        int semanticIndex = 0;
+        if (semanticValue[0] != 0) {
+            if (strcmp(semanticValue, "albedo") == 0) semanticIndex = 1;
+            else if (strcmp(semanticValue, "normal") == 0) semanticIndex = 2;
+            else if (strcmp(semanticValue, "roughness") == 0) semanticIndex = 3;
+            else if (strcmp(semanticValue, "metallic") == 0) semanticIndex = 4;
+            else if (strcmp(semanticValue, "occlusion") == 0) semanticIndex = 5;
+            else if (strcmp(semanticValue, "height") == 0) semanticIndex = 6;
+            else if (strcmp(semanticValue, "emissive") == 0) semanticIndex = 7;
+            else if (strcmp(semanticValue, "orm") == 0) semanticIndex = 8;
+        }
+        if (ImGui::BeginCombo("Semantic", semanticOptions[semanticIndex])) {
+            for (int i = 0; i < 9; ++i) {
+                bool selected = (i == semanticIndex);
+                if (ImGui::Selectable(semanticOptions[i], selected)) {
+                    semanticIndex = i;
+                    const char *value = "";
+                    switch (i) {
+                        case 1: value = "albedo"; break;
+                        case 2: value = "normal"; break;
+                        case 3: value = "roughness"; break;
+                        case 4: value = "metallic"; break;
+                        case 5: value = "occlusion"; break;
+                        case 6: value = "height"; break;
+                        case 7: value = "emissive"; break;
+                        case 8: value = "orm"; break;
+                        default: value = ""; break;
+                    }
+                    MCEImportSetOptionString(context, "semantic", value);
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+    } else if (typeCode == 3) {
+        ImGui::TextUnformatted("No environment import options yet.");
+    } else if (typeCode == 1) {
+        int32_t meshCount = MCEImportGetMeshCount(context);
+        int32_t submeshCount = MCEImportGetSubmeshCount(context);
+        ImGui::Text("Meshes: %d", meshCount);
+        ImGui::Text("Submeshes: %d", submeshCount);
+
+        bool hasUVs = MCEImportGetMeshHasUVs(context) != 0;
+        bool hasNormals = MCEImportGetMeshHasNormals(context) != 0;
+        bool hasTangents = MCEImportGetMeshHasTangents(context) != 0;
+        ImGui::Text("UVs: %s", hasUVs ? "Yes" : "No");
+        ImGui::Text("Normals: %s", hasNormals ? "Yes" : "No");
+        ImGui::Text("Tangents: %s", hasTangents ? "Yes" : "No");
+
+        int32_t materialCount = MCEImportGetMaterialCount(context);
+        if (materialCount > 0 && ImGui::CollapsingHeader("Materials", ImGuiTreeNodeFlags_DefaultOpen)) {
+            for (int32_t i = 0; i < materialCount; ++i) {
+                char nameBuffer[128] = {0};
+                if (MCEImportGetMaterialNameAt(context, i, nameBuffer, sizeof(nameBuffer)) != 0) {
+                    ImGui::BulletText("%s", nameBuffer);
+                }
+            }
+        }
+
+        int32_t textureCount = MCEImportGetTextureCount(context);
+        if (textureCount > 0 && ImGui::CollapsingHeader("Textures", ImGuiTreeNodeFlags_DefaultOpen)) {
+            for (int32_t i = 0; i < textureCount; ++i) {
+                char nameBuffer[128] = {0};
+                if (MCEImportGetTextureNameAt(context, i, nameBuffer, sizeof(nameBuffer)) != 0) {
+                    ImGui::BulletText("%s", nameBuffer);
+                }
+            }
+        }
+
+        ImGui::Separator();
+        bool importMaterials = MCEImportGetOptionBool(context, "importMaterials", 1) != 0;
+        if (ImGui::Checkbox("Import Materials", &importMaterials)) {
+            MCEImportSetOptionBool(context, "importMaterials", importMaterials ? 1 : 0);
+        }
+        bool importTextures = MCEImportGetOptionBool(context, "importTextures", 1) != 0;
+        if (ImGui::Checkbox("Import Textures", &importTextures)) {
+            MCEImportSetOptionBool(context, "importTextures", importTextures ? 1 : 0);
+        }
+        bool copyTextures = MCEImportGetOptionBool(context, "copyTextures", 1) != 0;
+        if (ImGui::Checkbox("Copy Textures into Project", &copyTextures)) {
+            MCEImportSetOptionBool(context, "copyTextures", copyTextures ? 1 : 0);
+        }
+        bool flipNormalY = MCEImportGetOptionBool(context, "flipNormalY", 0) != 0;
+        if (ImGui::Checkbox("Flip Normal Y", &flipNormalY)) {
+            MCEImportSetOptionBool(context, "flipNormalY", flipNormalY ? 1 : 0);
+        }
+        bool generateTangents = MCEImportGetOptionBool(context, "generateTangents", 1) != 0;
+        if (ImGui::Checkbox("Generate Tangents", &generateTangents)) {
+            MCEImportSetOptionBool(context, "generateTangents", generateTangents ? 1 : 0);
+        }
+        float scale = MCEImportGetOptionFloat(context, "scale", 1.0f);
+        if (ImGui::InputFloat("Scale Factor", &scale, 0.1f, 1.0f, "%.3f")) {
+            MCEImportSetOptionFloat(context, "scale", scale);
+        }
+        bool combineORM = MCEImportGetOptionBool(context, "combineORM", 0) != 0;
+        if (ImGui::Checkbox("Combine ORM", &combineORM)) {
+            MCEImportSetOptionBool(context, "combineORM", combineORM ? 1 : 0);
+        }
+        bool createPrefab = MCEImportGetOptionBool(context, "createPrefab", 0) != 0;
+        if (ImGui::Checkbox("Create Prefab", &createPrefab)) {
+            MCEImportSetOptionBool(context, "createPrefab", createPrefab ? 1 : 0);
+        }
+        bool createHierarchy = MCEImportGetOptionBool(context, "createHierarchy", 0) != 0;
+        if (ImGui::Checkbox("Create Hierarchy", &createHierarchy)) {
+            MCEImportSetOptionBool(context, "createHierarchy", createHierarchy ? 1 : 0);
+        }
+
+        int32_t warningCount = MCEImportGetWarningCount(context);
+        if (warningCount > 0) {
+            ImGui::Separator();
+            for (int32_t i = 0; i < warningCount; ++i) {
+                char warningBuffer[256] = {0};
+                if (MCEImportGetWarningAt(context, i, warningBuffer, sizeof(warningBuffer)) != 0) {
+                    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.35f, 1.0f), "%s", warningBuffer);
+                }
+            }
+        }
+    }
+
+    char errorMessage[256] = {0};
+    if (MCEImportGetLastError(context, errorMessage, sizeof(errorMessage)) != 0 && errorMessage[0] != 0) {
+        ImGui::Separator();
+        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", errorMessage);
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("Cancel")) {
+        MCEImportCancel(context);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button(isReimport ? "Reimport" : "Import")) {
+        if (MCEImportCommit(context) != 0) {
+            int32_t commitType = MCEImportGetCommitAssetType(context);
+            if (commitType == 1) {
+                char handleBuffer[64] = {0};
+                if (MCEImportGetCommitHandle(context, handleBuffer, sizeof(handleBuffer)) != 0) {
+                    char createdId[64] = {0};
+                    MCEEditorCreateMeshEntityFromHandleWithMaterials(context, handleBuffer, createdId, sizeof(createdId));
+                }
+            }
+            MCEImportClearCommitResult(context);
+            ImGui::CloseCurrentPopup();
+        }
+    }
+
+    ImGui::EndPopup();
+}
+
 static void DrawProfilingPanel(void *context, bool *isOpen) {
     if (!isOpen || !*isOpen) { return; }
     ImGui::Begin("Profiling", isOpen);
@@ -556,8 +775,11 @@ static void DrawProfilingPanel(void *context, bool *isOpen) {
     ImGui::Separator();
     ImGui::TextUnformatted("CPU Breakdown");
     ImGui::Text("Update:     %.2f ms", MCERendererGetUpdateMs(engineContext));
+    ImGui::Text("  Scene Update: %.2f ms", MCERendererGetSceneUpdateMs(engineContext));
+    ImGui::Text("  Fixed Update: %.2f ms", MCERendererGetFixedUpdateMs(engineContext));
     ImGui::Text("Scene:      %.2f ms", MCERendererGetSceneMs(engineContext));
     ImGui::Text("Render:     %.2f ms", MCERendererGetRenderMs(engineContext));
+    ImGui::Text("Render Batches: %.2f ms", MCERendererGetRenderBatchMs(engineContext));
     ImGui::Text("Bloom:      %.2f ms", MCERendererGetBloomMs(engineContext));
     ImGui::Text("  Extract:  %.2f ms", MCERendererGetBloomExtractMs(engineContext));
     ImGui::Text("  Downsample: %.2f ms", MCERendererGetBloomDownsampleMs(engineContext));
@@ -565,6 +787,25 @@ static void DrawProfilingPanel(void *context, bool *isOpen) {
     ImGui::Text("Composite:  %.2f ms", MCERendererGetCompositeMs(engineContext));
     ImGui::Text("Overlays:   %.2f ms", MCERendererGetOverlaysMs(engineContext));
     ImGui::Text("Present:    %.2f ms", MCERendererGetPresentMs(engineContext));
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("GPU Passes");
+    bool gpuPassTimings = MCERendererGetGpuPassTimingsEnabled(engineContext) != 0;
+    if (ImGui::Checkbox("Enable GPU Pass Timings", &gpuPassTimings)) {
+        MCERendererSetGpuPassTimingsEnabled(engineContext, gpuPassTimings ? 1 : 0);
+    }
+    ImGui::TextDisabled("Uses segmented command buffers when enabled.");
+    if (gpuPassTimings) {
+        ImGui::Text("Shadows:    %.2f ms", MCERendererGetGpuShadowPassMs(engineContext));
+        ImGui::Text("Depth:      %.2f ms", MCERendererGetGpuDepthPrepassMs(engineContext));
+        ImGui::Text("Scene:      %.2f ms", MCERendererGetGpuScenePassMs(engineContext));
+        ImGui::Text("Grid:       %.2f ms", MCERendererGetGpuGridPassMs(engineContext));
+        ImGui::Text("Picking:    %.2f ms", MCERendererGetGpuPickingPassMs(engineContext));
+        ImGui::Text("Outline:    %.2f ms", MCERendererGetGpuOutlinePassMs(engineContext));
+        ImGui::Text("Bloom Extract: %.2f ms", MCERendererGetGpuBloomExtractPassMs(engineContext));
+        ImGui::Text("Bloom Blur: %.2f ms", MCERendererGetGpuBloomBlurPassMs(engineContext));
+        ImGui::Text("Composite:  %.2f ms", MCERendererGetGpuFinalCompositePassMs(engineContext));
+    }
 
     ImGui::End();
 }
@@ -773,6 +1014,7 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
         }
         ImGui::EndPopup();
     }
+    DrawImportModal(_context);
 
     // Dockspace host window (fills main viewport)
     ImGuiViewport* vp = ImGui::GetMainViewport();

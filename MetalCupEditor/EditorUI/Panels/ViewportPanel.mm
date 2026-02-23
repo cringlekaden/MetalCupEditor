@@ -34,6 +34,7 @@ extern "C" void MCEImGuiSetGizmoCapture(MCE_CTX,  uint32_t wantsMouse, uint32_t 
 extern "C" uint32_t MCEEditorSetTransformFromMatrix(MCE_CTX,  const char *entityId, const float *matrix);
 extern "C" uint32_t MCEEditorGetModelMatrix(MCE_CTX,  const char *entityId, float *matrixOut);
 extern "C" void *MCEContextGetUIPanelState(MCE_CTX);
+extern "C" uint32_t MCEImportBeginForHandle(MCE_CTX, const char *handle);
 
 namespace {
     using MCEPanelState::GizmoOperation;
@@ -205,8 +206,18 @@ void ImGuiViewportPanelDraw(void *context,
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
-            char createdId[64] = {0};
-            MCEEditorCreateMeshEntityFromHandle(context, payloadText, createdId, sizeof(createdId));
+            if (MCEImportBeginForHandle(context, payloadText) == 0) {
+                char createdId[64] = {0};
+                MCEEditorCreateMeshEntityFromHandle(context, payloadText, createdId, sizeof(createdId));
+            }
+        }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_TEXTURE")) {
+            const char *payloadText = static_cast<const char *>(payload->Data);
+            (void)MCEImportBeginForHandle(context, payloadText);
+        }
+        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_ENVIRONMENT")) {
+            const char *payloadText = static_cast<const char *>(payload->Data);
+            (void)MCEImportBeginForHandle(context, payloadText);
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
             const char *payloadText = static_cast<const char *>(payload->Data);

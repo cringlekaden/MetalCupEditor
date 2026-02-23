@@ -21,11 +21,11 @@ enum AssetTypes {
 
     static func type(for url: URL) -> AssetType {
         switch url.pathExtension.lowercased() {
-        case "png", "jpg", "jpeg", "tga", "bmp":
+        case "png", "jpg", "jpeg", "tga", "bmp", "tif", "tiff":
             return .texture
         case "hdr", "exr":
             return .environment
-        case "obj", "usdz", "fbx":
+        case "obj", "usdz", "fbx", "gltf", "glb":
             return .model
         case "mcmat":
             return .material
