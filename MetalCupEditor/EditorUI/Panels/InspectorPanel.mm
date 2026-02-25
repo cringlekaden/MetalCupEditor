@@ -97,6 +97,52 @@ extern "C" void MCEEditorSetSkyLight(MCE_CTX,  const char *entityId, int32_t mod
                                      uint32_t autoRebuild,
                                      const char *hdriHandle);
 extern "C" void MCEEditorRequestSkyRebuild(MCE_CTX,  const char *entityId);
+extern "C" uint32_t MCEEditorGetRigidbody(MCE_CTX,  const char *entityId,
+                                          uint32_t *enabled,
+                                          int32_t *motionType,
+                                          float *mass,
+                                          float *friction,
+                                          float *restitution,
+                                          float *linearDamping,
+                                          float *angularDamping,
+                                          float *gravityFactor,
+                                          uint32_t *allowSleeping,
+                                          uint32_t *ccdEnabled,
+                                          int32_t *collisionLayer);
+extern "C" void MCEEditorSetRigidbody(MCE_CTX,  const char *entityId,
+                                      uint32_t enabled,
+                                      int32_t motionType,
+                                      float mass,
+                                      float friction,
+                                      float restitution,
+                                      float linearDamping,
+                                      float angularDamping,
+                                      float gravityFactor,
+                                      uint32_t allowSleeping,
+                                      uint32_t ccdEnabled,
+                                      int32_t collisionLayer);
+extern "C" uint32_t MCEEditorGetCollider(MCE_CTX,  const char *entityId,
+                                         uint32_t *enabled,
+                                         int32_t *shapeType,
+                                         float *boxX, float *boxY, float *boxZ,
+                                         float *sphereRadius,
+                                         float *capsuleHalfHeight,
+                                         float *capsuleRadius,
+                                         float *offsetX, float *offsetY, float *offsetZ,
+                                         float *rotX, float *rotY, float *rotZ,
+                                         uint32_t *isTrigger);
+extern "C" void MCEEditorSetCollider(MCE_CTX,  const char *entityId,
+                                     uint32_t enabled,
+                                     int32_t shapeType,
+                                     float boxX, float boxY, float boxZ,
+                                     float sphereRadius,
+                                     float capsuleHalfHeight,
+                                     float capsuleRadius,
+                                     float offsetX, float offsetY, float offsetZ,
+                                     float rotX, float rotY, float rotZ,
+                                     uint32_t isTrigger);
+extern "C" uint32_t MCEEditorRebuildPhysicsBody(MCE_CTX,  const char *entityId);
+extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCEEditorGetMaterialAsset(MCE_CTX, 
     const char *handle,
     char *nameBuffer, int32_t nameBufferSize,
@@ -105,6 +151,8 @@ extern "C" uint32_t MCEEditorGetMaterialAsset(MCE_CTX,
     float *metallic, float *roughness, float *ao,
     float *emissiveX, float *emissiveY, float *emissiveZ,
     float *emissiveIntensity,
+    float *uvTilingX, float *uvTilingY,
+    float *uvOffsetX, float *uvOffsetY,
     int32_t *alphaMode, float *alphaCutoff,
     uint32_t *doubleSided, uint32_t *unlit,
     char *baseColorHandle, int32_t baseColorHandleSize,
@@ -122,6 +170,8 @@ extern "C" uint32_t MCEEditorSetMaterialAsset(MCE_CTX,
     float metallic, float roughness, float ao,
     float emissiveX, float emissiveY, float emissiveZ,
     float emissiveIntensity,
+    float uvTilingX, float uvTilingY,
+    float uvOffsetX, float uvOffsetY,
     int32_t alphaMode, float alphaCutoff,
     uint32_t doubleSided, uint32_t unlit,
     const char *baseColorHandle,
@@ -152,7 +202,9 @@ enum ComponentType : int32_t {
     ComponentLight = 3,
     ComponentSkyLight = 4,
     ComponentMaterial = 5,
-    ComponentCamera = 6
+    ComponentCamera = 6,
+    ComponentRigidbody = 7,
+    ComponentCollider = 8
 };
 
 namespace {
@@ -284,6 +336,8 @@ namespace {
             &state.metallic, &state.roughness, &state.ao,
             &state.emissive[0], &state.emissive[1], &state.emissive[2],
             &state.emissiveIntensity,
+            &state.uvTiling[0], &state.uvTiling[1],
+            &state.uvOffset[0], &state.uvOffset[1],
             &state.alphaMode, &state.alphaCutoff,
             &doubleSided, &unlit,
             state.baseColorHandle, sizeof(state.baseColorHandle),
@@ -744,8 +798,7 @@ namespace {
 
     bool DrawMaterialTextureInspector(void *context, InspectorState &panelState, MaterialEditorState &materialState, const char *materialHandle) {
         bool dirty = false;
-        ImGui::TextUnformatted("Textures");
-        ImGui::Separator();
+        EditorUI::SectionHeader("Textures");
 
         if (ImGui::BeginTable("InspectorMaterialTextures", 4, ImGuiTableFlags_BordersInnerH | ImGuiTableFlags_RowBg)) {
             ImGui::TableSetupColumn("Slot", ImGuiTableColumnFlags_WidthFixed, 120.0f);
@@ -797,6 +850,7 @@ namespace {
 
     bool DrawMaterialEditorContents(MaterialEditorState &state) {
         bool dirty = false;
+        EditorUI::SectionHeader("Surface");
         if (EditorUI::BeginPropertyTable("MaterialSurface")) {
             EditorUI::PropertyLabel("Version");
             ImGui::Text("%d", state.version);
@@ -810,6 +864,8 @@ namespace {
             EditorUI::EndPropertyTable();
         }
 
+        EditorUI::StandardSpacing();
+        EditorUI::SectionHeader("Emissive");
         if (EditorUI::BeginPropertyTable("MaterialEmissive")) {
             const float emissiveDefault[3] = {0.0f, 0.0f, 0.0f};
             dirty |= EditorUI::PropertyColor3("Emissive Color", state.emissive, emissiveDefault, true);
@@ -819,6 +875,14 @@ namespace {
             dirty |= EditorUI::PropertyFloat("Alpha Cutoff", &state.alphaCutoff, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.5f);
             dirty |= EditorUI::PropertyBool("Double Sided", &state.doubleSided);
             dirty |= EditorUI::PropertyBool("Unlit", &state.unlit);
+            EditorUI::EndPropertyTable();
+        }
+
+        EditorUI::StandardSpacing();
+        EditorUI::SectionHeader("UV");
+        if (EditorUI::BeginPropertyTable("MaterialUV")) {
+            dirty |= EditorUI::PropertyVec2("Tiling", state.uvTiling, 1.0f, 0.01f, 0.0f, 0.0f, "%.3f", false, true);
+            dirty |= EditorUI::PropertyVec2("Offset", state.uvOffset, 0.0f, 0.01f, 0.0f, 0.0f, "%.3f", false, true);
             EditorUI::EndPropertyTable();
         }
 
@@ -927,6 +991,294 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                           position[0], position[1], position[2],
                                           rotationRad[0], rotationRad[1], rotationRad[2],
                                           scale[0], scale[1], scale[2]);
+                }
+            }
+        }
+    }
+
+    const bool hasRigidbody = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentRigidbody) != 0;
+    const bool hasCollider = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentCollider) != 0;
+
+    if (hasRigidbody) {
+        bool rigidbodyOpen = EditorUI::BeginSectionWithContext(context,
+            "Rigidbody",
+            "Inspector.Rigidbody",
+            "RigidbodyContext",
+            [&]() {
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentRigidbody);
+                }
+            },
+            true);
+        if (rigidbodyOpen) {
+            if (!hasCollider) {
+                ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Requires a Collider component.");
+            }
+            const bool isPlaying = MCESceneIsPlaying(context) != 0;
+            if (isPlaying) {
+                ImGui::TextColored(ImVec4(0.75f, 0.82f, 0.9f, 1.0f), "Changes apply next time you press Play.");
+            }
+            if (ImGui::Button("Rebuild Body")) {
+                if (isPlaying) {
+                    MCEEditorRebuildPhysicsBody(context, selectedEntityId);
+                }
+            }
+            ImGui::Spacing();
+            uint32_t enabled = 1;
+            int32_t motionType = 1;
+            float mass = 1.0f;
+            float friction = 0.6f;
+            float restitution = 0.0f;
+            float linearDamping = 0.02f;
+            float angularDamping = 0.2f;
+            float gravityFactor = 1.0f;
+            uint32_t allowSleeping = 1;
+            uint32_t ccdEnabled = 0;
+            int32_t collisionLayer = 0;
+            uint32_t colliderEnabled = 1;
+            int32_t colliderShape = 0;
+            float boxX = 0.5f, boxY = 0.5f, boxZ = 0.5f;
+            float sphereRadius = 0.5f;
+            float capsuleHalfHeight = 0.5f;
+            float capsuleRadius = 0.5f;
+            float offsetX = 0.0f, offsetY = 0.0f, offsetZ = 0.0f;
+            float rotX = 0.0f, rotY = 0.0f, rotZ = 0.0f;
+            uint32_t isTrigger = 0;
+            const bool hasColliderData = hasCollider && MCEEditorGetCollider(context, selectedEntityId,
+                                     &colliderEnabled,
+                                     &colliderShape,
+                                     &boxX, &boxY, &boxZ,
+                                     &sphereRadius,
+                                     &capsuleHalfHeight,
+                                     &capsuleRadius,
+                                     &offsetX, &offsetY, &offsetZ,
+                                     &rotX, &rotY, &rotZ,
+                                     &isTrigger) != 0;
+            if (MCEEditorGetRigidbody(context, selectedEntityId,
+                                      &enabled,
+                                      &motionType,
+                                      &mass,
+                                      &friction,
+                                      &restitution,
+                                      &linearDamping,
+                                      &angularDamping,
+                                      &gravityFactor,
+                                      &allowSleeping,
+                                      &ccdEnabled,
+                                      &collisionLayer) != 0) {
+                bool dirty = false;
+                bool colliderDirty = false;
+                bool allowSleepBool = allowSleeping != 0;
+                bool ccdBool = ccdEnabled != 0;
+                if (EditorUI::BeginPropertyTable("RigidbodyProps")) {
+                    const char* typeItems[] = { "Static", "Dynamic", "Kinematic" };
+                    int typeIndex = motionType;
+                    if (EditorUI::PropertyCombo("Motion Type", &typeIndex, typeItems, IM_ARRAYSIZE(typeItems))) {
+                        motionType = typeIndex;
+                        dirty = true;
+                    }
+                    if (motionType == 1) {
+                        if (EditorUI::PropertyFloat("Mass", &mass, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 1.0f)) {
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyFloat("Linear Damping", &linearDamping, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.02f)) {
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyFloat("Angular Damping", &angularDamping, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.2f)) {
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyFloat("Friction", &friction, 0.05f, 0.0f, 1.0f, "%.2f", true, true, 0.6f)) {
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyFloat("Restitution", &restitution, 0.05f, 0.0f, 1.0f, "%.2f", true, true, 0.0f)) {
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyBool("Allow Sleeping", &allowSleepBool)) {
+                            allowSleeping = allowSleepBool ? 1 : 0;
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyBool("Enable CCD", &ccdBool)) {
+                            ccdEnabled = ccdBool ? 1 : 0;
+                            dirty = true;
+                        }
+                    } else if (motionType == 0 && hasColliderData) {
+                        bool triggerBool = isTrigger != 0;
+                        if (EditorUI::PropertyBool("Is Trigger", &triggerBool)) {
+                            isTrigger = triggerBool ? 1 : 0;
+                            colliderDirty = true;
+                        }
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+                if (ImGui::CollapsingHeader("Advanced##Rigidbody")) {
+                    bool enabledBool = enabled != 0;
+                    if (EditorUI::BeginPropertyTable("RigidbodyAdvanced")) {
+                        if (EditorUI::PropertyBool("Enabled", &enabledBool)) {
+                            enabled = enabledBool ? 1 : 0;
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyFloat("Gravity Factor", &gravityFactor, 0.05f, 0.0f, 5.0f, "%.2f", true, true, 1.0f)) {
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyInt("Collision Layer", &collisionLayer, 0, 15)) {
+                            dirty = true;
+                        }
+                        EditorUI::EndPropertyTable();
+                    }
+                }
+                if (dirty) {
+                    MCEEditorSetRigidbody(context, selectedEntityId,
+                                          enabled,
+                                          motionType,
+                                          mass,
+                                          friction,
+                                          restitution,
+                                          linearDamping,
+                                          angularDamping,
+                                          gravityFactor,
+                                          allowSleeping,
+                                          ccdEnabled,
+                                          collisionLayer);
+                }
+                if (colliderDirty && hasColliderData) {
+                    MCEEditorSetCollider(context, selectedEntityId,
+                                         colliderEnabled,
+                                         colliderShape,
+                                         boxX, boxY, boxZ,
+                                         sphereRadius,
+                                         capsuleHalfHeight,
+                                         capsuleRadius,
+                                         offsetX, offsetY, offsetZ,
+                                         rotX, rotY, rotZ,
+                                         isTrigger);
+                }
+            }
+        }
+    }
+
+    if (hasCollider) {
+        bool colliderOpen = EditorUI::BeginSectionWithContext(context,
+            "Collider",
+            "Inspector.Collider",
+            "ColliderContext",
+            [&]() {
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentCollider);
+                }
+            },
+            true);
+        if (colliderOpen) {
+            if (!hasRigidbody) {
+                ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Requires a Rigidbody to simulate.");
+            }
+            uint32_t enabled = 1;
+            int32_t shapeType = 0;
+            float boxX = 0.5f, boxY = 0.5f, boxZ = 0.5f;
+            float sphereRadius = 0.5f;
+            float capsuleHalfHeight = 0.5f;
+            float capsuleRadius = 0.5f;
+            float offsetX = 0.0f, offsetY = 0.0f, offsetZ = 0.0f;
+            float rotX = 0.0f, rotY = 0.0f, rotZ = 0.0f;
+            uint32_t isTrigger = 0;
+            if (MCEEditorGetCollider(context, selectedEntityId,
+                                     &enabled,
+                                     &shapeType,
+                                     &boxX, &boxY, &boxZ,
+                                     &sphereRadius,
+                                     &capsuleHalfHeight,
+                                     &capsuleRadius,
+                                     &offsetX, &offsetY, &offsetZ,
+                                     &rotX, &rotY, &rotZ,
+                                     &isTrigger) != 0) {
+                bool dirty = false;
+                const char* shapeItems[] = { "Box", "Sphere", "Capsule" };
+                float rotationDeg[3] = { rotX * kRadToDeg, rotY * kRadToDeg, rotZ * kRadToDeg };
+                float offset[3] = { offsetX, offsetY, offsetZ };
+                float sx = 1.0f, sy = 1.0f, sz = 1.0f;
+                if (MCEEditorGetTransform(context, selectedEntityId,
+                                          nullptr, nullptr, nullptr,
+                                          nullptr, nullptr, nullptr,
+                                          &sx, &sy, &sz) != 0) {
+                    const float maxScale = std::max(sx, std::max(sy, sz));
+                    const float minScale = std::min(sx, std::min(sy, sz));
+                    if (fabsf(maxScale - minScale) > 0.001f) {
+                        ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f),
+                                           "Non-uniform scale may not be fully supported.");
+                    }
+                }
+                if ((shapeType == 0 && (boxX <= 0.0f || boxY <= 0.0f || boxZ <= 0.0f)) ||
+                    (shapeType == 1 && sphereRadius <= 0.0f) ||
+                    (shapeType == 2 && (capsuleRadius <= 0.0f || capsuleHalfHeight <= 0.0f))) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f),
+                                       "Collider dimensions must be > 0.");
+                }
+                if (EditorUI::BeginPropertyTable("ColliderProps")) {
+                    int shapeIndex = shapeType;
+                    if (EditorUI::PropertyCombo("Shape", &shapeIndex, shapeItems, IM_ARRAYSIZE(shapeItems))) {
+                        shapeType = shapeIndex;
+                        dirty = true;
+                    }
+                    if (shapeType == 0) {
+                        float extents[3] = { boxX, boxY, boxZ };
+                        if (EditorUI::PropertyVec3("Half Extents", extents, 0.5f, 0.05f, 0.0f, 0.0f, "%.3f", false, true)) {
+                            boxX = extents[0];
+                            boxY = extents[1];
+                            boxZ = extents[2];
+                            dirty = true;
+                        }
+                    } else if (shapeType == 1) {
+                        if (EditorUI::PropertyFloat("Radius", &sphereRadius, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
+                            dirty = true;
+                        }
+                    } else if (shapeType == 2) {
+                        if (EditorUI::PropertyFloat("Radius", &capsuleRadius, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyFloat("Half Height", &capsuleHalfHeight, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
+                            dirty = true;
+                        }
+                    }
+                    if (EditorUI::PropertyVec3("Offset Position", offset, 0.0f, 0.05f, 0.0f, 0.0f, "%.3f", false, true)) {
+                        offsetX = offset[0];
+                        offsetY = offset[1];
+                        offsetZ = offset[2];
+                        dirty = true;
+                    }
+                    if (EditorUI::PropertyVec3("Offset Rotation (deg)", rotationDeg, 0.0f, EditorUIConstants::kRotationStepDeg,
+                                               EditorUIConstants::kRotationMinDeg, EditorUIConstants::kRotationMaxDeg, "%.2f", true, true)) {
+                        rotX = rotationDeg[0] * kDegToRad;
+                        rotY = rotationDeg[1] * kDegToRad;
+                        rotZ = rotationDeg[2] * kDegToRad;
+                        dirty = true;
+                    }
+                    bool triggerBool = isTrigger != 0;
+                    if (EditorUI::PropertyBool("Is Trigger", &triggerBool)) {
+                        isTrigger = triggerBool ? 1 : 0;
+                        dirty = true;
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+                if (ImGui::CollapsingHeader("Advanced##Collider")) {
+                    bool enabledBool = enabled != 0;
+                    if (EditorUI::BeginPropertyTable("ColliderAdvanced")) {
+                        if (EditorUI::PropertyBool("Enabled", &enabledBool)) {
+                            enabled = enabledBool ? 1 : 0;
+                            dirty = true;
+                        }
+                        EditorUI::EndPropertyTable();
+                    }
+                }
+                if (dirty) {
+                    MCEEditorSetCollider(context, selectedEntityId,
+                                         enabled,
+                                         shapeType,
+                                         boxX, boxY, boxZ,
+                                         sphereRadius,
+                                         capsuleHalfHeight,
+                                         capsuleRadius,
+                                         offsetX, offsetY, offsetZ,
+                                         rotX, rotY, rotZ,
+                                         isTrigger);
                 }
             }
         }
@@ -1062,6 +1414,8 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                             textureState->metallic, textureState->roughness, textureState->ao,
                             textureState->emissive[0], textureState->emissive[1], textureState->emissive[2],
                             textureState->emissiveIntensity,
+                            textureState->uvTiling[0], textureState->uvTiling[1],
+                            textureState->uvOffset[0], textureState->uvOffset[1],
                             textureState->alphaMode, textureState->alphaCutoff,
                             textureState->doubleSided ? 1 : 0, textureState->unlit ? 1 : 0,
                             textureState->baseColorHandle,
@@ -1162,6 +1516,8 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                             textureState->metallic, textureState->roughness, textureState->ao,
                             textureState->emissive[0], textureState->emissive[1], textureState->emissive[2],
                             textureState->emissiveIntensity,
+                            textureState->uvTiling[0], textureState->uvTiling[1],
+                            textureState->uvOffset[0], textureState->uvOffset[1],
                             textureState->alphaMode, textureState->alphaCutoff,
                             textureState->doubleSided ? 1 : 0, textureState->unlit ? 1 : 0,
                             textureState->baseColorHandle,
@@ -1901,6 +2257,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 MCEEditorAddComponent(context, selectedEntityId, ComponentCamera);
             }
         }
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentRigidbody) == 0) {
+            if (ImGui::MenuItem("Rigidbody")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentRigidbody);
+            }
+        }
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentCollider) == 0) {
+            if (ImGui::MenuItem("Collider")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentCollider);
+            }
+        }
         if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentLight) == 0) {
             if (ImGui::MenuItem("Light")) {
                 MCEEditorAddComponent(context, selectedEntityId, ComponentLight);
@@ -1941,6 +2307,8 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     popup.state.metallic, popup.state.roughness, popup.state.ao,
                     popup.state.emissive[0], popup.state.emissive[1], popup.state.emissive[2],
                     popup.state.emissiveIntensity,
+                    popup.state.uvTiling[0], popup.state.uvTiling[1],
+                    popup.state.uvOffset[0], popup.state.uvOffset[1],
                     popup.state.alphaMode, popup.state.alphaCutoff,
                     popup.state.doubleSided ? 1 : 0, popup.state.unlit ? 1 : 0,
                     popup.state.baseColorHandle,

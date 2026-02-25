@@ -129,6 +129,8 @@ public func MCEEditorGetMaterialAsset(
     _ metallic: UnsafeMutablePointer<Float>?, _ roughness: UnsafeMutablePointer<Float>?, _ ao: UnsafeMutablePointer<Float>?,
     _ emissiveX: UnsafeMutablePointer<Float>?, _ emissiveY: UnsafeMutablePointer<Float>?, _ emissiveZ: UnsafeMutablePointer<Float>?,
     _ emissiveIntensity: UnsafeMutablePointer<Float>?,
+    _ uvTilingX: UnsafeMutablePointer<Float>?, _ uvTilingY: UnsafeMutablePointer<Float>?,
+    _ uvOffsetX: UnsafeMutablePointer<Float>?, _ uvOffsetY: UnsafeMutablePointer<Float>?,
     _ alphaMode: UnsafeMutablePointer<Int32>?, _ alphaCutoff: UnsafeMutablePointer<Float>?,
     _ doubleSided: UnsafeMutablePointer<UInt32>?, _ unlit: UnsafeMutablePointer<UInt32>?,
     _ baseColorHandle: UnsafeMutablePointer<CChar>?, _ baseColorHandleSize: Int32,
@@ -158,6 +160,10 @@ public func MCEEditorGetMaterialAsset(
     emissiveY?.pointee = material.emissiveColor.y
     emissiveZ?.pointee = material.emissiveColor.z
     emissiveIntensity?.pointee = material.emissiveIntensity
+    uvTilingX?.pointee = material.uvTiling.x
+    uvTilingY?.pointee = material.uvTiling.y
+    uvOffsetX?.pointee = material.uvOffset.x
+    uvOffsetY?.pointee = material.uvOffset.y
     alphaMode?.pointee = MaterialAlphaModeCodes.code(for: material.alphaMode)
     alphaCutoff?.pointee = material.alphaCutoff
     doubleSided?.pointee = material.doubleSided ? 1 : 0
@@ -184,6 +190,8 @@ public func MCEEditorSetMaterialAsset(
     _ metallic: Float, _ roughness: Float, _ ao: Float,
     _ emissiveX: Float, _ emissiveY: Float, _ emissiveZ: Float,
     _ emissiveIntensity: Float,
+    _ uvTilingX: Float, _ uvTilingY: Float,
+    _ uvOffsetX: Float, _ uvOffsetY: Float,
     _ alphaMode: Int32, _ alphaCutoff: Float,
     _ doubleSided: UInt32, _ unlit: UInt32,
     _ baseColorHandle: UnsafePointer<CChar>?,
@@ -214,6 +222,8 @@ public func MCEEditorSetMaterialAsset(
     material.aoFactor = ao
     material.emissiveColor = SIMD3<Float>(emissiveX, emissiveY, emissiveZ)
     material.emissiveIntensity = emissiveIntensity
+    material.uvTiling = SIMD2<Float>(uvTilingX, uvTilingY)
+    material.uvOffset = SIMD2<Float>(uvOffsetX, uvOffsetY)
     material.alphaMode = MaterialAlphaModeCodes.mode(from: alphaMode)
     material.alphaCutoff = alphaCutoff
     material.doubleSided = doubleSided != 0

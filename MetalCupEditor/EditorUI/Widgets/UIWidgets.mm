@@ -10,6 +10,17 @@
 extern "C" uint32_t MCEEditorGetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t defaultValue);
 extern "C" void MCEEditorSetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t open);
 
+namespace {
+    void PushPropertyControlStyle() {
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 4.0f));
+        ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
+    }
+
+    void PopPropertyControlStyle() {
+        ImGui::PopStyleVar(2);
+    }
+}
+
 namespace EditorUI {
     bool BeginPanel(const char *title, bool *isOpen, ImGuiWindowFlags flags) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImGui::GetStyle().WindowPadding);
@@ -102,6 +113,7 @@ namespace EditorUI {
         PropertyLabel(label);
         const bool labelClicked = enableReset && ImGui::IsItemClicked();
         ImGui::PushID(label);
+        PushPropertyControlStyle();
         const float dragMin = clampValue ? minValue : 0.0f;
         const float dragMax = clampValue ? maxValue : 0.0f;
         bool changed = ImGui::DragFloat("##Value", value, speed, dragMin, dragMax, format);
@@ -109,6 +121,7 @@ namespace EditorUI {
             *value = resetValue;
             changed = true;
         }
+        PopPropertyControlStyle();
         ImGui::PopID();
         return changed;
     }
@@ -116,7 +129,9 @@ namespace EditorUI {
     bool PropertyBool(const char *label, bool *value) {
         PropertyLabel(label);
         ImGui::PushID(label);
+        PushPropertyControlStyle();
         bool changed = ImGui::Checkbox("##Value", value);
+        PopPropertyControlStyle();
         ImGui::PopID();
         return changed;
     }
@@ -125,6 +140,7 @@ namespace EditorUI {
         PropertyLabel(label);
         const bool labelClicked = enableReset && resetColor && ImGui::IsItemClicked();
         ImGui::PushID(label);
+        PushPropertyControlStyle();
         bool changed = ImGui::ColorEdit3("##Value", color, ImGuiColorEditFlags_Float);
         if (labelClicked) {
             color[0] = resetColor[0];
@@ -132,6 +148,7 @@ namespace EditorUI {
             color[2] = resetColor[2];
             changed = true;
         }
+        PopPropertyControlStyle();
         ImGui::PopID();
         return changed;
     }
@@ -139,7 +156,9 @@ namespace EditorUI {
     bool PropertyCombo(const char *label, int *current, const char *const items[], int count) {
         PropertyLabel(label);
         ImGui::PushID(label);
+        PushPropertyControlStyle();
         bool changed = ImGui::Combo("##Value", current, items, count);
+        PopPropertyControlStyle();
         ImGui::PopID();
         return changed;
     }
@@ -147,7 +166,64 @@ namespace EditorUI {
     bool PropertyInt(const char *label, int *value, int minValue, int maxValue) {
         PropertyLabel(label);
         ImGui::PushID(label);
+        PushPropertyControlStyle();
         bool changed = ImGui::SliderInt("##Value", value, minValue, maxValue);
+        PopPropertyControlStyle();
+        ImGui::PopID();
+        return changed;
+    }
+
+    bool PropertyVec2(const char *label, float *values, float resetValue, float speed, float minValue, float maxValue, const char *format, bool clampValue, bool enableReset) {
+        PropertyLabel(label);
+        const bool labelClicked = enableReset && ImGui::IsItemClicked();
+
+        ImGui::PushID(label);
+        ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 0));
+        PushPropertyControlStyle();
+
+        const ImVec4 axisColors[] = {
+            ImVec4(0.8f, 0.2f, 0.2f, 1.0f),
+            ImVec4(0.2f, 0.7f, 0.2f, 1.0f)
+        };
+        const char *axisLabels[] = { "X", "Y" };
+        const char *axisDragIds[] = { "##X", "##Y" };
+        bool changed = false;
+
+        const float totalWidth = ImGui::CalcItemWidth();
+        const float buttonSize = ImGui::GetFrameHeight();
+        const float spacing = ImGui::GetStyle().ItemSpacing.x;
+        float dragWidth = (totalWidth - (buttonSize * 2.0f) - (spacing * 4.0f)) / 2.0f;
+        if (dragWidth < 40.0f) {
+            dragWidth = 40.0f;
+        }
+
+        for (int i = 0; i < 2; ++i) {
+            ImGui::PushStyleColor(ImGuiCol_Button, axisColors[i]);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, axisColors[i]);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, axisColors[i]);
+            if (ImGui::Button(axisLabels[i], ImVec2(buttonSize, buttonSize))) {
+                values[i] = resetValue;
+                changed = true;
+            }
+            ImGui::PopStyleColor(3);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(dragWidth);
+            const float dragMin = clampValue ? minValue : 0.0f;
+            const float dragMax = clampValue ? maxValue : 0.0f;
+            changed |= ImGui::DragFloat(axisDragIds[i], &values[i], speed, dragMin, dragMax, format);
+            if (i < 1) {
+                ImGui::SameLine();
+            }
+        }
+
+        if (labelClicked) {
+            values[0] = resetValue;
+            values[1] = resetValue;
+            changed = true;
+        }
+
+        PopPropertyControlStyle();
+        ImGui::PopStyleVar();
         ImGui::PopID();
         return changed;
     }
@@ -158,6 +234,7 @@ namespace EditorUI {
 
         ImGui::PushID(label);
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(4, 0));
+        PushPropertyControlStyle();
 
         const ImVec4 axisColors[] = {
             ImVec4(0.8f, 0.2f, 0.2f, 1.0f),
@@ -202,6 +279,7 @@ namespace EditorUI {
             changed = true;
         }
 
+        PopPropertyControlStyle();
         ImGui::PopStyleVar();
         ImGui::PopID();
         return changed;
@@ -264,6 +342,16 @@ namespace EditorUI {
         }
         ImGui::EndPopup();
         return confirmed;
+    }
+
+    void SectionHeader(const char *label) {
+        ImGui::TextUnformatted(label);
+        ImGui::Separator();
+    }
+
+    void StandardSpacing() {
+        ImGui::Spacing();
+        ImGui::Spacing();
     }
 
     std::string ToLower(const std::string &value) {

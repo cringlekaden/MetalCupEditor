@@ -20,15 +20,30 @@ final class EditorSceneController {
     private(set) var runtimeScene: EngineScene?
     private(set) var isPlaying: Bool = false
     private(set) var isPaused: Bool = false
+    private(set) var isSimulating: Bool = false
+    private var playState: PlayState = .editing
 
     private var editorSnapshot: SceneDocument?
+    private var simulateSnapshot: SceneDocument?
     private var selectedEntityId: UUID?
     private var fixedAccumulator: Float = 0.0
-    private let maxFixedSteps: Int = 5
+    private var simulateAccumulator: Float = 0.0
+    private let maxFixedSteps: Int = 4
     private var lastFrameTime: FrameTime?
     private var timeBaseTotal: Float = 0.0
     private var timeBaseUnscaled: Float = 0.0
     private var timeBaseFrameCount: UInt64 = 0
+#if DEBUG
+    private var fixedStepLogged: Bool = false
+#endif
+
+    private enum PlayState {
+        case editing
+        case startingPlay
+        case playing
+        case paused
+        case stoppingPlay
+    }
 
     // MARK: - Scene Accessors
 
@@ -66,10 +81,19 @@ final class EditorSceneController {
     // MARK: - Play/Pause/Stop
 
     func play() {
-        if isPlaying { return }
+        if playState != .editing { return }
+        if isSimulating {
+            resetSimulation()
+        }
         guard let editorScene else { return }
-        let settings = engineContext?.rendererSettings ?? RendererSettings()
-        editorSnapshot = editorScene.toDocument(rendererSettingsOverride: RendererSettingsDTO(settings: settings))
+        playState = .startingPlay
+        engineContext?.debugDraw.beginFrame()
+        let rendererSettings = engineContext?.rendererSettings ?? RendererSettings()
+        let physicsSettings = engineContext?.physicsSettings ?? PhysicsSettings()
+        editorSnapshot = editorScene.toDocument(
+            rendererSettingsOverride: RendererSettingsDTO(settings: rendererSettings),
+            physicsSettingsOverride: PhysicsSettingsDTO(settings: physicsSettings)
+        )
         if let snapshot = editorSnapshot {
             runtimeScene = SerializedScene(
                 document: snapshot,
@@ -84,18 +108,27 @@ final class EditorSceneController {
                 engineContext: engineContext
             )
         }
+        if let physicsSettings = engineContext?.physicsSettings {
+            runtimeScene?.startPhysics(settings: physicsSettings)
+        }
         resetTimingBase()
         fixedAccumulator = 0.0
         isPlaying = true
         isPaused = false
+        playState = .playing
     }
 
     func stop() {
-        if !isPlaying { return }
+        if playState == .editing || playState == .stoppingPlay { return }
+        playState = .stoppingPlay
+        runtimeScene?.stopPhysics()
         if let snapshot = editorSnapshot, let editorScene {
             editorScene.apply(document: snapshot)
             if let settings = snapshot.rendererSettingsOverride {
                 engineContext?.rendererSettings = settings.makeRendererSettings()
+            }
+            if let physicsSettings = snapshot.physicsSettingsOverride {
+                engineContext?.physicsSettings = physicsSettings.makePhysicsSettings()
             }
         }
         editorSnapshot = nil
@@ -104,16 +137,53 @@ final class EditorSceneController {
         isPaused = false
         resetTimingBase()
         fixedAccumulator = 0.0
+        playState = .editing
+    }
+
+    func simulate() {
+        if isPlaying || isSimulating { return }
+        guard let editorScene else { return }
+        let rendererSettings = engineContext?.rendererSettings ?? RendererSettings()
+        let physicsSettings = engineContext?.physicsSettings ?? PhysicsSettings()
+        simulateSnapshot = editorScene.toDocument(
+            rendererSettingsOverride: RendererSettingsDTO(settings: rendererSettings),
+            physicsSettingsOverride: PhysicsSettingsDTO(settings: physicsSettings)
+        )
+        editorScene.startPhysics(settings: physicsSettings)
+        resetTimingBase()
+        simulateAccumulator = 0.0
+        isSimulating = true
+    }
+
+    func resetSimulation() {
+        guard isSimulating else { return }
+        editorScene?.stopPhysics()
+        if let snapshot = simulateSnapshot, let editorScene {
+            editorScene.apply(document: snapshot)
+            if let settings = snapshot.rendererSettingsOverride {
+                engineContext?.rendererSettings = settings.makeRendererSettings()
+            }
+            if let physicsSettings = snapshot.physicsSettingsOverride {
+                engineContext?.physicsSettings = physicsSettings.makePhysicsSettings()
+            }
+        }
+        simulateSnapshot = nil
+        isSimulating = false
+        resetTimingBase()
+        simulateAccumulator = 0.0
     }
 
     func pause() {
-        if !isPlaying { return }
+        if playState != .playing { return }
         isPaused = true
+        playState = .paused
+        fixedAccumulator = 0.0
     }
 
     func resume() {
-        if !isPlaying { return }
+        if playState != .paused { return }
         isPaused = false
+        playState = .playing
     }
 
     // MARK: - Serialization
@@ -127,6 +197,9 @@ final class EditorSceneController {
         let document = try SceneSerializer.load(from: url)
         if let settings = document.rendererSettingsOverride {
             engineContext?.rendererSettings = settings.makeRendererSettings()
+        }
+        if let settings = document.physicsSettingsOverride {
+            engineContext?.physicsSettings = settings.makePhysicsSettings()
         }
         let scene = SerializedScene(
             document: document,
@@ -167,11 +240,13 @@ final class EditorSceneController {
             scene.runtime.update(scene: scene, frame: frame)
         }
 
-        if isPaused {
-            _ = consumeFixedSteps(frameTime: frame.time)
-            return
-        }
-        let steps = consumeFixedSteps(frameTime: frame.time)
+        if isPaused { return }
+        let settings = engineContext?.physicsSettings
+        let fixedDeltaTime = settings?.fixedDeltaTime ?? frame.time.fixedDeltaTime
+        let maxSubsteps = settings?.maxSubsteps ?? maxFixedSteps
+        let steps = consumeFixedSteps(frameTime: frame.time,
+                                      fixedDeltaTime: fixedDeltaTime,
+                                      maxSubsteps: maxSubsteps)
         if steps > 0 {
             let fixedStart = CACurrentMediaTime()
             for _ in 0..<steps {
@@ -185,6 +260,20 @@ final class EditorSceneController {
         scene.runtime.stop()
         recordProfilerScope(.sceneUpdate) {
             scene.runtime.update(scene: scene, frame: frame)
+        }
+        if isSimulating {
+            let settings = engineContext?.physicsSettings
+            let fixedDeltaTime = settings?.fixedDeltaTime ?? frame.time.fixedDeltaTime
+            let maxSubsteps = settings?.maxSubsteps ?? maxFixedSteps
+            let steps = consumeFixedSteps(frameTime: frame.time,
+                                          fixedDeltaTime: fixedDeltaTime,
+                                          maxSubsteps: maxSubsteps,
+                                          accumulator: &simulateAccumulator)
+            if steps > 0 {
+                for _ in 0..<steps {
+                    scene.physicsSystem?.fixedUpdate(scene: scene, fixedDeltaTime: fixedDeltaTime)
+                }
+            }
         }
     }
 
@@ -206,14 +295,31 @@ final class EditorSceneController {
         return FrameContext(time: adjustedTime, input: frame.input)
     }
 
-    private func consumeFixedSteps(frameTime: FrameTime) -> Int {
-        let maxStepDelta = frameTime.fixedDeltaTime * Float(maxFixedSteps)
-        let clampedStepDelta = min(frameTime.deltaTime, maxStepDelta)
-        fixedAccumulator += clampedStepDelta
-        let availableSteps = Int(fixedAccumulator / frameTime.fixedDeltaTime)
+    private func consumeFixedSteps(frameTime: FrameTime, fixedDeltaTime: Float, maxSubsteps: Int) -> Int {
+        consumeFixedSteps(frameTime: frameTime, fixedDeltaTime: fixedDeltaTime, maxSubsteps: maxSubsteps, accumulator: &fixedAccumulator)
+    }
+
+    private func consumeFixedSteps(frameTime: FrameTime, fixedDeltaTime: Float, maxSubsteps: Int, accumulator: inout Float) -> Int {
+        let clampedFixedDelta = max(0.0001, fixedDeltaTime)
+        let clampedMaxSteps = max(1, min(maxSubsteps, maxFixedSteps))
+        let maxStepDelta = clampedFixedDelta * Float(clampedMaxSteps)
+        let maxAccumulatedDelta: Float = 0.1
+        let clampedStepDelta = min(frameTime.deltaTime, min(maxStepDelta, maxAccumulatedDelta))
+        accumulator += clampedStepDelta
+#if DEBUG
+        if !fixedStepLogged {
+            fixedStepLogged = true
+            EngineLoggerContext.log(
+                String(format: "Physics Debug Fixed Step: fixedDelta=%.6f, maxSubsteps=%d", clampedFixedDelta, clampedMaxSteps),
+                level: .debug,
+                category: .scene
+            )
+        }
+#endif
+        let availableSteps = Int(accumulator / clampedFixedDelta)
         if availableSteps <= 0 { return 0 }
-        let steps = min(availableSteps, maxFixedSteps)
-        fixedAccumulator -= Float(steps) * frameTime.fixedDeltaTime
+        let steps = min(availableSteps, clampedMaxSteps)
+        accumulator -= Float(steps) * clampedFixedDelta
         return steps
     }
 

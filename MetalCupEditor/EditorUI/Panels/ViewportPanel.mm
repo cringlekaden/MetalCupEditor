@@ -10,13 +10,17 @@
 #import "../Widgets/UIWidgets.h"
 #include <algorithm>
 #include <cmath>
+#include <string.h>
 
 extern "C" void MCEScenePlay(MCE_CTX);
 extern "C" void MCESceneStop(MCE_CTX);
 extern "C" void MCEScenePause(MCE_CTX);
 extern "C" void MCESceneResume(MCE_CTX);
+extern "C" void MCESceneSimulate(MCE_CTX);
+extern "C" void MCESceneResetSimulation(MCE_CTX);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsPaused(MCE_CTX);
+extern "C" uint32_t MCESceneIsSimulating(MCE_CTX);
 extern "C" int32_t MCEEditorCreateMeshEntityFromHandle(MCE_CTX,  const char *meshHandle, char *outId, int32_t outIdSize);
 extern "C" int32_t MCEEditorInstantiatePrefabFromHandle(MCE_CTX,  const char *prefabHandle, char *outId, int32_t outIdSize);
 extern "C" uint32_t MCEEditorOpenSceneAtPath(MCE_CTX,  const char *relativePath);
@@ -203,6 +207,7 @@ void ImGuiViewportPanelDraw(void *context,
         *imageSize = CGSizeMake(imageMax.x - imageMin.x, imageMax.y - imageMin.y);
     }
 
+
     if (ImGui::BeginDragDropTarget()) {
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
@@ -231,27 +236,29 @@ void ImGuiViewportPanelDraw(void *context,
         ImGui::EndDragDropTarget();
     }
 
+    bool playing = MCESceneIsPlaying(context) != 0;
     if (imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
         const float toolbarPadding = 10.0f;
         ImVec2 playLabel = ImGui::CalcTextSize("Play");
         ImVec2 stopLabel = ImGui::CalcTextSize("Stop");
         ImVec2 pauseLabel = ImGui::CalcTextSize("Pause");
         ImVec2 resumeLabel = ImGui::CalcTextSize("Resume");
-        ImVec2 cameraLabel = ImGui::CalcTextSize("Camera");
+        ImVec2 simulateLabel = ImGui::CalcTextSize("Simulate");
+        ImVec2 resetLabel = ImGui::CalcTextSize("Reset");
         ImVec2 padding = ImGui::GetStyle().FramePadding;
         float playWidth = playLabel.x + padding.x * 2.0f;
         float stopWidth = stopLabel.x + padding.x * 2.0f;
         float pauseWidth = std::max(pauseLabel.x, resumeLabel.x) + padding.x * 2.0f;
-        float cameraWidth = cameraLabel.x + padding.x * 2.0f;
+        float simulateWidth = std::max(simulateLabel.x, resetLabel.x) + padding.x * 2.0f;
         float spacing = ImGui::GetStyle().ItemSpacing.x;
-        float toolbarWidth = playWidth + spacing + pauseWidth + spacing + stopWidth + spacing + cameraWidth;
+        float toolbarWidth = playWidth + spacing + pauseWidth + spacing + stopWidth + spacing + simulateWidth;
         float toolbarHeight = (playLabel.y > stopLabel.y ? playLabel.y : stopLabel.y) + padding.y * 2.0f;
         float centerX = imageMin.x + (imageMax.x - imageMin.x - toolbarWidth) * 0.5f;
         ImGui::SetCursorScreenPos(ImVec2(centerX, imageMin.y + toolbarPadding));
         ImGui::BeginChild("ViewportToolbar", ImVec2(toolbarWidth, toolbarHeight), false,
                           ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
-        bool playing = MCESceneIsPlaying(context) != 0;
         bool paused = MCESceneIsPaused(context) != 0;
+        bool simulating = MCESceneIsSimulating(context) != 0;
         if (EditorUI::ToolbarButton("Play", !playing)) {
             MCEScenePlay(context);
         }
@@ -271,6 +278,27 @@ void ImGuiViewportPanelDraw(void *context,
         }
         viewportUIHovered = viewportUIHovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
         ImGui::SameLine();
+        if (EditorUI::ToolbarButton(simulating ? "Reset" : "Simulate", !playing)) {
+            if (simulating) {
+                MCESceneResetSimulation(context);
+            } else {
+                MCESceneSimulate(context);
+            }
+        }
+        viewportUIHovered = viewportUIHovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
+        ImGui::EndChild();
+    }
+
+    if (imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
+        const float padding = 10.0f;
+        ImVec2 cameraLabel = ImGui::CalcTextSize("Camera");
+        ImVec2 framePadding = ImGui::GetStyle().FramePadding;
+        float cameraWidth = cameraLabel.x + framePadding.x * 2.0f;
+        float cameraHeight = cameraLabel.y + framePadding.y * 2.0f;
+        ImVec2 cameraPos = ImVec2(imageMin.x + padding, imageMax.y - padding - cameraHeight);
+        ImGui::SetCursorScreenPos(cameraPos);
+        ImGui::BeginChild("ViewportCameraButton", ImVec2(cameraWidth, cameraHeight), false,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoBackground);
         if (EditorUI::ToolbarButton("Camera", !playing)) {
             char createdId[64] = {0};
             MCEEditorCreateCameraFromView(context, createdId, sizeof(createdId));
@@ -279,7 +307,6 @@ void ImGuiViewportPanelDraw(void *context,
         ImGui::EndChild();
     }
 
-    bool playing = MCESceneIsPlaying(context) != 0;
     if (!playing && imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
         viewportUIHovered = viewportUIHovered || DrawGizmoToolbar(state, imageMin, imageMax);
     }

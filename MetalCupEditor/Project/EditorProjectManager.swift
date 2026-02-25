@@ -1005,6 +1005,16 @@ public func MCESceneResume(_ contextPtr: UnsafeMutableRawPointer) {
     resolveContext(contextPtr).editorSceneController.resume()
 }
 
+@_cdecl("MCESceneSimulate")
+public func MCESceneSimulate(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorSceneController.simulate()
+}
+
+@_cdecl("MCESceneResetSimulation")
+public func MCESceneResetSimulation(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorSceneController.resetSimulation()
+}
+
 @_cdecl("MCESceneIsPlaying")
 public func MCESceneIsPlaying(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
     return resolveContext(contextPtr).editorSceneController.isPlaying ? 1 : 0
@@ -1013,6 +1023,11 @@ public func MCESceneIsPlaying(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
 @_cdecl("MCESceneIsPaused")
 public func MCESceneIsPaused(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
     return resolveContext(contextPtr).editorSceneController.isPaused ? 1 : 0
+}
+
+@_cdecl("MCESceneIsSimulating")
+public func MCESceneIsSimulating(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    return resolveContext(contextPtr).editorSceneController.isSimulating ? 1 : 0
 }
 
 @_cdecl("MCESceneIsDirty")

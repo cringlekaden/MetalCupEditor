@@ -64,13 +64,9 @@ namespace {
 
 }
 
-void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
-    if (!isOpen || !*isOpen) { return; }
-    if (!EditorUI::BeginPanel("Renderer", isOpen)) {
-        EditorUI::EndPanel();
-        return;
-    }
-    ImGui::BeginChild("RendererScroll", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+
+static void DrawRendererSettingsBody(void *context, const char *childId) {
+    ImGui::BeginChild(childId, ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
     void *engineContext = EngineContextFromMCE(context);
     bool bloomOpen = EditorUI::BeginSection(context, "Bloom", "Renderer.Bloom", true);
@@ -81,6 +77,7 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
                 MCERendererSetBloomEnabled(engineContext, bloomEnabled ? 1 : 0);
             }
 
+            if (bloomEnabled) {
             const char* qualityItems[] = { "Custom", "Low", "Medium", "High", "Ultra" };
             int qualityIndex = ResolveBloomPresetIndex(engineContext);
             if (EditorUI::PropertyCombo("Quality Preset", &qualityIndex, qualityItems, IM_ARRAYSIZE(qualityItems))) {
@@ -123,6 +120,7 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
             bool halfRes = MCERendererGetHalfResBloom(engineContext) != 0;
             if (EditorUI::PropertyBool("Half-Res Bloom", &halfRes)) {
                 MCERendererSetHalfResBloom(engineContext, halfRes ? 1 : 0);
+            }
             }
             EditorUI::EndPropertyTable();
         }
@@ -182,6 +180,7 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
             if (EditorUI::PropertyBool("Enable Shadows", &shadowsEnabled)) {
                 MCERendererSetShadowsEnabled(engineContext, shadowsEnabled ? 1 : 0);
             }
+            if (shadowsEnabled) {
             bool directionalEnabled = MCERendererGetDirectionalShadowsEnabled(engineContext) != 0;
             if (EditorUI::PropertyBool("Directional Shadows", &directionalEnabled)) {
                 MCERendererSetDirectionalShadowsEnabled(engineContext, directionalEnabled ? 1 : 0);
@@ -290,6 +289,7 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
                                         EditorUIConstants::kShadowFadeOutMax, "%.1f", true, true, 10.0f)) {
                 MCERendererSetShadowFadeOutDistance(engineContext, fadeOut);
             }
+            }
             EditorUI::EndPropertyTable();
         }
     }
@@ -328,6 +328,7 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
             if (EditorUI::PropertyBool("Enable IBL", &iblEnabled)) {
                 MCERendererSetIBLEnabled(engineContext, iblEnabled ? 1 : 0);
             }
+            if (iblEnabled) {
             float iblIntensity = MCERendererGetIBLIntensity(engineContext);
             if (EditorUI::PropertyFloat("IBL Intensity", &iblIntensity, EditorUIConstants::kIBLIntensityStep,
                                         EditorUIConstants::kIBLIntensityMin, EditorUIConstants::kIBLIntensityMax, "%.3f", true, true, EditorUIConstants::kDefaultIBLIntensity)) {
@@ -362,6 +363,7 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
                                         EditorUIConstants::kSkyboxMipBiasMax,
                                         "%.2f", true, true, EditorUIConstants::kDefaultSkyboxMipBias)) {
                 MCERendererSetSkyboxMipBias(engineContext, skyboxMipBias);
+            }
             }
             EditorUI::EndPropertyTable();
         }
@@ -409,7 +411,10 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
                 "Direct Lighting",
                 "Roughness (Before AA)",
                 "Roughness (After AA)",
-                "Material Validation"
+                "Material Validation",
+                "Geometric World Normal",
+                "Normal Mismatch",
+                "To-Camera Mismatch"
             };
             int debugMode = static_cast<int>(MCERendererGetShadingDebugMode(engineContext));
             if (EditorUI::PropertyCombo("Debug View", &debugMode, debugItems, IM_ARRAYSIZE(debugItems))) {
@@ -419,6 +424,20 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
         }
     }
 
-    ImGui::EndChild();
+        ImGui::EndChild();
+}
+
+void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
+    if (!isOpen || !*isOpen) { return; }
+    if (!EditorUI::BeginPanel("Renderer", isOpen)) {
+        EditorUI::EndPanel();
+        return;
+    }
+    DrawRendererSettingsBody(context, "RendererScroll");
+
     EditorUI::EndPanel();
+}
+
+void ImGuiRendererSettingsDraw(void *context) {
+    DrawRendererSettingsBody(context, "RendererSettingsScroll");
 }

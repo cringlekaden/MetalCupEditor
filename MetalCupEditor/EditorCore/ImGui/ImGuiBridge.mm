@@ -16,6 +16,7 @@
 #import "../../EditorUI/Panels/ContentBrowserPanel.h"
 #import "../../EditorUI/Panels/PanelState.h"
 #import "../Bridge/RendererSettingsBridge.h"
+#import "../Bridge/PhysicsSettingsBridge.h"
 #import "../../EditorUI/Widgets/UIWidgets.h"
 #import <Cocoa/Cocoa.h>
 #include <algorithm>
@@ -61,6 +62,7 @@ extern "C" void MCESceneResume(MCE_CTX);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsPaused(MCE_CTX);
 extern "C" uint32_t MCESceneIsDirty(MCE_CTX);
+extern "C" uint32_t MCEEditorDebugPhysicsRaycastFromCamera(MCE_CTX, float maxDistance);
 extern "C" int32_t MCEEditorCreateMeshEntityFromHandle(MCE_CTX,  const char *meshHandle, char *outId, int32_t outIdSize);
 extern "C" int32_t MCEEditorCreateMeshEntityFromHandleWithMaterials(MCE_CTX,  const char *meshHandle, char *outId, int32_t outIdSize);
 extern "C" uint32_t MCEEditorPopNextAlert(MCE_CTX,  char *buffer, int32_t bufferSize);
@@ -139,13 +141,13 @@ struct LogEntrySnapshot {
     CGSize _ViewportImageSize;
     bool _GizmoCaptureMouse;
     bool _GizmoCaptureKeyboard;
-    bool _ShowRendererPanel;
     bool _ShowSceneHierarchyPanel;
     bool _ShowInspectorPanel;
     bool _ShowContentBrowserPanel;
     bool _ShowViewportPanel;
     bool _ShowProfilingPanel;
     bool _ShowLogsPanel;
+    bool _ShowSettingsModal;
     bool _LoadedPanelVisibility;
     char _SelectedEntityId[64];
 
@@ -388,7 +390,6 @@ static void LoadPanelVisibilityIfNeeded(ImGuiBridge *bridge) {
     if (bridge->_LoadedPanelVisibility) { return; }
     bridge->_LoadedPanelVisibility = true;
 
-    bridge->_ShowRendererPanel = MCEEditorGetPanelVisibility(bridge->_context, "Renderer", 1) != 0;
     bridge->_ShowSceneHierarchyPanel = MCEEditorGetPanelVisibility(bridge->_context, "SceneHierarchy", 1) != 0;
     bridge->_ShowInspectorPanel = MCEEditorGetPanelVisibility(bridge->_context, "Inspector", 1) != 0;
     bridge->_ShowContentBrowserPanel = MCEEditorGetPanelVisibility(bridge->_context, "ContentBrowser", 1) != 0;
@@ -492,6 +493,152 @@ static void DrawLogsPanel(ImGuiBridge *bridge, bool *isOpen) {
 
     ImGui::EndChild();
     ImGui::End();
+}
+
+static void DrawSettingsModal(ImGuiBridge *bridge) {
+    bool requestOpen = bridge->_ShowSettingsModal;
+    bridge->_ShowSettingsModal = false;
+    ImGui::SetNextWindowSizeConstraints(ImVec2(720.0f, 520.0f), ImVec2(1040.0f, 860.0f));
+    ImGui::SetNextWindowSize(ImVec2(900.0f, 700.0f), ImGuiCond_Once);
+    if (!EditorUI::BeginModal("Settings", &requestOpen, nullptr, ImGuiWindowFlags_None)) {
+        return;
+    }
+
+    if (ImGui::BeginTabBar("SettingsTabs")) {
+        if (ImGui::BeginTabItem("Renderer")) {
+            ImGuiRendererSettingsDraw(bridge->_context);
+            ImGui::EndTabItem();
+        }
+
+        if (ImGui::BeginTabItem("Physics")) {
+            void *engineContext = MCEContextGetEngineContext(bridge->_context);
+            ImGui::Spacing();
+            if (EditorUI::BeginPropertyTable("PhysicsSettingsTable")) {
+                bool physicsEnabled = MCEPhysicsGetEnabled(engineContext) != 0;
+                if (EditorUI::PropertyBool("Enable Physics", &physicsEnabled)) {
+                    MCEPhysicsSetEnabled(engineContext, physicsEnabled ? 1 : 0);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Toggles physics simulation while playing.");
+                }
+
+                bool deterministic = MCEPhysicsGetDeterministic(engineContext) != 0;
+                if (EditorUI::PropertyBool("Deterministic Mode (Single Thread)", &deterministic)) {
+                    MCEPhysicsSetDeterministic(engineContext, deterministic ? 1 : 0);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Ensures stable simulation order by running single-threaded (slightly slower).");
+                }
+
+                float gx = 0.0f, gy = -9.81f, gz = 0.0f;
+                MCEPhysicsGetGravity(engineContext, &gx, &gy, &gz);
+                float gravity[3] = { gx, gy, gz };
+                if (EditorUI::PropertyVec3("Gravity", gravity, 0.0f, 0.1f, 0.0f, 0.0f, "%.2f", false, true)) {
+                    MCEPhysicsSetGravity(engineContext, gravity[0], gravity[1], gravity[2]);
+                }
+
+                float fixedDelta = MCEPhysicsGetFixedDeltaTime(engineContext);
+                if (EditorUI::PropertyFloat("Fixed Dt (s)", &fixedDelta, 0.0001f, 0.001f, 0.1f, "%.6f", true, true, 1.0f / 60.0f)) {
+                    MCEPhysicsSetFixedDeltaTime(engineContext, fixedDelta);
+                }
+
+                int maxSubsteps = static_cast<int>(MCEPhysicsGetMaxSubsteps(engineContext));
+                if (EditorUI::PropertyInt("Max Substeps", &maxSubsteps, 1, 4)) {
+                    MCEPhysicsSetMaxSubsteps(engineContext, static_cast<int32_t>(maxSubsteps));
+                }
+
+                float defaultFriction = MCEPhysicsGetDefaultFriction(engineContext);
+                if (EditorUI::PropertyFloat("Default Friction", &defaultFriction, 0.01f, 0.0f, 1.0f, "%.2f", true, true, 0.6f)) {
+                    MCEPhysicsSetDefaultFriction(engineContext, defaultFriction);
+                }
+                float defaultRestitution = MCEPhysicsGetDefaultRestitution(engineContext);
+                if (EditorUI::PropertyFloat("Default Restitution", &defaultRestitution, 0.01f, 0.0f, 1.0f, "%.2f", true, true, 0.0f)) {
+                    MCEPhysicsSetDefaultRestitution(engineContext, defaultRestitution);
+                }
+                float defaultAngularDamping = MCEPhysicsGetDefaultAngularDamping(engineContext);
+                if (EditorUI::PropertyFloat("Default Angular Damping", &defaultAngularDamping, 0.01f, 0.0f, 5.0f, "%.2f", true, true, 0.2f)) {
+                    MCEPhysicsSetDefaultAngularDamping(engineContext, defaultAngularDamping);
+                }
+
+                const char *qualityItems[] = { "Low", "Medium", "High" };
+                int qualityIndex = static_cast<int>(MCEPhysicsGetQualityPreset(engineContext));
+                if (EditorUI::PropertyCombo("Quality Preset", &qualityIndex, qualityItems, IM_ARRAYSIZE(qualityItems))) {
+                    MCEPhysicsSetQualityPreset(engineContext, static_cast<uint32_t>(qualityIndex));
+                }
+
+                int substeps = static_cast<int>(MCEPhysicsGetSolverIterations(engineContext));
+                if (EditorUI::PropertyInt("Substeps (Collision Steps)", &substeps, 1, 8)) {
+                    MCEPhysicsSetSolverIterations(engineContext, static_cast<uint32_t>(substeps));
+                }
+
+                bool ccdEnabled = MCEPhysicsGetCCDEnabled(engineContext) != 0;
+                if (EditorUI::PropertyBool("CCD", &ccdEnabled)) {
+                    MCEPhysicsSetCCDEnabled(engineContext, ccdEnabled ? 1 : 0);
+                }
+
+                bool resolveInitial = MCEPhysicsGetResolveInitialOverlap(engineContext) != 0;
+                if (EditorUI::PropertyBool("Resolve Initial Overlap", &resolveInitial)) {
+                    MCEPhysicsSetResolveInitialOverlap(engineContext, resolveInitial ? 1 : 0);
+                }
+
+                bool debugDrawEnabled = MCEPhysicsGetDebugDrawEnabled(engineContext) != 0;
+                if (EditorUI::PropertyBool("Debug Draw", &debugDrawEnabled)) {
+                    MCEPhysicsSetDebugDrawEnabled(engineContext, debugDrawEnabled ? 1 : 0);
+                }
+                if (debugDrawEnabled) {
+                    bool debugDrawPlay = MCEPhysicsGetDebugDrawInPlay(engineContext) != 0;
+                    if (EditorUI::PropertyBool("Debug Draw During Play", &debugDrawPlay)) {
+                        MCEPhysicsSetDebugDrawInPlay(engineContext, debugDrawPlay ? 1 : 0);
+                    }
+
+                    bool showColliders = MCEPhysicsGetShowColliders(engineContext) != 0;
+                    if (EditorUI::PropertyBool("Draw Colliders", &showColliders)) {
+                        MCEPhysicsSetShowColliders(engineContext, showColliders ? 1 : 0);
+                    }
+
+                    bool showCOMAxes = MCEPhysicsGetShowCOMAxes(engineContext) != 0;
+                    if (EditorUI::PropertyBool("Draw COM Axes", &showCOMAxes)) {
+                        MCEPhysicsSetShowCOMAxes(engineContext, showCOMAxes ? 1 : 0);
+                    }
+
+                    bool showContacts = MCEPhysicsGetShowContacts(engineContext) != 0;
+                    if (EditorUI::PropertyBool("Draw Contacts", &showContacts)) {
+                        MCEPhysicsSetShowContacts(engineContext, showContacts ? 1 : 0);
+                    }
+
+                    bool showSleeping = MCEPhysicsGetShowSleeping(engineContext) != 0;
+                    if (EditorUI::PropertyBool("Draw Sleeping Bodies", &showSleeping)) {
+                        MCEPhysicsSetShowSleeping(engineContext, showSleeping ? 1 : 0);
+                    }
+
+                    bool showOverlaps = MCEPhysicsGetShowOverlaps(engineContext) != 0;
+                    if (EditorUI::PropertyBool("Draw Overlaps", &showOverlaps)) {
+                        MCEPhysicsSetShowOverlaps(engineContext, showOverlaps ? 1 : 0);
+                    }
+                }
+
+                EditorUI::EndPropertyTable();
+            }
+            if (ImGui::CollapsingHeader("Debug")) {
+                if (ImGui::Button("Raycast From Camera")) {
+                    MCEEditorDebugPhysicsRaycastFromCamera(bridge->_context, 50.0f);
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Casts a ray from the editor camera forward and draws a hit point + normal for one frame.");
+                }
+            }
+            ImGui::EndTabItem();
+        }
+
+        ImGui::EndTabBar();
+    }
+
+    ImGui::Separator();
+    if (ImGui::Button("Close")) {
+        ImGui::CloseCurrentPopup();
+    }
+
+    ImGui::EndPopup();
 }
 
 static void DrawImportModal(void *context) {
@@ -790,12 +937,22 @@ static void DrawProfilingPanel(void *context, bool *isOpen) {
 
     ImGui::Separator();
     ImGui::TextUnformatted("GPU Passes");
+    bool gpuPassSupported = MCERendererGetGpuPassTimingsSupported(engineContext) != 0;
     bool gpuPassTimings = MCERendererGetGpuPassTimingsEnabled(engineContext) != 0;
     if (ImGui::Checkbox("Enable GPU Pass Timings", &gpuPassTimings)) {
         MCERendererSetGpuPassTimingsEnabled(engineContext, gpuPassTimings ? 1 : 0);
     }
-    ImGui::TextDisabled("Uses segmented command buffers when enabled.");
-    if (gpuPassTimings) {
+    if (gpuPassTimings && !gpuPassSupported) {
+        ImGui::TextDisabled("GPU pass timings unsupported on this device.");
+    }
+#if DEBUG
+    char gpuTimingInfo[256] = {};
+    MCERendererCopyGpuPassTimingDebugInfo(engineContext, gpuTimingInfo, sizeof(gpuTimingInfo));
+    if (gpuTimingInfo[0] != 0) {
+        ImGui::TextDisabled("%s", gpuTimingInfo);
+    }
+#endif
+    if (gpuPassTimings && gpuPassSupported) {
         ImGui::Text("Shadows:    %.2f ms", MCERendererGetGpuShadowPassMs(engineContext));
         ImGui::Text("Depth:      %.2f ms", MCERendererGetGpuDepthPrepassMs(engineContext));
         ImGui::Text("Scene:      %.2f ms", MCERendererGetGpuScenePassMs(engineContext));
@@ -893,7 +1050,6 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
         _ViewportImageSize = {0, 0};
         _GizmoCaptureMouse = false;
         _GizmoCaptureKeyboard = false;
-        _ShowRendererPanel = true;
         _ShowSceneHierarchyPanel = true;
         _ShowInspectorPanel = true;
         _ShowContentBrowserPanel = true;
@@ -1015,6 +1171,7 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
         ImGui::EndPopup();
     }
     DrawImportModal(_context);
+    DrawSettingsModal(self);
 
     // Dockspace host window (fills main viewport)
     ImGuiViewport* vp = ImGui::GetMainViewport();
@@ -1085,12 +1242,14 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
             DrawPanelMenuItem(self, { "Scene Hierarchy", "SceneHierarchy", &_ShowSceneHierarchyPanel });
             DrawPanelMenuItem(self, { "Inspector", "Inspector", &_ShowInspectorPanel });
             DrawPanelMenuItem(self, { "Content Browser", "ContentBrowser", &_ShowContentBrowserPanel });
-            DrawPanelMenuItem(self, { "Renderer", "Renderer", &_ShowRendererPanel });
             DrawPanelMenuItem(self, { "Profiling", "Profiling", &_ShowProfilingPanel });
             DrawPanelMenuItem(self, { "Logs", "Logs", &_ShowLogsPanel });
             DrawPanelMenuItem(self, { "Viewport", "Viewport", &_ShowViewportPanel });
             EditorUI::PopMenuPopupStyle();
             ImGui::EndMenu();
+        }
+        if (ImGui::MenuItem("Settings...")) {
+            _ShowSettingsModal = true;
         }
         ImGui::EndMenuBar();
     }
@@ -1198,15 +1357,6 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
     }
 
     // --- Panels ---
-    bool rendererOpen = _ShowRendererPanel;
-    if (rendererOpen) {
-        ImGuiRendererPanelDraw(_context, &rendererOpen);
-        if (rendererOpen != _ShowRendererPanel) {
-            _ShowRendererPanel = rendererOpen;
-            SetPanelVisibility(self, "Renderer", _ShowRendererPanel);
-        }
-    }
-
     bool hierarchyOpen = _ShowSceneHierarchyPanel;
     if (hierarchyOpen) {
         ImGuiSceneHierarchyPanelDraw(_context, &hierarchyOpen, _SelectedEntityId, sizeof(_SelectedEntityId));

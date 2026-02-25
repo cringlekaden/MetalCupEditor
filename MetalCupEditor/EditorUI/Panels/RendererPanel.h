@@ -11,6 +11,7 @@ extern "C" {
 #endif
 
 void ImGuiRendererPanelDraw(void *context, bool *isOpen);
+void ImGuiRendererSettingsDraw(void *context);
 
 #ifdef __cplusplus
 }

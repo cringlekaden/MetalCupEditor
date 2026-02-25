@@ -93,6 +93,8 @@ namespace MCEPanelState {
         float ao = 1.0f;
         float emissive[3] = {0.0f, 0.0f, 0.0f};
         float emissiveIntensity = 1.0f;
+        float uvTiling[2] = {1.0f, 1.0f};
+        float uvOffset[2] = {0.0f, 0.0f};
         int32_t alphaMode = 0;
         float alphaCutoff = 0.5f;
         bool doubleSided = false;

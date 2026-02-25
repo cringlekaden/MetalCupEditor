@@ -63,6 +63,17 @@ final class ImGuiLayer: Layer {
            let scene = sceneContext.activeScene {
             context.engineContext.debugDraw.submitGridXZ(SceneRenderer.gridParams(scene: scene))
         }
+        let physicsSettings = context.engineContext.physicsSettings
+        let allowPhysicsDebug = physicsSettings.debugDrawEnabled
+            && (!sceneContext.isPlaying || physicsSettings.debugDrawInPlay)
+        if allowPhysicsDebug,
+           let scene = sceneContext.activeScene {
+            PhysicsSystem.submitDebugDraw(
+                scene: scene,
+                debugDraw: context.engineContext.debugDraw,
+                selectionId: sceneContext.selectedEntityIds.first
+            )
+        }
         context.engineContext.debugDraw.endFrame()
 
         if let selected = context.editorSceneController.selectedEntityUUID() {

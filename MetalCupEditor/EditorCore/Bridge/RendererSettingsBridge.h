@@ -166,6 +166,8 @@ float MCERendererGetCompositeMs(MCE_CTX);
 float MCERendererGetOverlaysMs(MCE_CTX);
 float MCERendererGetPresentMs(MCE_CTX);
 uint32_t MCERendererGetGpuPassTimingsEnabled(MCE_CTX);
+uint32_t MCERendererGetGpuPassTimingsSupported(MCE_CTX);
+void MCERendererCopyGpuPassTimingDebugInfo(MCE_CTX, char *buffer, int32_t bufferLength);
 void MCERendererSetGpuPassTimingsEnabled(MCE_CTX, uint32_t value);
 float MCERendererGetGpuShadowPassMs(MCE_CTX);
 float MCERendererGetGpuDepthPrepassMs(MCE_CTX);

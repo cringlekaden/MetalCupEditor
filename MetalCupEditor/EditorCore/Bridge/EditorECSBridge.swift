@@ -6,6 +6,34 @@ import Foundation
 import MetalCupEngine
 import simd
 
+private func writeColumnMajorMatrix(_ matrix: matrix_float4x4, to buffer: UnsafeMutablePointer<Float>) {
+    buffer[0] = matrix.columns.0.x
+    buffer[1] = matrix.columns.0.y
+    buffer[2] = matrix.columns.0.z
+    buffer[3] = matrix.columns.0.w
+    buffer[4] = matrix.columns.1.x
+    buffer[5] = matrix.columns.1.y
+    buffer[6] = matrix.columns.1.z
+    buffer[7] = matrix.columns.1.w
+    buffer[8] = matrix.columns.2.x
+    buffer[9] = matrix.columns.2.y
+    buffer[10] = matrix.columns.2.z
+    buffer[11] = matrix.columns.2.w
+    buffer[12] = matrix.columns.3.x
+    buffer[13] = matrix.columns.3.y
+    buffer[14] = matrix.columns.3.z
+    buffer[15] = matrix.columns.3.w
+}
+
+private func readColumnMajorMatrix(from buffer: UnsafePointer<Float>) -> matrix_float4x4 {
+    matrix_float4x4(columns: (
+        SIMD4<Float>(buffer[0], buffer[1], buffer[2], buffer[3]),
+        SIMD4<Float>(buffer[4], buffer[5], buffer[6], buffer[7]),
+        SIMD4<Float>(buffer[8], buffer[9], buffer[10], buffer[11]),
+        SIMD4<Float>(buffer[12], buffer[13], buffer[14], buffer[15])
+    ))
+}
+
 private enum EditorComponentType: Int32 {
     case name = 0
     case transform = 1
@@ -14,6 +42,8 @@ private enum EditorComponentType: Int32 {
     case skyLight = 4
     case material = 5
     case camera = 6
+    case rigidbody = 7
+    case collider = 8
 }
 
 private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
@@ -93,7 +123,7 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
         transform: ecs.get(TransformComponent.self, for: entity).map { component in
             TransformComponentDTO(
                 position: Vector3DTO(component.position),
-                rotation: Vector3DTO(component.rotation),
+                rotationQuat: Vector4DTO(component.rotation),
                 scale: Vector3DTO(component.scale)
             )
         },
@@ -118,6 +148,34 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
         },
         materialComponent: ecs.get(MaterialComponent.self, for: entity).map { component in
             MaterialComponentDTO(materialHandle: component.materialHandle)
+        },
+        rigidbody: ecs.get(RigidbodyComponent.self, for: entity).map { component in
+            RigidbodyComponentDTO(
+                enabled: component.isEnabled,
+                motionType: component.motionType.rawValue,
+                mass: component.mass,
+                friction: component.friction,
+                restitution: component.restitution,
+                linearDamping: component.linearDamping,
+                angularDamping: component.angularDamping,
+                gravityFactor: component.gravityFactor,
+                allowSleeping: component.allowSleeping,
+                ccdEnabled: component.ccdEnabled,
+                collisionLayer: component.collisionLayer
+            )
+        },
+        collider: ecs.get(ColliderComponent.self, for: entity).map { component in
+            ColliderComponentDTO(
+                enabled: component.isEnabled,
+                shapeType: component.shapeType.rawValue,
+                boxHalfExtents: Vector3DTO(component.boxHalfExtents),
+                sphereRadius: component.sphereRadius,
+                capsuleHalfHeight: component.capsuleHalfHeight,
+                capsuleRadius: component.capsuleRadius,
+                offset: Vector3DTO(component.offset),
+                rotationOffset: Vector3DTO(component.rotationOffset),
+                isTrigger: component.isTrigger
+            )
         },
         light: ecs.get(LightComponent.self, for: entity).map { component in
             LightComponentDTO(
@@ -565,6 +623,10 @@ public func MCEEditorEntityHasComponent(_ contextPtr: UnsafeRawPointer?,
         return ecs.has(MaterialComponent.self, entity) ? 1 : 0
     case .camera:
         return ecs.has(CameraComponent.self, entity) ? 1 : 0
+    case .rigidbody:
+        return ecs.has(RigidbodyComponent.self, entity) ? 1 : 0
+    case .collider:
+        return ecs.has(ColliderComponent.self, entity) ? 1 : 0
     }
 }
 
@@ -600,6 +662,16 @@ public func MCEEditorAddComponent(_ contextPtr: UnsafeRawPointer?,
             component.isPrimary = true
         }
         ecs.add(component, to: entity)
+    case .rigidbody:
+        let defaults = context.engineContext.physicsSettings
+        let component = RigidbodyComponent(
+            friction: defaults.defaultFriction,
+            restitution: defaults.defaultRestitution,
+            angularDamping: defaults.defaultAngularDamping
+        )
+        ecs.add(component, to: entity)
+    case .collider:
+        ecs.add(ColliderComponent(), to: entity)
     }
     context.editorProjectManager.notifySceneMutation()
     return 1
@@ -630,9 +702,190 @@ public func MCEEditorRemoveComponent(_ contextPtr: UnsafeRawPointer?,
         ecs.remove(MaterialComponent.self, from: entity)
     case .camera:
         ecs.remove(CameraComponent.self, from: entity)
+    case .rigidbody:
+        ecs.remove(RigidbodyComponent.self, from: entity)
+    case .collider:
+        ecs.remove(ColliderComponent.self, from: entity)
     }
     context.editorProjectManager.notifySceneMutation()
     return 1
+}
+
+@_cdecl("MCEEditorGetRigidbody")
+public func MCEEditorGetRigidbody(_ contextPtr: UnsafeRawPointer?,
+                                  _ entityId: UnsafePointer<CChar>?,
+                                  _ enabled: UnsafeMutablePointer<UInt32>?,
+                                  _ motionType: UnsafeMutablePointer<Int32>?,
+                                  _ mass: UnsafeMutablePointer<Float>?,
+                                  _ friction: UnsafeMutablePointer<Float>?,
+                                  _ restitution: UnsafeMutablePointer<Float>?,
+                                  _ linearDamping: UnsafeMutablePointer<Float>?,
+                                  _ angularDamping: UnsafeMutablePointer<Float>?,
+                                  _ gravityFactor: UnsafeMutablePointer<Float>?,
+                                  _ allowSleeping: UnsafeMutablePointer<UInt32>?,
+                                  _ ccdEnabled: UnsafeMutablePointer<UInt32>?,
+                                  _ collisionLayer: UnsafeMutablePointer<Int32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let rigidbody = ecs.get(RigidbodyComponent.self, for: entity) else { return 0 }
+    enabled?.pointee = rigidbody.isEnabled ? 1 : 0
+    motionType?.pointee = Int32(rigidbody.motionType.rawValue)
+    mass?.pointee = rigidbody.mass
+    friction?.pointee = rigidbody.friction
+    restitution?.pointee = rigidbody.restitution
+    linearDamping?.pointee = rigidbody.linearDamping
+    angularDamping?.pointee = rigidbody.angularDamping
+    gravityFactor?.pointee = rigidbody.gravityFactor
+    allowSleeping?.pointee = rigidbody.allowSleeping ? 1 : 0
+    ccdEnabled?.pointee = rigidbody.ccdEnabled ? 1 : 0
+    collisionLayer?.pointee = rigidbody.collisionLayer
+    return 1
+}
+
+@_cdecl("MCEEditorSetRigidbody")
+public func MCEEditorSetRigidbody(_ contextPtr: UnsafeRawPointer?,
+                                  _ entityId: UnsafePointer<CChar>?,
+                                  _ enabled: UInt32,
+                                  _ motionType: Int32,
+                                  _ mass: Float,
+                                  _ friction: Float,
+                                  _ restitution: Float,
+                                  _ linearDamping: Float,
+                                  _ angularDamping: Float,
+                                  _ gravityFactor: Float,
+                                  _ allowSleeping: UInt32,
+                                  _ ccdEnabled: UInt32,
+                                  _ collisionLayer: Int32) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    let component = RigidbodyComponent(isEnabled: enabled != 0,
+                                       motionType: RigidbodyMotionType(rawValue: UInt32(motionType)) ?? .dynamic,
+                                       mass: mass,
+                                       friction: friction,
+                                       restitution: restitution,
+                                       linearDamping: linearDamping,
+                                       angularDamping: angularDamping,
+                                       gravityFactor: gravityFactor,
+                                       allowSleeping: allowSleeping != 0,
+                                       ccdEnabled: ccdEnabled != 0,
+                                       collisionLayer: collisionLayer)
+    ecs.add(component, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetCollider")
+public func MCEEditorGetCollider(_ contextPtr: UnsafeRawPointer?,
+                                 _ entityId: UnsafePointer<CChar>?,
+                                 _ enabled: UnsafeMutablePointer<UInt32>?,
+                                 _ shapeType: UnsafeMutablePointer<Int32>?,
+                                 _ boxX: UnsafeMutablePointer<Float>?,
+                                 _ boxY: UnsafeMutablePointer<Float>?,
+                                 _ boxZ: UnsafeMutablePointer<Float>?,
+                                 _ sphereRadius: UnsafeMutablePointer<Float>?,
+                                 _ capsuleHalfHeight: UnsafeMutablePointer<Float>?,
+                                 _ capsuleRadius: UnsafeMutablePointer<Float>?,
+                                 _ offsetX: UnsafeMutablePointer<Float>?,
+                                 _ offsetY: UnsafeMutablePointer<Float>?,
+                                 _ offsetZ: UnsafeMutablePointer<Float>?,
+                                 _ rotX: UnsafeMutablePointer<Float>?,
+                                 _ rotY: UnsafeMutablePointer<Float>?,
+                                 _ rotZ: UnsafeMutablePointer<Float>?,
+                                 _ isTrigger: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let collider = ecs.get(ColliderComponent.self, for: entity) else { return 0 }
+    enabled?.pointee = collider.isEnabled ? 1 : 0
+    shapeType?.pointee = Int32(collider.shapeType.rawValue)
+    boxX?.pointee = collider.boxHalfExtents.x
+    boxY?.pointee = collider.boxHalfExtents.y
+    boxZ?.pointee = collider.boxHalfExtents.z
+    sphereRadius?.pointee = collider.sphereRadius
+    capsuleHalfHeight?.pointee = collider.capsuleHalfHeight
+    capsuleRadius?.pointee = collider.capsuleRadius
+    offsetX?.pointee = collider.offset.x
+    offsetY?.pointee = collider.offset.y
+    offsetZ?.pointee = collider.offset.z
+    rotX?.pointee = collider.rotationOffset.x
+    rotY?.pointee = collider.rotationOffset.y
+    rotZ?.pointee = collider.rotationOffset.z
+    isTrigger?.pointee = collider.isTrigger ? 1 : 0
+    return 1
+}
+
+@_cdecl("MCEEditorSetCollider")
+public func MCEEditorSetCollider(_ contextPtr: UnsafeRawPointer?,
+                                 _ entityId: UnsafePointer<CChar>?,
+                                 _ enabled: UInt32,
+                                 _ shapeType: Int32,
+                                 _ boxX: Float,
+                                 _ boxY: Float,
+                                 _ boxZ: Float,
+                                 _ sphereRadius: Float,
+                                 _ capsuleHalfHeight: Float,
+                                 _ capsuleRadius: Float,
+                                 _ offsetX: Float,
+                                 _ offsetY: Float,
+                                 _ offsetZ: Float,
+                                 _ rotX: Float,
+                                 _ rotY: Float,
+                                 _ rotZ: Float,
+                                 _ isTrigger: UInt32) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    let component = ColliderComponent(isEnabled: enabled != 0,
+                                      shapeType: ColliderShapeType(rawValue: UInt32(shapeType)) ?? .box,
+                                      boxHalfExtents: SIMD3<Float>(boxX, boxY, boxZ),
+                                      sphereRadius: sphereRadius,
+                                      capsuleHalfHeight: capsuleHalfHeight,
+                                      capsuleRadius: capsuleRadius,
+                                      offset: SIMD3<Float>(offsetX, offsetY, offsetZ),
+                                      rotationOffset: SIMD3<Float>(rotX, rotY, rotZ),
+                                      isTrigger: isTrigger != 0)
+    ecs.add(component, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorRebuildPhysicsBody")
+public func MCEEditorRebuildPhysicsBody(_ contextPtr: UnsafeRawPointer?,
+                                        _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          context.editorSceneController.isPlaying,
+          let runtimeScene = context.editorSceneController.runtimeScene,
+          let entityId else { return 0 }
+    let idString = String(cString: entityId)
+    guard let uuid = UUID(uuidString: idString),
+          let entity = runtimeScene.ecs.entity(with: uuid) else { return 0 }
+    let success = runtimeScene.rebuildPhysicsBody(for: entity)
+    return success ? 1 : 0
+}
+
+@_cdecl("MCEEditorGetColliderEntityCount")
+public func MCEEditorGetColliderEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context) else { return 0 }
+    let count = ecs.allEntities().filter { ecs.get(ColliderComponent.self, for: $0) != nil }.count
+    return Int32(count)
+}
+
+@_cdecl("MCEEditorGetColliderEntityAt")
+public func MCEEditorGetColliderEntityAt(_ contextPtr: UnsafeRawPointer?,
+                                        _ index: Int32,
+                                        _ buffer: UnsafeMutablePointer<CChar>?,
+                                        _ bufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let buffer,
+          bufferSize > 0 else { return 0 }
+    let colliders = ecs.allEntities().filter { ecs.get(ColliderComponent.self, for: $0) != nil }
+    guard index >= 0, index < Int32(colliders.count) else { return 0 }
+    let entity = colliders[Int(index)]
+    return writeCString(entity.id.uuidString, to: buffer, max: bufferSize) > 0 ? 1 : 0
 }
 
 @_cdecl("MCEEditorGetTransform")
@@ -648,9 +901,10 @@ public func MCEEditorGetTransform(_ contextPtr: UnsafeRawPointer?,
     px?.pointee = transform.position.x
     py?.pointee = transform.position.y
     pz?.pointee = transform.position.z
-    rx?.pointee = transform.rotation.x
-    ry?.pointee = transform.rotation.y
-    rz?.pointee = transform.rotation.z
+    let euler = TransformMath.eulerFromQuaternionXYZ(transform.rotation)
+    rx?.pointee = euler.x
+    ry?.pointee = euler.y
+    rz?.pointee = euler.z
     sx?.pointee = transform.scale.x
     sy?.pointee = transform.scale.y
     sz?.pointee = transform.scale.z
@@ -669,7 +923,7 @@ public func MCEEditorSetTransform(_ contextPtr: UnsafeRawPointer?,
           let entity = entity(from: entityId, context: context) else { return }
     let transform = TransformComponent(
         position: SIMD3<Float>(px, py, pz),
-        rotation: SIMD3<Float>(rx, ry, rz),
+        rotation: TransformMath.quaternionFromEulerXYZ(SIMD3<Float>(rx, ry, rz)),
         scale: SIMD3<Float>(sx, sy, sz)
     )
     ecs.add(transform, to: entity)
@@ -688,7 +942,7 @@ public func MCEEditorSetTransformNoLog(_ contextPtr: UnsafeRawPointer?,
           let entity = entity(from: entityId, context: context) else { return }
     let transform = TransformComponent(
         position: SIMD3<Float>(px, py, pz),
-        rotation: SIMD3<Float>(rx, ry, rz),
+        rotation: TransformMath.quaternionFromEulerXYZ(SIMD3<Float>(rx, ry, rz)),
         scale: SIMD3<Float>(sx, sy, sz)
     )
     ecs.add(transform, to: entity)
@@ -759,64 +1013,22 @@ public func MCEEditorSetTransformFromMatrix(_ contextPtr: UnsafeRawPointer?,
           let entity = entity(from: entityId, context: context),
           let matrix else { return 0 }
 
-    let col0 = SIMD3<Float>(matrix[0], matrix[1], matrix[2])
-    let col1 = SIMD3<Float>(matrix[4], matrix[5], matrix[6])
-    let col2 = SIMD3<Float>(matrix[8], matrix[9], matrix[10])
-    let translation = SIMD3<Float>(matrix[12], matrix[13], matrix[14])
-
-    var axisX = col0
-    var axisY = col1
-    var axisZ = col2
-
-    var scaleX = simd_length(axisX)
-    var scaleY = simd_length(axisY)
-    var scaleZ = simd_length(axisZ)
+    let axisX = SIMD3<Float>(matrix[0], matrix[1], matrix[2])
+    let axisY = SIMD3<Float>(matrix[4], matrix[5], matrix[6])
+    let axisZ = SIMD3<Float>(matrix[8], matrix[9], matrix[10])
+    let scaleX = simd_length(axisX)
+    let scaleY = simd_length(axisY)
+    let scaleZ = simd_length(axisZ)
     if scaleX <= 0.000001 || scaleY <= 0.000001 || scaleZ <= 0.000001 {
         return 0
     }
 
-    axisX /= scaleX
-    axisY /= scaleY
-    axisZ /= scaleZ
-
-    let determinant = simd_dot(axisX, simd_cross(axisY, axisZ))
-    if determinant < 0 {
-        scaleZ = -scaleZ
-        axisZ = -axisZ
-    }
-
-    let m00 = axisX.x
-    let m01 = axisY.x
-    let m02 = axisZ.x
-    let m10 = axisX.y
-    let m11 = axisY.y
-    let m12 = axisZ.y
-    let m22 = axisZ.z
-
-    var rotationX: Float = 0
-    var rotationY: Float = 0
-    var rotationZ: Float = 0
-
-    if m02 < 1 {
-        if m02 > -1 {
-            rotationY = asinf(m02)
-            rotationX = atan2f(-m12, m22)
-            rotationZ = atan2f(-m01, m00)
-        } else {
-            rotationY = -Float.pi * 0.5
-            rotationX = -atan2f(m10, m11)
-            rotationZ = 0
-        }
-    } else {
-        rotationY = Float.pi * 0.5
-        rotationX = atan2f(m10, m11)
-        rotationZ = 0
-    }
-
+    let matrixValue = readColumnMajorMatrix(from: matrix)
+    let decomposed = TransformMath.decomposeMatrix(matrixValue)
     let transform = TransformComponent(
-        position: translation,
-        rotation: SIMD3<Float>(rotationX, rotationY, rotationZ),
-        scale: SIMD3<Float>(scaleX, scaleY, scaleZ)
+        position: decomposed.position,
+        rotation: decomposed.rotation,
+        scale: decomposed.scale
     )
     ecs.add(transform, to: entity)
     context.editorProjectManager.notifySceneMutation()
@@ -833,46 +1045,12 @@ public func MCEEditorGetModelMatrix(_ contextPtr: UnsafeRawPointer?,
           let transform = ecs.get(TransformComponent.self, for: entity),
           let matrixOut else { return 0 }
 
-    let matrix = buildModelMatrix(
-        position: transform.position,
-        rotation: transform.rotation,
-        scale: transform.scale
-    )
-    withUnsafeBytes(of: matrix) { bytes in
-        memcpy(matrixOut, bytes.baseAddress, MemoryLayout<Float>.size * 16)
-    }
+    let matrix = TransformMath.makeMatrix(position: transform.position,
+                                          rotation: transform.rotation,
+                                          scale: transform.scale)
+    writeColumnMajorMatrix(matrix, to: matrixOut)
 
     return 1
-}
-
-private func buildModelMatrix(position: SIMD3<Float>, rotation: SIMD3<Float>, scale: SIMD3<Float>) -> matrix_float4x4 {
-    let tx = position.x
-    let ty = position.y
-    let tz = position.z
-
-    let sx = sin(rotation.x)
-    let cx = cos(rotation.x)
-    let sy = sin(rotation.y)
-    let cy = cos(rotation.y)
-    let sz = sin(rotation.z)
-    let cz = cos(rotation.z)
-
-    let m00 = cy * cz
-    let m01 = -cy * sz
-    let m02 = sy
-    let m10 = sx * sy * cz + cx * sz
-    let m11 = -sx * sy * sz + cx * cz
-    let m12 = -sx * cy
-    let m20 = -cx * sy * cz + sx * sz
-    let m21 = cx * sy * sz + sx * cz
-    let m22 = cx * cy
-
-    return matrix_float4x4(columns: (
-        SIMD4<Float>(m00 * scale.x, m10 * scale.x, m20 * scale.x, 0.0),
-        SIMD4<Float>(m01 * scale.y, m11 * scale.y, m21 * scale.y, 0.0),
-        SIMD4<Float>(m02 * scale.z, m12 * scale.z, m22 * scale.z, 0.0),
-        SIMD4<Float>(tx, ty, tz, 1.0)
-    ))
 }
 
 @_cdecl("MCEEditorGetEditorCameraMatrices")
@@ -883,16 +1061,52 @@ public func MCEEditorGetEditorCameraMatrices(_ contextPtr: UnsafeRawPointer?,
           let scene = context.editorSceneController.activeScene() else { return 0 }
     let matrices = SceneRenderer.cameraMatrices(scene: scene)
     if let viewOut {
-        withUnsafeBytes(of: matrices.view) { bytes in
-            memcpy(viewOut, bytes.baseAddress, MemoryLayout<Float>.size * 16)
-        }
+        writeColumnMajorMatrix(matrices.view, to: viewOut)
     }
     if let projectionOut {
-        withUnsafeBytes(of: matrices.projection) { bytes in
-            memcpy(projectionOut, bytes.baseAddress, MemoryLayout<Float>.size * 16)
-        }
+        writeColumnMajorMatrix(matrices.projection, to: projectionOut)
     }
     return 1
+}
+
+@_cdecl("MCEEditorDebugPhysicsRaycastFromCamera")
+public func MCEEditorDebugPhysicsRaycastFromCamera(_ contextPtr: UnsafeRawPointer?,
+                                                   _ maxDistance: Float) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let scene = context.editorSceneController.activeScene() else { return 0 }
+    let settings = context.engineContext.physicsSettings
+    let hadPhysics = scene.physicsSystem != nil
+    if !hadPhysics {
+        scene.startPhysics(settings: settings)
+    }
+    guard let physicsSystem = scene.physicsSystem else { return 0 }
+    let matrices = SceneRenderer.cameraMatrices(scene: scene)
+    let invView = simd_inverse(matrices.view)
+    let origin = SIMD3<Float>(invView.columns.3.x, invView.columns.3.y, invView.columns.3.z)
+    let forward = -SIMD3<Float>(invView.columns.2.x, invView.columns.2.y, invView.columns.2.z)
+    let dirLength = simd_length(forward)
+    if dirLength < 1e-5 {
+        if !hadPhysics { scene.stopPhysics() }
+        return 0
+    }
+    let direction = forward / dirLength
+    let clampedDistance = max(Float(0.01), maxDistance)
+    let result = physicsSystem.raycastClosest(origin: origin, direction: direction, maxDistance: clampedDistance)
+    if let hit = result {
+        let debugDraw = context.engineContext.debugDraw
+        let pointSize = max(0.02, debugDraw.lineThickness * 2.0)
+        let offsetX = SIMD3<Float>(pointSize, 0.0, 0.0)
+        let offsetZ = SIMD3<Float>(0.0, 0.0, pointSize)
+        let normalLength: Float = 0.25
+        let color = SIMD4<Float>(0.95, 0.8, 0.2, 1.0)
+        debugDraw.submitLine(hit.position - offsetX, hit.position + offsetX, color: color)
+        debugDraw.submitLine(hit.position - offsetZ, hit.position + offsetZ, color: color)
+        debugDraw.submitLine(hit.position, hit.position + hit.normal * normalLength, color: color)
+    }
+    if !hadPhysics {
+        scene.stopPhysics()
+    }
+    return result == nil ? 0 : 1
 }
 
 @_cdecl("MCEEditorGetMeshRenderer")
