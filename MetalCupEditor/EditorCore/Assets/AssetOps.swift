@@ -116,11 +116,13 @@ enum AssetOps {
         return {
             OnCreate = function(self)
             end,
+            OnStart = function(self)
+            end,
             OnUpdate = function(self, dt)
             end,
             OnFixedUpdate = function(self, dt)
             end,
-            OnLateUpdate = function(self, dt)
+            OnDestroy = function(self)
             end
         }
         """

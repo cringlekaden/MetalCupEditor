@@ -184,6 +184,11 @@ extern "C" uint32_t MCEEditorSetScript(MCE_CTX,  const char *entityId,
                                        const char *typeName,
                                        uint32_t keepFieldData);
 extern "C" uint32_t MCEEditorClearScriptFieldData(MCE_CTX,  const char *entityId);
+extern "C" uint32_t MCEEditorGetScriptRuntimeStatus(MCE_CTX,  const char *entityId,
+                                                    int32_t *runtimeStateOut,
+                                                    uint32_t *hasInstanceOut,
+                                                    char *errorBuffer, int32_t errorBufferSize);
+extern "C" uint32_t MCEEditorReloadScriptInstance(MCE_CTX,  const char *entityId);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsSimulating(MCE_CTX);
 extern "C" uint32_t MCEEditorGetMaterialAsset(MCE_CTX, 
@@ -1114,7 +1119,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
     }
 
     if (runtimeLocked) {
-        ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Runtime Locked (Stop to Edit)");
+        ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Runtime Locked (Script Component remains editable in Play)");
         ImGui::Separator();
     }
     ImGui::BeginDisabled(runtimeLocked);
@@ -1671,6 +1676,10 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         }
     }
 
+    if (runtimeLocked) {
+        ImGui::EndDisabled();
+    }
+
     const bool hasScript = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentScript) != 0;
     if (hasScript) {
         bool scriptOpen = EditorUI::BeginSectionWithContext(context,
@@ -1709,13 +1718,49 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     }
                     EditorUI::PropertyLabel("Field Data");
                     ImGui::Text("%u bytes (v%u)", fieldDataSize, fieldDataVersion);
+                    int32_t runtimeState = 0;
+                    uint32_t hasInstance = 0;
+                    char runtimeError[2048] = {0};
+                    MCEEditorGetScriptRuntimeStatus(context,
+                                                    selectedEntityId,
+                                                    &runtimeState,
+                                                    &hasInstance,
+                                                    runtimeError, sizeof(runtimeError));
+                    const char *statusLabel = "Disabled";
+                    if (enabledBool) {
+                        if (runtimeState == 1) {
+                            statusLabel = "Loaded";
+                        } else if (runtimeState == 2) {
+                            statusLabel = "Error";
+                        } else {
+                            statusLabel = "Disabled";
+                        }
+                    }
+                    EditorUI::PropertyLabel("Status");
+                    ImGui::Text("%s%s", statusLabel, hasInstance != 0 ? " (Instance Active)" : "");
                     EditorUI::EndPropertyTable();
+                    if (runtimeError[0] != 0) {
+                        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.45f, 0.45f, 1.0f));
+                        ImGui::PushTextWrapPos(0.0f);
+                        ImGui::TextUnformatted(runtimeError);
+                        ImGui::PopTextWrapPos();
+                        ImGui::PopStyleColor();
+                    }
                 }
                 if (ImGui::Button("Clear Field Blob")) {
                     MCEEditorClearScriptFieldData(context, selectedEntityId);
                 }
                 ImGui::SameLine();
                 ImGui::TextDisabled("Fields (runtime)");
+                if (isPlaying) {
+                    ImGui::SameLine();
+                    if (ImGui::Button("Reload Script")) {
+                        MCEEditorReloadScriptInstance(context, selectedEntityId);
+                    }
+                }
+                if (isPlaying) {
+                    ImGui::TextDisabled("Changing script asset in Play reinstantiates immediately.");
+                }
                 if (dirty) {
                     MCEEditorSetScript(context,
                                        selectedEntityId,
@@ -1726,6 +1771,10 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
             }
         }
+    }
+
+    if (runtimeLocked) {
+        ImGui::BeginDisabled(true);
     }
 
     const bool hasMeshRenderer = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentMeshRenderer) != 0;

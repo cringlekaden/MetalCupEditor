@@ -1288,7 +1288,6 @@ public func MCEEditorSetScript(_ contextPtr: UnsafeRawPointer?,
                                _ typeName: UnsafePointer<CChar>?,
                                _ keepFieldData: UInt32) -> UInt32 {
     guard let context = resolveContext(contextPtr),
-          !context.editorSceneController.isPlaying,
           !context.editorSceneController.isSimulating,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return 0 }
@@ -1301,6 +1300,10 @@ public func MCEEditorSetScript(_ contextPtr: UnsafeRawPointer?,
         component.scriptAssetHandle = nil
     }
     component.typeName = typeName.map { String(cString: $0) } ?? ""
+    component.runtimeState = component.enabled ? .unloaded : .disabled
+    component.hasInstance = false
+    component.instanceHandle = 0
+    component.lastError = ""
     if keepFieldData == 0 {
         component.fieldData = Data()
         component.fieldDataVersion = max(1, component.fieldDataVersion)
@@ -1314,7 +1317,6 @@ public func MCEEditorSetScript(_ contextPtr: UnsafeRawPointer?,
 public func MCEEditorClearScriptFieldData(_ contextPtr: UnsafeRawPointer?,
                                           _ entityId: UnsafePointer<CChar>?) -> UInt32 {
     guard let context = resolveContext(contextPtr),
-          !context.editorSceneController.isPlaying,
           !context.editorSceneController.isSimulating,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
@@ -1324,6 +1326,36 @@ public func MCEEditorClearScriptFieldData(_ contextPtr: UnsafeRawPointer?,
     ecs.add(script, to: entity)
     context.editorProjectManager.notifySceneMutation()
     return 1
+}
+
+@_cdecl("MCEEditorGetScriptRuntimeStatus")
+public func MCEEditorGetScriptRuntimeStatus(_ contextPtr: UnsafeRawPointer?,
+                                            _ entityId: UnsafePointer<CChar>?,
+                                            _ runtimeStateOut: UnsafeMutablePointer<Int32>?,
+                                            _ hasInstanceOut: UnsafeMutablePointer<UInt32>?,
+                                            _ errorBuffer: UnsafeMutablePointer<CChar>?,
+                                            _ errorBufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let script = ecs.get(ScriptComponent.self, for: entity) else { return 0 }
+    runtimeStateOut?.pointee = Int32(script.runtimeState.rawValue)
+    hasInstanceOut?.pointee = script.hasInstance ? 1 : 0
+    _ = writeCString(script.lastError, to: errorBuffer, max: errorBufferSize)
+    return 1
+}
+
+@_cdecl("MCEEditorReloadScriptInstance")
+public func MCEEditorReloadScriptInstance(_ contextPtr: UnsafeRawPointer?,
+                                          _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          context.editorSceneController.isPlaying,
+          let uuidString = entityId.map({ String(cString: $0) }),
+          let uuid = UUID(uuidString: uuidString),
+          let runtime = context.engineContext.scriptRuntime as? LuaScriptRuntime else {
+        return 0
+    }
+    return runtime.reloadScriptInstance(entityId: uuid) ? 1 : 0
 }
 
 @_cdecl("MCEEditorGetRigidbody")

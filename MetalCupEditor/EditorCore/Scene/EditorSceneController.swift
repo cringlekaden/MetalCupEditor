@@ -30,6 +30,7 @@ final class EditorSceneController {
     private var fixedAccumulator: Float = 0.0
     private var simulateAccumulator: Float = 0.0
     private let maxFixedSteps: Int = 16
+    private var cachedScriptRuntime: ScriptRuntime?
     private var lastFrameTime: FrameTime?
     private var timeBaseTotal: Float = 0.0
     private var timeBaseUnscaled: Float = 0.0
@@ -112,6 +113,10 @@ final class EditorSceneController {
         if let physicsSettings = engineContext?.physicsSettings {
             runtimeScene?.startPhysics(settings: physicsSettings)
         }
+        if let engineContext {
+            cachedScriptRuntime = engineContext.scriptRuntime
+            engineContext.scriptRuntime = LuaScriptRuntime(engineContext: engineContext)
+        }
         runtimeScene?.notifyScriptSceneStart()
         resetTimingBase()
         fixedAccumulator = 0.0
@@ -125,6 +130,10 @@ final class EditorSceneController {
         playState = .stoppingPlay
         runtimeScene?.notifyScriptSceneStop()
         runtimeScene?.stopPhysics()
+        if let engineContext {
+            engineContext.scriptRuntime = cachedScriptRuntime ?? NullScriptRuntime()
+        }
+        cachedScriptRuntime = nil
         if let snapshot = editorSnapshot, let editorScene {
             editorScene.apply(document: snapshot)
             if let settings = snapshot.rendererSettingsOverride {
@@ -153,7 +162,6 @@ final class EditorSceneController {
             physicsSettingsOverride: PhysicsSettingsDTO(settings: physicsSettings)
         )
         editorScene.startPhysics(settings: physicsSettings)
-        editorScene.notifyScriptSceneStart()
         resetTimingBase()
         simulateAccumulator = 0.0
         isSimulating = true
@@ -161,7 +169,6 @@ final class EditorSceneController {
 
     func resetSimulation() {
         guard isSimulating else { return }
-        editorScene?.notifyScriptSceneStop()
         editorScene?.stopPhysics()
         if let snapshot = simulateSnapshot, let editorScene {
             editorScene.apply(document: snapshot)
