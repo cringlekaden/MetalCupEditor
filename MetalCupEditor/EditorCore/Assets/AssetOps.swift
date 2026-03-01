@@ -98,6 +98,48 @@ enum AssetOps {
         return ok
     }
 
+    static func createScript(context: UnsafeRawPointer?, relativePath: String?, name: String?) -> Bool {
+        guard let context = resolveContext(context) else { return false }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.engineContext.log
+        guard let rootURL = projectManager.assetRootURL() else { return false }
+        let rel = (relativePath == nil || relativePath?.isEmpty == true) ? "Scripts" : (relativePath ?? "")
+        let scriptName = name ?? "NewScript"
+        guard let folderURL = resolveDirectoryURL(rootURL: rootURL, relativePath: rel) else { return false }
+        let targetURL = folderURL.appendingPathComponent("\(scriptName).lua")
+        let entryType = sanitizeName(scriptName)
+        let template = """
+        -- MetalCup script template
+        -- Entry type: \(entryType.isEmpty ? "NewScript" : entryType)
+        
+        return {
+            OnCreate = function(self)
+            end,
+            OnUpdate = function(self, dt)
+            end,
+            OnFixedUpdate = function(self, dt)
+            end,
+            OnLateUpdate = function(self, dt)
+            end
+        }
+        """
+        let ok = performAssetMutation(projectManager) {
+            do {
+                try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+                try template.write(to: targetURL, atomically: true, encoding: .utf8)
+                return true
+            } catch {
+                alertCenter.enqueueError("Failed to create script: \(error.localizedDescription)")
+                return false
+            }
+        }
+        if ok {
+            logCenter.logInfo("Created script: \(scriptName)", category: .assets)
+        }
+        return ok
+    }
+
     static func createPrefab(context: UnsafeRawPointer?, prefab: PrefabDocument, relativePath: String?, name: String?) -> String? {
         guard let context = resolveContext(context) else { return nil }
         let projectManager = context.editorProjectManager
@@ -518,6 +560,8 @@ struct AssetPathResolver {
             return assetsRootURL.appendingPathComponent("Prefabs", isDirectory: true)
         case .scene:
             return assetsRootURL.appendingPathComponent("Scenes", isDirectory: true)
+        case .script:
+            return assetsRootURL.appendingPathComponent("Scripts", isDirectory: true)
         case .unknown:
             return nil
         @unknown default:

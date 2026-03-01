@@ -394,12 +394,22 @@ void ImGuiViewportPanelDraw(void *context,
 
 
     if (ImGui::BeginDragDropTarget()) {
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL")) {
-            const char *payloadText = static_cast<const char *>(payload->Data);
-            if (MCEImportBeginForHandle(context, payloadText) == 0) {
-                char createdId[64] = {0};
-                MCEEditorCreateMeshEntityFromHandle(context, payloadText, createdId, sizeof(createdId));
+        if (MCESceneIsPlaying(context) == 0 && MCESceneIsSimulating(context) == 0) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL")) {
+                const char *payloadText = static_cast<const char *>(payload->Data);
+                if (MCEImportBeginForHandle(context, payloadText) == 0) {
+                    char createdId[64] = {0};
+                    MCEEditorCreateMeshEntityFromHandle(context, payloadText, createdId, sizeof(createdId));
+                }
             }
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
+                const char *payloadText = static_cast<const char *>(payload->Data);
+                char createdId[64] = {0};
+                MCEEditorInstantiatePrefabFromHandle(context, payloadText, createdId, sizeof(createdId));
+            }
+        } else {
+            ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL");
+            ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB");
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_TEXTURE")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
@@ -408,11 +418,6 @@ void ImGuiViewportPanelDraw(void *context,
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_ENVIRONMENT")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
             (void)MCEImportBeginForHandle(context, payloadText);
-        }
-        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
-            const char *payloadText = static_cast<const char *>(payload->Data);
-            char createdId[64] = {0};
-            MCEEditorInstantiatePrefabFromHandle(context, payloadText, createdId, sizeof(createdId));
         }
         if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_SCENE_PATH")) {
             const char *payloadText = static_cast<const char *>(payload->Data);
@@ -510,7 +515,7 @@ void ImGuiViewportPanelDraw(void *context,
                                  EditorIcons::Glyph(EditorIcons::Id::Camera),
                                  "Create Camera From View",
                                  false,
-                                 playing)) {
+                                 playing || simulating)) {
             char createdId[64] = {0};
             MCEEditorCreateCameraFromView(context, createdId, sizeof(createdId));
         }

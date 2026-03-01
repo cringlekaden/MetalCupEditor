@@ -52,6 +52,7 @@ private enum EditorComponentType: Int32 {
     case camera = 6
     case rigidbody = 7
     case collider = 8
+    case script = 9
 }
 
 private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
@@ -224,6 +225,9 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
         },
         camera: ecs.get(CameraComponent.self, for: entity).map { component in
             CameraComponentDTO(component: component)
+        },
+        script: ecs.get(ScriptComponent.self, for: entity).map { component in
+            ScriptComponentDTO(component: component)
         },
         sky: ecs.get(SkyComponent.self, for: entity).map { component in
             SkyComponentDTO(environmentMapHandle: component.environmentMapHandle)
@@ -892,6 +896,7 @@ public func MCEEditorCreatePrefabFromEntity(_ contextPtr: UnsafeRawPointer?,
                                             _ outPathSize: Int32) -> UInt32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let entity = entity(from: entityId, context: context),
           let scene = context.editorSceneController.activeScene() else { return 0 }
     let name = scene.ecs.get(NameComponent.self, for: entity)?.name ?? "Prefab"
@@ -1158,6 +1163,8 @@ public func MCEEditorEntityHasComponent(_ contextPtr: UnsafeRawPointer?,
         return ecs.has(RigidbodyComponent.self, entity) ? 1 : 0
     case .collider:
         return ecs.has(ColliderComponent.self, entity) ? 1 : 0
+    case .script:
+        return ecs.has(ScriptComponent.self, entity) ? 1 : 0
     }
 }
 
@@ -1167,6 +1174,7 @@ public func MCEEditorAddComponent(_ contextPtr: UnsafeRawPointer?,
                                   _ componentType: Int32) -> UInt32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           let type = EditorComponentType(rawValue: componentType) else { return 0 }
@@ -1204,6 +1212,8 @@ public func MCEEditorAddComponent(_ contextPtr: UnsafeRawPointer?,
         ecs.add(component, to: entity)
     case .collider:
         ecs.add(ColliderComponent(), to: entity)
+    case .script:
+        ecs.add(ScriptComponent(), to: entity)
     }
     context.editorProjectManager.notifySceneMutation()
     return 1
@@ -1215,6 +1225,7 @@ public func MCEEditorRemoveComponent(_ contextPtr: UnsafeRawPointer?,
                                      _ componentType: Int32) -> UInt32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           let type = EditorComponentType(rawValue: componentType) else { return 0 }
@@ -1238,7 +1249,79 @@ public func MCEEditorRemoveComponent(_ contextPtr: UnsafeRawPointer?,
         ecs.remove(RigidbodyComponent.self, from: entity)
     case .collider:
         ecs.remove(ColliderComponent.self, from: entity)
+    case .script:
+        ecs.remove(ScriptComponent.self, from: entity)
     }
+    context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorGetScript")
+public func MCEEditorGetScript(_ contextPtr: UnsafeRawPointer?,
+                               _ entityId: UnsafePointer<CChar>?,
+                               _ enabled: UnsafeMutablePointer<UInt32>?,
+                               _ scriptHandle: UnsafeMutablePointer<CChar>?, _ scriptHandleSize: Int32,
+                               _ typeName: UnsafeMutablePointer<CChar>?, _ typeNameSize: Int32,
+                               _ fieldByteSize: UnsafeMutablePointer<UInt32>?,
+                               _ fieldDataVersion: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let script = ecs.get(ScriptComponent.self, for: entity) else { return 0 }
+    enabled?.pointee = script.enabled ? 1 : 0
+    if let handle = script.scriptAssetHandle {
+        _ = writeCString(handle.rawValue.uuidString, to: scriptHandle, max: scriptHandleSize)
+    } else {
+        _ = writeCString("", to: scriptHandle, max: scriptHandleSize)
+    }
+    _ = writeCString(script.typeName, to: typeName, max: typeNameSize)
+    fieldByteSize?.pointee = UInt32(script.fieldData.count)
+    fieldDataVersion?.pointee = script.fieldDataVersion
+    return 1
+}
+
+@_cdecl("MCEEditorSetScript")
+public func MCEEditorSetScript(_ contextPtr: UnsafeRawPointer?,
+                               _ entityId: UnsafePointer<CChar>?,
+                               _ enabled: UInt32,
+                               _ scriptHandle: UnsafePointer<CChar>?,
+                               _ typeName: UnsafePointer<CChar>?,
+                               _ keepFieldData: UInt32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return 0 }
+    var component = ecs.get(ScriptComponent.self, for: entity) ?? ScriptComponent()
+    component.enabled = enabled != 0
+    if let scriptHandle {
+        let parsed = handleFromString(String(cString: scriptHandle))
+        component.scriptAssetHandle = parsed
+    } else {
+        component.scriptAssetHandle = nil
+    }
+    component.typeName = typeName.map { String(cString: $0) } ?? ""
+    if keepFieldData == 0 {
+        component.fieldData = Data()
+        component.fieldDataVersion = max(1, component.fieldDataVersion)
+    }
+    ecs.add(component, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorClearScriptFieldData")
+public func MCEEditorClearScriptFieldData(_ contextPtr: UnsafeRawPointer?,
+                                          _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var script = ecs.get(ScriptComponent.self, for: entity) else { return 0 }
+    script.fieldData = Data()
+    script.fieldDataVersion = max(1, script.fieldDataVersion)
+    ecs.add(script, to: entity)
     context.editorProjectManager.notifySceneMutation()
     return 1
 }

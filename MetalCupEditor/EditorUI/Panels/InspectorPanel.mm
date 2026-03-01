@@ -172,6 +172,18 @@ extern "C" void MCEEditorSetColliderShape(MCE_CTX, const char *entityId,
                                           uint32_t hasLayerOverride,
                                           int32_t layerOverride);
 extern "C" uint32_t MCEEditorRebuildPhysicsBody(MCE_CTX,  const char *entityId);
+extern "C" uint32_t MCEEditorGetScript(MCE_CTX,  const char *entityId,
+                                       uint32_t *enabled,
+                                       char *scriptHandleBuffer, int32_t scriptHandleBufferSize,
+                                       char *typeNameBuffer, int32_t typeNameBufferSize,
+                                       uint32_t *fieldDataSize,
+                                       uint32_t *fieldDataVersion);
+extern "C" uint32_t MCEEditorSetScript(MCE_CTX,  const char *entityId,
+                                       uint32_t enabled,
+                                       const char *scriptHandle,
+                                       const char *typeName,
+                                       uint32_t keepFieldData);
+extern "C" uint32_t MCEEditorClearScriptFieldData(MCE_CTX,  const char *entityId);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsSimulating(MCE_CTX);
 extern "C" uint32_t MCEEditorGetMaterialAsset(MCE_CTX, 
@@ -243,7 +255,8 @@ enum ComponentType : int32_t {
     ComponentMaterial = 5,
     ComponentCamera = 6,
     ComponentRigidbody = 7,
-    ComponentCollider = 8
+    ComponentCollider = 8,
+    ComponentScript = 9
 };
 
 namespace {
@@ -258,6 +271,7 @@ namespace {
     using MCEPanelState::MaterialPopupState;
     using MCEPanelState::MeshPickerState;
     using MCEPanelState::PendingSkyState;
+    using MCEPanelState::ScriptPickerState;
     using MCEPanelState::TexturePickerState;
 
     InspectorState &GetInspectorState(void *context) {
@@ -452,6 +466,10 @@ namespace {
         return state.materialPicker;
     }
 
+    ScriptPickerState &GetScriptPickerState(InspectorState &state) {
+        return state.scriptPicker;
+    }
+
     void LoadTextureOptions(void *context, std::vector<AssetOption> &options) {
         options.clear();
         const int32_t count = MCEEditorGetAssetCount(context);
@@ -569,6 +587,34 @@ namespace {
         });
     }
 
+    void LoadScriptOptions(void *context, std::vector<AssetOption> &options) {
+        options.clear();
+        const int32_t count = MCEEditorGetAssetCount(context);
+        options.reserve(count);
+        for (int32_t i = 0; i < count; ++i) {
+            char handleBuffer[64] = {0};
+            int32_t type = 0;
+            char pathBuffer[512] = {0};
+            char nameBuffer[128] = {0};
+            if (MCEEditorGetAssetAt(context, i,
+                                    handleBuffer, sizeof(handleBuffer),
+                                    &type,
+                                    pathBuffer, sizeof(pathBuffer),
+                                    nameBuffer, sizeof(nameBuffer)) == 0) {
+                continue;
+            }
+            if (type != 6) { continue; }
+            if (handleBuffer[0] == 0) { continue; }
+            AssetOption option;
+            option.handle = handleBuffer;
+            option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            options.push_back(option);
+        }
+        std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
+            return a.name < b.name;
+        });
+    }
+
     void OpenTexturePicker(InspectorState &state, const char *label, char *target, const char *materialHandle) {
         auto &picker = GetTexturePickerState(state);
         picker.open = true;
@@ -637,6 +683,20 @@ namespace {
             picker.meshHandle[sizeof(picker.meshHandle) - 1] = 0;
         } else {
             picker.meshHandle[0] = 0;
+        }
+    }
+
+    void OpenScriptPicker(InspectorState &state, const char *label, const char *entityId) {
+        auto &picker = GetScriptPickerState(state);
+        picker.open = true;
+        picker.requestOpen = true;
+        snprintf(picker.title, sizeof(picker.title), "Select Script: %s", label);
+        picker.filter[0] = 0;
+        if (entityId) {
+            strncpy(picker.entityId, entityId, sizeof(picker.entityId) - 1);
+            picker.entityId[sizeof(picker.entityId) - 1] = 0;
+        } else {
+            picker.entityId[0] = 0;
         }
     }
 
@@ -798,6 +858,44 @@ namespace {
             }
             ImGui::SameLine();
         }
+        if (ImGui::Button("Clear")) {
+            handleBuffer[0] = 0;
+            changed = true;
+        }
+        ImGui::PopID();
+        return changed;
+    }
+
+    bool DrawScriptHandleRow(void *context,
+                             InspectorState &state,
+                             const char *label,
+                             char *handleBuffer,
+                             size_t handleBufferSize,
+                             const char *payloadType,
+                             const char *entityId) {
+        bool changed = false;
+        EditorUI::PropertyLabel(label);
+        ImGui::PushID(label);
+        char displayName[128] = {0};
+        GetAssetName(context, handleBuffer, displayName, sizeof(displayName));
+        const float wrapPos = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - 120.0f;
+        ImGui::PushTextWrapPos(wrapPos);
+        ImGui::TextUnformatted(displayName);
+        ImGui::PopTextWrapPos();
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(payloadType)) {
+                const char *payloadText = static_cast<const char *>(payload->Data);
+                strncpy(handleBuffer, payloadText, handleBufferSize - 1);
+                handleBuffer[handleBufferSize - 1] = 0;
+                changed = true;
+            }
+            ImGui::EndDragDropTarget();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Select...")) {
+            OpenScriptPicker(state, label, entityId);
+        }
+        ImGui::SameLine();
         if (ImGui::Button("Clear")) {
             handleBuffer[0] = 0;
             changed = true;
@@ -983,16 +1081,34 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         }
         const float addButtonWidth = ImGui::CalcTextSize(EditorIcons::Glyph(EditorIcons::Id::Plus)).x + ImGui::GetStyle().FramePadding.x * 2.0f;
         ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x - addButtonWidth - ImGui::GetStyle().ItemSpacing.x));
+        if (runtimeLocked) {
+            ImGui::BeginDisabled(true);
+        }
         if (ImGui::InputText("##EntityName", nameBuffer, sizeof(nameBuffer))) {
             MCEEditorSetEntityName(context, selectedEntityId, nameBuffer);
         }
+        if (runtimeLocked) {
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Locked during Simulate/Play");
+            }
+        }
         ImGui::SameLine();
+        if (runtimeLocked) {
+            ImGui::BeginDisabled(true);
+        }
         if (EditorUI::IconButton("inspector_add_component",
                                  EditorIcons::Glyph(EditorIcons::Id::Plus),
                                  "Add Component",
                                  false,
                                  false)) {
             ImGui::OpenPopup("AddComponentPopup");
+        }
+        if (runtimeLocked) {
+            ImGui::EndDisabled();
+            if (ImGui::IsItemHovered()) {
+                ImGui::SetTooltip("Locked during Simulate/Play");
+            }
         }
         ImGui::Spacing();
     }
@@ -1550,6 +1666,63 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
                 if (isEditor != 0) {
                     ImGui::TextDisabled("Editor Camera");
+                }
+            }
+        }
+    }
+
+    const bool hasScript = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentScript) != 0;
+    if (hasScript) {
+        bool scriptOpen = EditorUI::BeginSectionWithContext(context,
+            "Script",
+            "Inspector.Script",
+            "ScriptContext",
+            [&]() {
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentScript);
+                }
+            },
+            true);
+        if (scriptOpen) {
+            uint32_t enabled = 1;
+            char scriptHandle[64] = {0};
+            char typeName[256] = {0};
+            uint32_t fieldDataSize = 0;
+            uint32_t fieldDataVersion = 1;
+            if (MCEEditorGetScript(context,
+                                   selectedEntityId,
+                                   &enabled,
+                                   scriptHandle, sizeof(scriptHandle),
+                                   typeName, sizeof(typeName),
+                                   &fieldDataSize,
+                                   &fieldDataVersion) != 0) {
+                bool dirty = false;
+                bool enabledBool = enabled != 0;
+                if (EditorUI::BeginPropertyTable("ScriptProps")) {
+                    dirty |= EditorUI::PropertyBool("Enabled", &enabledBool);
+                    if (DrawScriptHandleRow(context, state, "Script Asset", scriptHandle, sizeof(scriptHandle), "MCE_ASSET_SCRIPT", selectedEntityId)) {
+                        dirty = true;
+                    }
+                    EditorUI::PropertyLabel("Type Name");
+                    if (ImGui::InputText("##ScriptTypeName", typeName, sizeof(typeName))) {
+                        dirty = true;
+                    }
+                    EditorUI::PropertyLabel("Field Data");
+                    ImGui::Text("%u bytes (v%u)", fieldDataSize, fieldDataVersion);
+                    EditorUI::EndPropertyTable();
+                }
+                if (ImGui::Button("Clear Field Blob")) {
+                    MCEEditorClearScriptFieldData(context, selectedEntityId);
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("Fields (runtime)");
+                if (dirty) {
+                    MCEEditorSetScript(context,
+                                       selectedEntityId,
+                                       enabledBool ? 1u : 0u,
+                                       scriptHandle,
+                                       typeName,
+                                       1);
                 }
             }
         }
@@ -2467,6 +2640,11 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 MCEEditorAddComponent(context, selectedEntityId, ComponentCollider);
             }
         }
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentScript) == 0) {
+            if (ImGui::MenuItem("Script")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentScript);
+            }
+        }
         if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentLight) == 0) {
             if (ImGui::MenuItem("Light")) {
                 MCEEditorAddComponent(context, selectedEntityId, ComponentLight);
@@ -2712,6 +2890,68 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             ImGui::Spacing();
             if (ImGui::Button("Close")) {
                 materialPicker.open = false;
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+    }
+
+    ScriptPickerState &scriptPicker = GetScriptPickerState(state);
+    if (scriptPicker.requestOpen) {
+        ImGui::OpenPopup("ScriptPicker");
+        scriptPicker.requestOpen = false;
+    }
+    if (scriptPicker.open) {
+        ImGui::SetNextWindowSize(ImVec2(420.0f, 320.0f), ImGuiCond_Once);
+        if (ImGui::BeginPopupModal("ScriptPicker", &scriptPicker.open, ImGuiWindowFlags_AlwaysAutoResize)) {
+            ImGui::TextUnformatted(scriptPicker.title);
+            ImGui::Separator();
+            ImGui::InputTextWithHint("##ScriptFilter", "Search scripts...", scriptPicker.filter, sizeof(scriptPicker.filter));
+            ImGui::Separator();
+
+            std::vector<AssetOption> options;
+            LoadScriptOptions(context, options);
+            const std::string filterText = EditorUI::ToLower(std::string(scriptPicker.filter));
+            for (const auto &option : options) {
+                if (!filterText.empty() && EditorUI::ToLower(option.name).find(filterText) == std::string::npos) {
+                    continue;
+                }
+                if (ImGui::Selectable(option.name.c_str())) {
+                    if (scriptPicker.entityId[0] != 0) {
+                        uint32_t enabled = 1;
+                        char scriptHandle[64] = {0};
+                        char typeName[256] = {0};
+                        uint32_t fieldDataSize = 0;
+                        uint32_t fieldDataVersion = 1;
+                        if (MCEEditorGetScript(context,
+                                               scriptPicker.entityId,
+                                               &enabled,
+                                               scriptHandle, sizeof(scriptHandle),
+                                               typeName, sizeof(typeName),
+                                               &fieldDataSize,
+                                               &fieldDataVersion) != 0) {
+                            MCEEditorSetScript(context,
+                                               scriptPicker.entityId,
+                                               enabled,
+                                               option.handle.c_str(),
+                                               typeName,
+                                               1);
+                        }
+                    }
+                    scriptPicker.open = false;
+                    ImGui::CloseCurrentPopup();
+                    break;
+                }
+            }
+
+            if (options.empty()) {
+                ImGui::TextDisabled("No script assets found.");
+            }
+
+            ImGui::Spacing();
+            if (ImGui::Button("Close")) {
+                scriptPicker.open = false;
                 ImGui::CloseCurrentPopup();
             }
 

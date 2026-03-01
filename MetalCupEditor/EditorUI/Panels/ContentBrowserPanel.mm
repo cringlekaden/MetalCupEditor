@@ -32,7 +32,9 @@ extern "C" uint32_t MCEEditorCreateFolder(MCE_CTX,  const char *relativePath, co
 extern "C" uint32_t MCEEditorCreateMaterial(MCE_CTX,  const char *relativePath, const char *name, char *outHandle, int32_t outHandleSize);
 extern "C" uint32_t MCEEditorCreateScene(MCE_CTX,  const char *relativePath, const char *name);
 extern "C" uint32_t MCEEditorCreatePrefab(MCE_CTX,  const char *relativePath, const char *name);
+extern "C" uint32_t MCEEditorCreateScript(MCE_CTX,  const char *relativePath, const char *name);
 extern "C" uint32_t MCEEditorOpenSceneAtPath(MCE_CTX,  const char *relativePath);
+extern "C" uint32_t MCEEditorOpenAssetAtPath(MCE_CTX,  const char *relativePath);
 extern "C" void MCEEditorSetSelectedMaterial(MCE_CTX,  const char *handle);
 extern "C" void MCEEditorOpenMaterialEditor(MCE_CTX,  const char *handle);
 extern "C" void MCEEditorRefreshAssets(MCE_CTX);
@@ -55,6 +57,7 @@ namespace {
     using MCEPanelState::AssetMaterial;
     using MCEPanelState::AssetModel;
     using MCEPanelState::AssetPrefab;
+    using MCEPanelState::AssetScript;
     using MCEPanelState::AssetScene;
     using MCEPanelState::AssetTexture;
     using MCEPanelState::AssetUnknown;
@@ -79,6 +82,7 @@ namespace {
         case AssetEnvironment: return "Environment";
         case AssetScene: return "Scene";
         case AssetPrefab: return "Prefab";
+        case AssetScript: return "Script";
         default: return "Unknown";
         }
     }
@@ -91,6 +95,7 @@ namespace {
         case AssetEnvironment: return "MCE_ASSET_ENVIRONMENT";
         case AssetScene: return "MCE_ASSET_SCENE";
         case AssetPrefab: return "MCE_ASSET_PREFAB";
+        case AssetScript: return "MCE_ASSET_SCRIPT";
         default: return "MCE_ASSET_GENERIC";
         }
     }
@@ -339,6 +344,7 @@ namespace {
         case AssetModel: return EditorIcons::Glyph(EditorIcons::Id::Mesh);
         case AssetTexture: return EditorIcons::Glyph(EditorIcons::Id::Texture);
         case AssetEnvironment: return EditorIcons::Glyph(EditorIcons::Id::HDRI);
+        case AssetScript: return EditorIcons::Glyph(EditorIcons::Id::File);
         default: return EditorIcons::Glyph(EditorIcons::Id::File);
         }
     }
@@ -730,6 +736,8 @@ void ImGuiContentBrowserPanelDraw(void *context, bool *isOpen) {
                                 MCEEditorOpenSceneAtPath(context, entry.relativePath.c_str());
                             } else if (entry.type == AssetMaterial) {
                                 MCEEditorOpenMaterialEditor(context, entry.handle.c_str());
+                            } else if (entry.type == AssetScript) {
+                                MCEEditorOpenAssetAtPath(context, entry.relativePath.c_str());
                             }
                         }
 
@@ -807,6 +815,22 @@ void ImGuiContentBrowserPanelDraw(void *context, bool *isOpen) {
                         state.selectedPath = targetPath + "/" + uniqueName + ".prefab";
                         state.selectedHandle.clear();
                         state.selectedType = AssetPrefab;
+                        state.selectedIsDirectory = false;
+                    }
+                }
+                if (ImGui::MenuItem("Script")) {
+                    const std::string targetPath = state.currentPath.empty() ? "Scripts" : state.currentPath;
+                    const auto &entries = GetDirectoryEntries(context, state, targetPath);
+                    const std::string uniqueName = MakeUniqueName(entries, "NewScript", false, "lua");
+                    if (MCEEditorCreateScript(context, targetPath.c_str(), uniqueName.c_str()) == 0) {
+                        LogAssetError(context, "Failed to create script.");
+                    } else {
+                        if (state.currentPath.empty()) {
+                            NavigateTo(context, state, targetPath);
+                        }
+                        state.selectedPath = targetPath + "/" + uniqueName + ".lua";
+                        state.selectedHandle.clear();
+                        state.selectedType = AssetScript;
                         state.selectedIsDirectory = false;
                     }
                 }

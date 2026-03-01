@@ -828,6 +828,8 @@ final class EditorProjectManager {
             return "Prefabs"
         case .scene:
             return "Scenes"
+        case .script:
+            return "Scripts"
         case .unknown:
             return nil
         @unknown default:

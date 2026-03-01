@@ -3,6 +3,7 @@
 /// Created by Kaden Cringle.
 
 import Foundation
+import AppKit
 import MetalCupEngine
 
 private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
@@ -370,6 +371,15 @@ public func MCEEditorCreatePrefab(_ contextPtr: UnsafeRawPointer?,
     return AssetOps.createPrefab(context: contextPtr, relativePath: rel, name: prefabName) ? 1 : 0
 }
 
+@_cdecl("MCEEditorCreateScript")
+public func MCEEditorCreateScript(_ contextPtr: UnsafeRawPointer?,
+                                  _ relativePath: UnsafePointer<CChar>?,
+                                  _ name: UnsafePointer<CChar>?) -> UInt32 {
+    let rel = relativePath != nil ? String(cString: relativePath!) : ""
+    let scriptName = name != nil ? String(cString: name!) : "NewScript"
+    return AssetOps.createScript(context: contextPtr, relativePath: rel, name: scriptName) ? 1 : 0
+}
+
 
 @_cdecl("MCEEditorOpenSceneAtPath")
 public func MCEEditorOpenSceneAtPath(_ contextPtr: UnsafeRawPointer?, _ relativePath: UnsafePointer<CChar>?) -> UInt32 {
@@ -395,6 +405,19 @@ public func MCEEditorOpenSceneAtPath(_ contextPtr: UnsafeRawPointer?, _ relative
         context.editorAlertCenter.enqueueError("Failed to open scene: \(error.localizedDescription)")
         return 0
     }
+}
+
+@_cdecl("MCEEditorOpenAssetAtPath")
+public func MCEEditorOpenAssetAtPath(_ contextPtr: UnsafeRawPointer?, _ relativePath: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    guard let rootURL = context.editorProjectManager.assetRootURL() else { return 0 }
+    guard let relativePath else { return 0 }
+    let rel = String(cString: relativePath)
+    guard let sanitized = AssetOps.sanitizeRelativePath(rel) else { return 0 }
+    let assetURL = rootURL.appendingPathComponent(sanitized)
+    guard FileManager.default.fileExists(atPath: assetURL.path) else { return 0 }
+    NSWorkspace.shared.open(assetURL)
+    return 1
 }
 
 @_cdecl("MCEEditorSetSelectedMaterial")

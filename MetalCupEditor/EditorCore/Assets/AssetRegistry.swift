@@ -162,6 +162,20 @@ final class AssetRegistry: AssetDatabase {
                 updated.importSettings = normalizedImport
                 didChange = true
             }
+            let normalizedScriptLanguage = normalizedScriptLanguageForAsset(assetType: assetType,
+                                                                            relativePath: relativePath,
+                                                                            existing: updated.scriptLanguage)
+            if updated.scriptLanguage != normalizedScriptLanguage {
+                updated.scriptLanguage = normalizedScriptLanguage
+                didChange = true
+            }
+            let normalizedEntryType = normalizedEntryTypeNameForAsset(assetType: assetType,
+                                                                      relativePath: relativePath,
+                                                                      existing: updated.entryTypeName)
+            if updated.entryTypeName != normalizedEntryType {
+                updated.entryTypeName = normalizedEntryType
+                didChange = true
+            }
             if didChange {
                 saveMetadata(updated, to: metaURL)
             }
@@ -178,6 +192,8 @@ final class AssetRegistry: AssetDatabase {
             type: assetType,
             sourcePath: relativePath,
             importSettings: importSettings,
+            scriptLanguage: normalizedScriptLanguageForAsset(assetType: assetType, relativePath: relativePath, existing: nil),
+            entryTypeName: normalizedEntryTypeNameForAsset(assetType: assetType, relativePath: relativePath, existing: nil),
             dependencies: [],
             lastModified: lastModified
         )
@@ -210,10 +226,53 @@ final class AssetRegistry: AssetDatabase {
             if settings["origin"] == nil {
                 settings["origin"] = "topLeft"
             }
+        case .script:
+            if settings["scriptLanguage"] == nil {
+                settings["scriptLanguage"] = inferScriptLanguage(from: relativePath)
+            }
+            if settings["entryTypeName"] == nil {
+                settings["entryTypeName"] = defaultEntryTypeName(from: relativePath)
+            }
         default:
             break
         }
         return settings
+    }
+
+    private func normalizedScriptLanguageForAsset(assetType: AssetType,
+                                                  relativePath: String,
+                                                  existing: String?) -> String? {
+        guard assetType == .script else { return nil }
+        if let existing, !existing.isEmpty {
+            return existing
+        }
+        return inferScriptLanguage(from: relativePath)
+    }
+
+    private func normalizedEntryTypeNameForAsset(assetType: AssetType,
+                                                 relativePath: String,
+                                                 existing: String?) -> String? {
+        guard assetType == .script else { return nil }
+        if let existing, !existing.isEmpty {
+            return existing
+        }
+        return defaultEntryTypeName(from: relativePath)
+    }
+
+    private func inferScriptLanguage(from relativePath: String) -> String {
+        let ext = URL(fileURLWithPath: relativePath).pathExtension.lowercased()
+        switch ext {
+        case "lua", "mcscript":
+            return "lua"
+        case "cs":
+            return "csharp"
+        default:
+            return "unknown"
+        }
+    }
+
+    private func defaultEntryTypeName(from relativePath: String) -> String {
+        URL(fileURLWithPath: relativePath).deletingPathExtension().lastPathComponent
     }
 
     private func inferTextureSemantic(from relativePath: String) -> String {

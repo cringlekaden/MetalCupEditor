@@ -48,6 +48,8 @@ extern "C" int32_t MCEEditorGetParentEntityId(MCE_CTX, const char *childId, char
 extern "C" uint32_t MCEEditorSetParent(MCE_CTX, const char *childId, const char *parentId, uint32_t keepWorldTransform);
 extern "C" uint32_t MCEEditorUnparent(MCE_CTX, const char *childId, uint32_t keepWorldTransform);
 extern "C" uint32_t MCEEditorReorderEntity(MCE_CTX, const char *entityId, const char *parentId, int32_t newIndex);
+extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
+extern "C" uint32_t MCESceneIsSimulating(MCE_CTX);
 
 namespace {
 using MCEPanelState::SceneHierarchyState;
@@ -172,7 +174,7 @@ void CreateChildEntity(void *context, const char *parentId, char *selectedEntity
     CommitSelection(context, selectedEntityId, selectedEntityIdSize, selection, selection.front());
 }
 
-void DrawPrefabPicker(void *context, SceneHierarchyState &state, bool *open, char *selectedEntityId, size_t selectedEntityIdSize) {
+void DrawPrefabPicker(void *context, SceneHierarchyState &state, bool runtimeLocked, bool *open, char *selectedEntityId, size_t selectedEntityIdSize) {
     if (!open || !*open) { return; }
     ImGui::SetNextWindowSize(ImVec2(420.0f, 320.0f), ImGuiCond_Once);
     if (!ImGui::BeginPopupModal("PrefabPicker", open, ImGuiWindowFlags_AlwaysAutoResize)) {
@@ -214,7 +216,7 @@ void DrawPrefabPicker(void *context, SceneHierarchyState &state, bool *open, cha
     }
 
     ImGui::Spacing();
-    const bool canCreate = !state.selectedPrefabHandle.empty();
+    const bool canCreate = !runtimeLocked && !state.selectedPrefabHandle.empty();
     if (!canCreate) { ImGui::BeginDisabled(); }
     if (ImGui::Button("Create")) {
         char createdId[64] = {0};
@@ -245,8 +247,10 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
 
     auto selection = ReadSelection(context);
     std::string primary = selection.empty() ? "" : selection.back();
+    const bool runtimeLocked = MCESceneIsPlaying(context) != 0 || MCESceneIsSimulating(context) != 0;
 
-    if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
+    if (!runtimeLocked
+        && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows)
         && !ImGui::GetIO().WantTextInput
         && ImGui::IsKeyPressed(ImGuiKey_D)
         && (ImGui::GetIO().KeySuper || ImGui::GetIO().KeyCtrl)) {
@@ -258,6 +262,10 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
     ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(8.0f, 4.0f));
     ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(6.0f, 2.0f));
     ImGui::BeginChild("SceneHierarchyScroll", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    if (runtimeLocked) {
+        ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Runtime Locked (Stop to Edit)");
+        ImGui::Separator();
+    }
 
     state.visibleEntityIds.clear();
     std::function<void(const std::string &)> collectVisibleIds = [&](const std::string &id) {
@@ -402,56 +410,54 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
                 const char *payloadText = static_cast<const char *>(payload->Data);
                 MCEEditorAssignMaterialToEntity(context, id.c_str(), payloadText);
             }
-            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL")) {
-                const char *payloadText = static_cast<const char *>(payload->Data);
-                char createdId[64] = {0};
-                if (MCEEditorCreateMeshEntityFromHandle(context, payloadText, createdId, sizeof(createdId)) > 0) {
-                    MCEEditorSetParent(context, createdId, id.c_str(), 1);
-                    std::vector<std::string> newSelection = {std::string(createdId)};
-                    CommitSelection(context, selectedEntityId, selectedEntityIdSize, newSelection, newSelection.front());
-                    selection = newSelection;
-                    primary = newSelection.front();
+            if (!runtimeLocked) {
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL")) {
+                    const char *payloadText = static_cast<const char *>(payload->Data);
+                    char createdId[64] = {0};
+                    if (MCEEditorCreateMeshEntityFromHandle(context, payloadText, createdId, sizeof(createdId)) > 0) {
+                        MCEEditorSetParent(context, createdId, id.c_str(), 1);
+                        std::vector<std::string> newSelection = {std::string(createdId)};
+                        CommitSelection(context, selectedEntityId, selectedEntityIdSize, newSelection, newSelection.front());
+                        selection = newSelection;
+                        primary = newSelection.front();
+                    }
                 }
-            }
-            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
-                const char *payloadText = static_cast<const char *>(payload->Data);
-                char createdId[64] = {0};
-                if (MCEEditorInstantiatePrefabFromHandle(context, payloadText, createdId, sizeof(createdId)) > 0) {
-                    MCEEditorSetParent(context, createdId, id.c_str(), 1);
-                    std::vector<std::string> newSelection = {std::string(createdId)};
-                    CommitSelection(context, selectedEntityId, selectedEntityIdSize, newSelection, newSelection.front());
-                    selection = newSelection;
-                    primary = newSelection.front();
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
+                    const char *payloadText = static_cast<const char *>(payload->Data);
+                    char createdId[64] = {0};
+                    if (MCEEditorInstantiatePrefabFromHandle(context, payloadText, createdId, sizeof(createdId)) > 0) {
+                        MCEEditorSetParent(context, createdId, id.c_str(), 1);
+                        std::vector<std::string> newSelection = {std::string(createdId)};
+                        CommitSelection(context, selectedEntityId, selectedEntityIdSize, newSelection, newSelection.front());
+                        selection = newSelection;
+                        primary = newSelection.front();
+                    }
                 }
-            }
-            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_SCENE_ENTITY_IDS")) {
-                const char *payloadText = static_cast<const char *>(payload->Data);
-                const std::string draggedCsv = payloadText ? payloadText : "";
-                std::vector<std::string> draggedIds;
-                size_t start = 0;
-                while (start <= draggedCsv.size()) {
-                    size_t comma = draggedCsv.find(',', start);
-                    if (comma == std::string::npos) { comma = draggedCsv.size(); }
-                    std::string token = draggedCsv.substr(start, comma - start);
-                    if (!token.empty()) { draggedIds.push_back(token); }
-                    if (comma == draggedCsv.size()) { break; }
-                    start = comma + 1;
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_SCENE_ENTITY_IDS")) {
+                    const float y = ImGui::GetIO().MousePos.y;
+                    const float zone = rowHeight * 0.25f;
+                    const bool insertBefore = y < itemMin.y + zone;
+                    const bool insertAfter = y > itemMax.y - zone;
+                    if (insertBefore || insertAfter) {
+                        pendingReorderTarget = id;
+                        pendingInsertAfter = insertAfter;
+                    } else {
+                        pendingParentTarget = id;
+                    }
+                    (void)payload;
                 }
-                const float y = ImGui::GetIO().MousePos.y;
-                const float zone = rowHeight * 0.25f;
-                const bool insertBefore = y < itemMin.y + zone;
-                const bool insertAfter = y > itemMax.y - zone;
-                if (insertBefore || insertAfter) {
-                    pendingReorderTarget = id;
-                    pendingInsertAfter = insertAfter;
-                } else {
-                    pendingParentTarget = id;
-                }
+            } else {
+                ImGui::AcceptDragDropPayload("MCE_ASSET_MODEL");
+                ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB");
+                ImGui::AcceptDragDropPayload("MCE_SCENE_ENTITY_IDS");
             }
             ImGui::EndDragDropTarget();
         }
 
         if (ImGui::BeginPopupContextItem()) {
+            if (runtimeLocked) {
+                ImGui::BeginDisabled();
+            }
             if (MCEEditorEntityHasComponent(context, id.c_str(), 4) != 0) {
                 if (ImGui::MenuItem("Set as Active Sky")) {
                     MCEEditorSetActiveSky(context, id.c_str());
@@ -485,6 +491,9 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
                 AssignPrimarySelection(selectedEntityId, selectedEntityIdSize, primary);
                 MCEEditorSetLastSelectedEntityId(context, primary.c_str());
             }
+            if (runtimeLocked) {
+                ImGui::EndDisabled();
+            }
             ImGui::EndPopup();
         }
 
@@ -505,7 +514,7 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
         }
     }
 
-    if (!pendingParentTarget.empty() || !pendingReorderTarget.empty()) {
+    if (!runtimeLocked && (!pendingParentTarget.empty() || !pendingReorderTarget.empty())) {
         auto dragged = TopLevelSelection(context, selection);
         if (!dragged.empty()) {
             if (!pendingParentTarget.empty()) {
@@ -564,6 +573,9 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
     }
 
     if (ImGui::BeginPopupContextWindow("SceneHierarchyContext", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems)) {
+        if (runtimeLocked) {
+            ImGui::BeginDisabled();
+        }
         if (ImGui::MenuItem("Create Empty")) {
             char createdId[64] = {0};
             if (MCEEditorCreateEntity(context, "Empty Entity", createdId, sizeof(createdId)) > 0) {
@@ -647,6 +659,9 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
                 CommitSelection(context, selectedEntityId, selectedEntityIdSize, empty, "");
             }
         }
+        if (runtimeLocked) {
+            ImGui::EndDisabled();
+        }
         ImGui::EndPopup();
     }
 
@@ -654,7 +669,7 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
         ImGui::OpenPopup("PrefabPicker");
         state.requestPrefabPickerOpen = false;
     }
-    DrawPrefabPicker(context, state, &state.showPrefabPicker, selectedEntityId, selectedEntityIdSize);
+    DrawPrefabPicker(context, state, runtimeLocked, &state.showPrefabPicker, selectedEntityId, selectedEntityIdSize);
 
     ImGui::EndChild();
     ImGui::PopStyleVar(2);

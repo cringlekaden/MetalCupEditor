@@ -112,6 +112,7 @@ final class EditorSceneController {
         if let physicsSettings = engineContext?.physicsSettings {
             runtimeScene?.startPhysics(settings: physicsSettings)
         }
+        runtimeScene?.notifyScriptSceneStart()
         resetTimingBase()
         fixedAccumulator = 0.0
         isPlaying = true
@@ -122,6 +123,7 @@ final class EditorSceneController {
     func stop() {
         if playState == .editing || playState == .stoppingPlay { return }
         playState = .stoppingPlay
+        runtimeScene?.notifyScriptSceneStop()
         runtimeScene?.stopPhysics()
         if let snapshot = editorSnapshot, let editorScene {
             editorScene.apply(document: snapshot)
@@ -151,6 +153,7 @@ final class EditorSceneController {
             physicsSettingsOverride: PhysicsSettingsDTO(settings: physicsSettings)
         )
         editorScene.startPhysics(settings: physicsSettings)
+        editorScene.notifyScriptSceneStart()
         resetTimingBase()
         simulateAccumulator = 0.0
         isSimulating = true
@@ -158,6 +161,7 @@ final class EditorSceneController {
 
     func resetSimulation() {
         guard isSimulating else { return }
+        editorScene?.notifyScriptSceneStop()
         editorScene?.stopPhysics()
         if let snapshot = simulateSnapshot, let editorScene {
             editorScene.apply(document: snapshot)

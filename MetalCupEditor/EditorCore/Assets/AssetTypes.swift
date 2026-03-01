@@ -14,8 +14,9 @@ enum AssetTypes {
         case .environment: return 3
         case .scene: return 4
         case .prefab: return 5
-        case .unknown: return 6
-        @unknown default: return 6
+        case .script: return 6
+        case .unknown: return 7
+        @unknown default: return 7
         }
     }
 
@@ -33,6 +34,8 @@ enum AssetTypes {
             return .scene
         case "prefab":
             return .prefab
+        case "lua", "mcscript", "cs":
+            return .script
         default:
             return .unknown
         }

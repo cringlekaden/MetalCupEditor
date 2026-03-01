@@ -14,7 +14,8 @@ namespace MCEPanelState {
         AssetEnvironment = 3,
         AssetScene = 4,
         AssetPrefab = 5,
-        AssetUnknown = 6
+        AssetScript = 6,
+        AssetUnknown = 7
     };
 
     enum SortMode : int32_t {
@@ -154,6 +155,14 @@ namespace MCEPanelState {
         bool usesMeshRenderer = false;
     };
 
+    struct ScriptPickerState {
+        bool open = false;
+        bool requestOpen = false;
+        char title[64] = {0};
+        char filter[64] = {0};
+        char entityId[64] = {0};
+    };
+
     struct MaterialPopupState {
         char handle[64] = {0};
         MaterialEditorState state;
@@ -179,6 +188,7 @@ namespace MCEPanelState {
         EnvironmentPickerState environmentPicker;
         MeshPickerState meshPicker;
         MaterialPickerState materialPicker;
+        ScriptPickerState scriptPicker;
         MaterialPopupState materialPopup;
         InspectorMaterialCache materialCache;
         PendingSkyState pendingSky;
