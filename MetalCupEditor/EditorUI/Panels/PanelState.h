@@ -32,6 +32,8 @@ namespace MCEPanelState {
         int32_t type = AssetUnknown;
         std::string handle;
         double modified = 0.0;
+        bool importFailed = false;
+        std::string importFailureReason;
     };
 
     struct ContextTarget {
@@ -42,6 +44,8 @@ namespace MCEPanelState {
         std::string handle;
         bool isDirectory = false;
         int32_t type = AssetUnknown;
+        bool importFailed = false;
+        std::string importFailureReason;
     };
 
     struct ContentBrowserState {
@@ -82,6 +86,9 @@ namespace MCEPanelState {
         bool requestPrefabPickerOpen = false;
         char prefabFilter[64] = {0};
         std::string selectedPrefabHandle;
+        std::unordered_map<std::string, bool> expandedByEntityId;
+        std::vector<std::string> visibleEntityIds;
+        std::string rangeAnchorEntityId;
     };
 
     struct MaterialEditorState {

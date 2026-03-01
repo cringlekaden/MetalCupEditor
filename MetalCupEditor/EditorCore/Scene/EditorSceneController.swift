@@ -26,9 +26,10 @@ final class EditorSceneController {
     private var editorSnapshot: SceneDocument?
     private var simulateSnapshot: SceneDocument?
     private var selectedEntityId: UUID?
+    private var selectedEntityIds: [UUID] = []
     private var fixedAccumulator: Float = 0.0
     private var simulateAccumulator: Float = 0.0
-    private let maxFixedSteps: Int = 4
+    private let maxFixedSteps: Int = 16
     private var lastFrameTime: FrameTime?
     private var timeBaseTotal: Float = 0.0
     private var timeBaseUnscaled: Float = 0.0
@@ -194,6 +195,9 @@ final class EditorSceneController {
     }
 
     func loadScene(from url: URL) throws {
+        if isSimulating {
+            resetSimulation()
+        }
         let document = try SceneSerializer.load(from: url)
         if let settings = document.rendererSettingsOverride {
             engineContext?.rendererSettings = settings.makeRendererSettings()
@@ -219,11 +223,35 @@ final class EditorSceneController {
     // MARK: - Selection
 
     func setSelectedEntityId(_ value: String) {
-        selectedEntityId = UUID(uuidString: value)
+        if let parsed = UUID(uuidString: value) {
+            selectedEntityId = parsed
+            selectedEntityIds = [parsed]
+        } else {
+            selectedEntityId = nil
+            selectedEntityIds = []
+        }
     }
 
     func selectedEntityUUID() -> UUID? {
         selectedEntityId
+    }
+
+    func setSelectedEntityIds(_ values: [UUID], primary: UUID? = nil) {
+        var deduped: [UUID] = []
+        deduped.reserveCapacity(values.count)
+        for id in values where !deduped.contains(id) {
+            deduped.append(id)
+        }
+        selectedEntityIds = deduped
+        if let primary, deduped.contains(primary) {
+            selectedEntityId = primary
+        } else {
+            selectedEntityId = deduped.last
+        }
+    }
+
+    func selectedEntityUUIDs() -> [UUID] {
+        selectedEntityIds
     }
 
     // MARK: - Internals
@@ -302,10 +330,9 @@ final class EditorSceneController {
     private func consumeFixedSteps(frameTime: FrameTime, fixedDeltaTime: Float, maxSubsteps: Int, accumulator: inout Float) -> Int {
         let clampedFixedDelta = max(0.0001, fixedDeltaTime)
         let clampedMaxSteps = max(1, min(maxSubsteps, maxFixedSteps))
-        let maxStepDelta = clampedFixedDelta * Float(clampedMaxSteps)
         let maxAccumulatedDelta: Float = 0.1
-        let clampedStepDelta = min(frameTime.deltaTime, min(maxStepDelta, maxAccumulatedDelta))
-        accumulator += clampedStepDelta
+        accumulator += max(0.0, frameTime.deltaTime)
+        accumulator = min(accumulator, maxAccumulatedDelta)
 #if DEBUG
         if !fixedStepLogged {
             fixedStepLogged = true

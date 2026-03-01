@@ -3,6 +3,7 @@
 /// Created by Kaden Cringle.
 
 import Foundation
+import ImageIO
 import MetalCupEngine
 import ModelIO
 import simd
@@ -623,6 +624,162 @@ struct ImportCommitResult {
     let dependencyHandles: [AssetHandle]
 }
 
+private struct TextureImportDiagnostics {
+    let sourceAssetPath: String
+    let width: Int
+    let height: Int
+    let channelCount: Int
+    let bitDepth: Int
+    let semantic: String
+    let srgb: Bool
+    let internalPixelFormat: String
+    let outputFormat: String
+    let failedStage: String
+    let reason: String
+
+    func formattedLog() -> String {
+        return """
+        Texture import failed:
+          sourcePath=\(sourceAssetPath)
+          stage=\(failedStage)
+          reason=\(reason)
+          decoded=\(width)x\(height), channels=\(channelCount), bitDepth=\(bitDepth)
+          semantic=\(semantic), colorSpace=\(srgb ? "sRGB" : "Linear")
+          internalPixelFormat=\(internalPixelFormat), outputFormat=\(outputFormat)
+        """
+    }
+}
+
+private enum TextureProbeOutcome {
+    case success(TextureImportDiagnostics)
+    case failure(TextureImportDiagnostics)
+}
+
+private enum EmbeddedTextureExportOutcome {
+    case success
+    case failure(String)
+}
+
+private func inferInternalPixelFormat(srgb: Bool, bitDepth: Int, channelCount: Int) -> String {
+    if bitDepth > 8 {
+        if channelCount >= 4 { return "rgba16Float" }
+        if channelCount == 3 { return "rgb16Float" }
+        return "r16Float"
+    }
+    if channelCount >= 4 { return srgb ? "rgba8Unorm_srgb" : "rgba8Unorm" }
+    if channelCount == 2 { return "rg8Unorm" }
+    return "r8Unorm"
+}
+
+private func probeTextureImport(url: URL, semantic: String, srgb: Bool, outputFormat: String) -> TextureProbeOutcome {
+    guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else {
+        let diag = TextureImportDiagnostics(
+            sourceAssetPath: url.path,
+            width: 0,
+            height: 0,
+            channelCount: 0,
+            bitDepth: 0,
+            semantic: semantic,
+            srgb: srgb,
+            internalPixelFormat: inferInternalPixelFormat(srgb: srgb, bitDepth: 0, channelCount: 4),
+            outputFormat: outputFormat,
+            failedStage: "decode",
+            reason: "CGImageSourceCreateWithURL returned nil"
+        )
+        return .failure(diag)
+    }
+
+    guard let image = CGImageSourceCreateImageAtIndex(source, 0, nil) else {
+        let diag = TextureImportDiagnostics(
+            sourceAssetPath: url.path,
+            width: 0,
+            height: 0,
+            channelCount: 0,
+            bitDepth: 0,
+            semantic: semantic,
+            srgb: srgb,
+            internalPixelFormat: inferInternalPixelFormat(srgb: srgb, bitDepth: 0, channelCount: 4),
+            outputFormat: outputFormat,
+            failedStage: "decode",
+            reason: "CGImageSourceCreateImageAtIndex returned nil"
+        )
+        return .failure(diag)
+    }
+
+    let width = image.width
+    let height = image.height
+    let bitsPerPixel = image.bitsPerPixel
+    let bitsPerComponent = image.bitsPerComponent
+    let channels = bitsPerComponent > 0 ? max(1, bitsPerPixel / bitsPerComponent) : 0
+    let bitDepth = max(bitsPerComponent, 0)
+
+    let diag = TextureImportDiagnostics(
+        sourceAssetPath: url.path,
+        width: width,
+        height: height,
+        channelCount: channels,
+        bitDepth: bitDepth,
+        semantic: semantic,
+        srgb: srgb,
+        internalPixelFormat: inferInternalPixelFormat(srgb: srgb, bitDepth: bitDepth, channelCount: channels),
+        outputFormat: outputFormat,
+        failedStage: "",
+        reason: ""
+    )
+    return .success(diag)
+}
+
+private func defaultTextureImportSettings(settings: ImportSettings,
+                                          importerId: String,
+                                          importerVersion: String,
+                                          sourcePath: String,
+                                          sourcePathAbs: String) -> [String: String] {
+    var merged = settings.values
+    merged["importer"] = importerId
+    merged["importerVersion"] = importerVersion
+    merged["sourcePath"] = sourcePath
+    merged["sourcePathAbs"] = sourcePathAbs
+    return merged
+}
+
+private func setTextureFailureState(projectManager: EditorProjectManager,
+                                    scan: ImportScanResult,
+                                    settings: ImportSettings,
+                                    importerId: String,
+                                    importerVersion: String,
+                                    reason: String) {
+    guard let rootURL = projectManager.assetRootURL() else { return }
+    let sourceURL = scan.sourceURL.standardizedFileURL
+    guard isUnderRoot(sourceURL, rootURL: rootURL),
+          let relativePath = PathUtils.relativePath(from: rootURL, to: sourceURL) else {
+        return
+    }
+
+    let metaURL = projectManager.metaURLForAsset(assetURL: sourceURL, relativePath: relativePath) ?? AssetIO.metaURL(for: sourceURL)
+    let existing = (try? Data(contentsOf: metaURL)).flatMap { try? JSONDecoder().decode(AssetMetadata.self, from: $0) }
+    let sourceRelativePath = relativePath
+    let settingsValues = defaultTextureImportSettings(
+        settings: settings,
+        importerId: importerId,
+        importerVersion: importerVersion,
+        sourcePath: sourceRelativePath,
+        sourcePathAbs: sourceURL.path
+    )
+    var failedSettings = settingsValues
+    failedSettings["importFailed"] = "true"
+    failedSettings["importFailureReason"] = reason
+    failedSettings["importFailureAt"] = String(format: "%.3f", Date().timeIntervalSince1970)
+    let metadata = AssetMetadata(
+        handle: existing?.handle ?? AssetHandle(),
+        type: .texture,
+        sourcePath: relativePath,
+        importSettings: failedSettings,
+        dependencies: existing?.dependencies ?? [],
+        lastModified: Date().timeIntervalSince1970
+    )
+    projectManager.saveMetadata(metadata, to: metaURL)
+}
+
 protocol AssetImporter {
     var importerId: String { get }
     var importerVersion: String { get }
@@ -648,7 +805,7 @@ struct TextureImporter: AssetImporter {
         guard canImport(url) else { return nil }
         let name = url.deletingPathExtension().lastPathComponent
         let semantic = guessTextureSemantic(from: name)
-        let srgb = AssetManager.isColorTexture(path: url.lastPathComponent) ? "true" : "false"
+        let srgb = isColorSemantic(semantic) ? "true" : "false"
         return ImportScanResult(
             sourceURL: url,
             assetType: .texture,
@@ -663,13 +820,13 @@ struct TextureImporter: AssetImporter {
 
     func defaultSettings(for scan: ImportScanResult) -> ImportSettings {
         let name = scan.sourceURL.lastPathComponent
-        let srgb = AssetManager.isColorTexture(path: name)
         let mipmaps = AssetManager.shouldGenerateMipmaps(path: name)
+        let semantic = guessTextureSemantic(from: scan.suggestedName)
+        let srgb = isColorSemantic(semantic)
         var values: [String: String] = [
             "srgb": srgb ? "true" : "false",
             "mipmaps": mipmaps ? "true" : "false"
         ]
-        let semantic = guessTextureSemantic(from: scan.suggestedName)
         if !semantic.isEmpty {
             values["semantic"] = semantic
         }
@@ -680,26 +837,62 @@ struct TextureImporter: AssetImporter {
                 settings: ImportSettings,
                 projectManager: EditorProjectManager,
                 resolver: AssetPathResolver) -> ImportCommitResult? {
-        commitSourceAsset(scan: scan,
-                          settings: settings,
-                          projectManager: projectManager,
-                          resolver: resolver,
-                          assetType: .texture,
-                          importerId: importerId,
-                          importerVersion: importerVersion)
+        let semantic = settings.values["semantic"]?.lowercased().isEmpty == false
+            ? (settings.values["semantic"]?.lowercased() ?? "")
+            : guessTextureSemantic(from: scan.suggestedName)
+        let srgb = settings.boolValue("srgb", default: isColorSemantic(semantic))
+        let outputFormat = scan.sourceURL.pathExtension.lowercased()
+        switch probeTextureImport(url: scan.sourceURL, semantic: semantic, srgb: srgb, outputFormat: outputFormat) {
+        case .success:
+            break
+        case .failure(let diag):
+            let reason = "\(diag.failedStage): \(diag.reason)"
+            EngineLoggerContext.log(
+                diag.formattedLog(),
+                level: .error,
+                category: .assets
+            )
+            setTextureFailureState(
+                projectManager: projectManager,
+                scan: scan,
+                settings: settings,
+                importerId: importerId,
+                importerVersion: importerVersion,
+                reason: reason
+            )
+            return nil
+        }
+        return commitSourceAsset(scan: scan,
+                                 settings: settings,
+                                 projectManager: projectManager,
+                                 resolver: resolver,
+                                 assetType: .texture,
+                                 importerId: importerId,
+                                 importerVersion: importerVersion)
     }
 
     private func guessTextureSemantic(from name: String) -> String {
         let lowered = name.lowercased()
+        if lowered.contains("orm") || (lowered.contains("occlusion") && lowered.contains("rough") && lowered.contains("metal")) { return "orm" }
         if lowered.contains("normal") { return "normal" }
         if lowered.contains("rough") { return "roughness" }
         if lowered.contains("metal") { return "metallic" }
         if lowered.contains("ao") || lowered.contains("occlusion") { return "occlusion" }
         if lowered.contains("height") || lowered.contains("displace") { return "height" }
         if lowered.contains("emissive") { return "emissive" }
-        if lowered.contains("orm") || (lowered.contains("occlusion") && lowered.contains("rough") && lowered.contains("metal")) { return "orm" }
         if lowered.contains("albedo") || lowered.contains("basecolor") || lowered.contains("diff") { return "albedo" }
         return ""
+    }
+
+    private func isColorSemantic(_ semantic: String) -> Bool {
+        switch semantic.lowercased() {
+        case "albedo", "basecolor", "diffuse", "diff", "emissive":
+            return true
+        case "normal", "roughness", "metallic", "occlusion", "ao", "height", "orm":
+            return false
+        default:
+            return AssetManager.isColorTexture(path: semantic)
+        }
     }
 }
 
@@ -725,7 +918,10 @@ struct EnvironmentImporter: AssetImporter {
     }
 
     func defaultSettings(for scan: ImportScanResult) -> ImportSettings {
-        ImportSettings(values: [:])
+        ImportSettings(values: [
+            "semantic": "environment",
+            "srgb": "false"
+        ])
     }
 
     func commit(scan: ImportScanResult,
@@ -1174,14 +1370,14 @@ extension MeshImporter {
         return baseURL.appendingPathComponent(url.path).standardizedFileURL
     }
 
-    private static func exportEmbeddedTexture(_ texture: MDLTexture, to url: URL) -> Bool {
+    private static func exportEmbeddedTexture(_ texture: MDLTexture, to url: URL) -> EmbeddedTextureExportOutcome {
         let folder = url.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         do {
             try texture.write(to: url)
-            return true
+            return .success
         } catch {
-            return false
+            return .failure(error.localizedDescription)
         }
     }
 
@@ -1361,7 +1557,8 @@ extension MeshImporter {
                                 "origin": textureOrigin,
                                 "srgb": srgbValue,
                                 "mipmaps": "true",
-                                "semantic": semantic
+                                "semantic": semantic,
+                                "importFailed": "false"
                             ]
                             if settings.boolValue("flipNormalY", default: false), semantic == MeshTextureSemantic.normal.rawValue {
                                 settingsValues["flipNormalY"] = "true"
@@ -1393,7 +1590,8 @@ extension MeshImporter {
                         } else {
                             destinationURL = meshUniqueFileURL(in: texturesFolder, baseName: embeddedBase, ext: "png")
                         }
-                        if exportEmbeddedTexture(mdlTexture, to: destinationURL) {
+                        switch exportEmbeddedTexture(mdlTexture, to: destinationURL) {
+                        case .success:
                             let metaURL = AssetIO.metaURL(for: destinationURL)
                             let handle = existingTexturesByKey[textureKey]?.handle ?? loadHandle(from: metaURL) ?? AssetHandle()
                             let relativePath = PathUtils.relativePath(from: rootURL, to: destinationURL) ?? destinationURL.lastPathComponent
@@ -1411,7 +1609,8 @@ extension MeshImporter {
                                 "srgb": srgbValue,
                                 "mipmaps": "true",
                                 "semantic": semantic,
-                                "embedded": "true"
+                                "embedded": "true",
+                                "importFailed": "false"
                             ]
                             if settings.boolValue("flipNormalY", default: false), semantic == MeshTextureSemantic.normal.rawValue {
                                 settingsValues["flipNormalY"] = "true"
@@ -1428,6 +1627,64 @@ extension MeshImporter {
                             let key = "\(material.name)|\(texture.semantic.rawValue)"
                             embeddedTextureHandles[key] = handle
                             textureDependencies.append(handle)
+                        case .failure(let errorReason):
+                            let semantic = texture.semantic.rawValue
+                            let srgbValue = (semantic == MeshTextureSemantic.baseColor.rawValue || semantic == MeshTextureSemantic.emissive.rawValue)
+                            let width = Int(mdlTexture.dimensions.x)
+                            let height = Int(mdlTexture.dimensions.y)
+                            let channels = Int(mdlTexture.channelCount)
+                            let bitDepth = Int(mdlTexture.channelEncoding.rawValue)
+                            let outputFormat = destinationURL.pathExtension.lowercased()
+                            let diagnostics = TextureImportDiagnostics(
+                                sourceAssetPath: destinationURL.path,
+                                width: width,
+                                height: height,
+                                channelCount: channels,
+                                bitDepth: bitDepth,
+                                semantic: semantic,
+                                srgb: srgbValue,
+                                internalPixelFormat: inferInternalPixelFormat(srgb: srgbValue, bitDepth: max(bitDepth, 8), channelCount: max(channels, 4)),
+                                outputFormat: outputFormat,
+                                failedStage: "write",
+                                reason: errorReason
+                            )
+                            EngineLoggerContext.log(
+                                diagnostics.formattedLog(),
+                                level: .error,
+                                category: .assets
+                            )
+                            let metaURL = AssetIO.metaURL(for: destinationURL)
+                            let failedHandle = existingTexturesByKey[textureKey]?.handle ?? loadHandle(from: metaURL) ?? AssetHandle()
+                            let relativePath = PathUtils.relativePath(from: rootURL, to: destinationURL) ?? destinationURL.lastPathComponent
+                            var failureSettings: [String: String] = [
+                                "importer": importerId,
+                                "importerVersion": importerVersion,
+                                "sourcePath": sourceRelativePath,
+                                "sourcePathAbs": sourcePathAbs,
+                                "meshSourcePathAbs": meshSourceKey,
+                                "meshMaterialName": material.name,
+                                "meshTextureSemantic": semantic,
+                                "origin": textureOrigin,
+                                "srgb": srgbValue ? "true" : "false",
+                                "mipmaps": "true",
+                                "semantic": semantic,
+                                "embedded": "true",
+                                "importFailed": "true",
+                                "importFailureReason": "write: \(errorReason)",
+                                "importFailureAt": String(format: "%.3f", Date().timeIntervalSince1970)
+                            ]
+                            if settings.boolValue("flipNormalY", default: false), semantic == MeshTextureSemantic.normal.rawValue {
+                                failureSettings["flipNormalY"] = "true"
+                            }
+                            let failedMetadata = AssetMetadata(
+                                handle: failedHandle,
+                                type: .texture,
+                                sourcePath: relativePath,
+                                importSettings: failureSettings,
+                                dependencies: [],
+                                lastModified: Date().timeIntervalSince1970
+                            )
+                            projectManager.saveMetadata(failedMetadata, to: metaURL)
                         }
                     }
                 }
@@ -1666,6 +1923,9 @@ private func commitSourceAsset(scan: ImportScanResult,
         importSettings["importerVersion"] = importerVersion
         importSettings["sourcePath"] = sourceRelativePath
         importSettings["sourcePathAbs"] = sourcePathAbs
+        importSettings["importFailed"] = "false"
+        importSettings.removeValue(forKey: "importFailureReason")
+        importSettings.removeValue(forKey: "importFailureAt")
 
         let metadata = AssetMetadata(
             handle: handle,
@@ -1821,7 +2081,28 @@ final class ImportController {
             logCenter.logInfo("Imported asset: \(result.writtenPaths.first ?? scan.sourceURL.lastPathComponent)", category: .assets)
             return true
         }
-        lastErrorMessage = "Import failed."
+        if scan.assetType == .texture {
+            if let rootURL = projectManager.assetRootURL(),
+               isUnderRoot(scan.sourceURL.standardizedFileURL, rootURL: rootURL),
+               let relativePath = PathUtils.relativePath(from: rootURL, to: scan.sourceURL.standardizedFileURL),
+               let failedMeta = projectManager.assetMetadataSnapshot().first(where: { $0.sourcePath == relativePath }),
+               let reason = failedMeta.importSettings["importFailureReason"],
+               !reason.isEmpty {
+                lastErrorMessage = "Texture import failed: \(reason)"
+            } else {
+                setTextureFailureState(
+                    projectManager: projectManager,
+                    scan: scan,
+                    settings: settings,
+                    importerId: importer.importerId,
+                    importerVersion: importer.importerVersion,
+                    reason: "write: commit failed before metadata write"
+                )
+                lastErrorMessage = "Texture import failed: write: commit failed before metadata write"
+            }
+        } else {
+            lastErrorMessage = "Import failed."
+        }
         return false
     }
 

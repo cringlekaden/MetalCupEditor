@@ -3,6 +3,7 @@
 // Created by Kaden Cringle.
 
 #import "UIWidgets.h"
+#import "../EditorIcons.h"
 #include <algorithm>
 #include <cctype>
 #include <cstring>
@@ -11,6 +12,8 @@ extern "C" uint32_t MCEEditorGetHeaderOpen(MCE_CTX,  const char *headerId, uint3
 extern "C" void MCEEditorSetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t open);
 
 namespace {
+    const char *gNextPropertyInfoTooltip = nullptr;
+
     void PushPropertyControlStyle() {
         ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(6.0f, 4.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_FrameRounding, 4.0f);
@@ -22,6 +25,27 @@ namespace {
 }
 
 namespace EditorUI {
+    void InfoIconTooltip(const char *text, float maxWidth) {
+        if (!text || text[0] == 0) {
+            return;
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextUnformatted(EditorIcons::Glyph(EditorIcons::Id::Info));
+        ImGui::PopStyleColor();
+
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + maxWidth);
+            ImGui::TextUnformatted(text);
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+    }
+
+    void SetNextPropertyInfoTooltip(const char *text) {
+        gNextPropertyInfoTooltip = text;
+    }
+
     bool BeginPanel(const char *title, bool *isOpen, ImGuiWindowFlags flags) {
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImGui::GetStyle().WindowPadding);
         return ImGui::Begin(title, isOpen, flags);
@@ -41,6 +65,71 @@ namespace EditorUI {
             ImGui::EndDisabled();
         }
         return enabled && pressed;
+    }
+
+    bool IconButton(const char *id,
+                    const char *icon,
+                    const char *tooltip,
+                    bool active,
+                    bool disabled) {
+        if (!id || !icon) {
+            return false;
+        }
+
+        bool pressed = false;
+        ImGuiStyle &style = ImGui::GetStyle();
+        if (active) {
+            const ImVec4 activeColor = style.Colors[ImGuiCol_ButtonActive];
+            ImGui::PushStyleColor(ImGuiCol_Button, activeColor);
+            ImGui::PushStyleColor(ImGuiCol_ButtonHovered, activeColor);
+            ImGui::PushStyleColor(ImGuiCol_ButtonActive, activeColor);
+        }
+        if (disabled) {
+            ImGui::BeginDisabled();
+        }
+
+        std::string label = std::string(icon) + "##" + id;
+        pressed = ImGui::Button(label.c_str());
+        if (tooltip && tooltip[0] != 0 && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip("%s", tooltip);
+        }
+
+        if (disabled) {
+            ImGui::EndDisabled();
+        }
+        if (active) {
+            ImGui::PopStyleColor(3);
+        }
+        return !disabled && pressed;
+    }
+
+    void IconLabel(const char *icon, const char *text) {
+        if (!icon) {
+            ImGui::TextUnformatted(text ? text : "");
+            return;
+        }
+        if (text && text[0] != 0) {
+            ImGui::Text("%s %s", icon, text);
+        } else {
+            ImGui::TextUnformatted(icon);
+        }
+    }
+
+    bool IconSelectable(const char *id,
+                        const char *icon,
+                        const char *text,
+                        bool selected) {
+        if (!id || !icon) {
+            return false;
+        }
+        std::string label = std::string(icon);
+        if (text && text[0] != 0) {
+            label += " ";
+            label += text;
+        }
+        label += "##";
+        label += id;
+        return ImGui::Selectable(label.c_str(), selected);
     }
 
     bool AssetField(const char *label,
@@ -105,6 +194,17 @@ namespace EditorUI {
         ImGui::TableSetColumnIndex(0);
         ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted(label);
+        if (gNextPropertyInfoTooltip && gNextPropertyInfoTooltip[0] != 0) {
+            const ImVec2 textMin = ImGui::GetItemRectMin();
+            const float iconSize = ImGui::GetFrameHeight();
+            const float columnWidth = ImGui::GetColumnWidth();
+            const float iconX = textMin.x + columnWidth - iconSize - ImGui::GetStyle().CellPadding.x;
+            ImGui::SetCursorScreenPos(ImVec2(iconX, textMin.y));
+            ImGui::PushID(label);
+            InfoIconTooltip(gNextPropertyInfoTooltip, 420.0f);
+            ImGui::PopID();
+        }
+        gNextPropertyInfoTooltip = nullptr;
         ImGui::TableSetColumnIndex(1);
         ImGui::SetNextItemWidth(-1.0f);
     }

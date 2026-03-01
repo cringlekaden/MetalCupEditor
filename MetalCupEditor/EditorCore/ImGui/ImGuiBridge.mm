@@ -15,6 +15,7 @@
 #import "../../EditorUI/Panels/InspectorPanel.h"
 #import "../../EditorUI/Panels/ContentBrowserPanel.h"
 #import "../../EditorUI/Panels/PanelState.h"
+#import "../../EditorUI/EditorIcons.h"
 #import "../Bridge/RendererSettingsBridge.h"
 #import "../Bridge/PhysicsSettingsBridge.h"
 #import "../../EditorUI/Widgets/UIWidgets.h"
@@ -22,9 +23,173 @@
 #include <algorithm>
 #include <cstring>
 #include <ctime>
+#include <cmath>
 #include <string>
 #include <vector>
 #include <sys/stat.h>
+
+static std::string ResolveEditorIconFontPath(const char *fileName) {
+    if (!fileName || fileName[0] == 0) {
+        return {};
+    }
+
+    NSFileManager *fileManager = [NSFileManager defaultManager];
+    NSString *fileNameString = [NSString stringWithUTF8String:fileName];
+    NSString *basename = [fileNameString stringByDeletingPathExtension];
+    NSString *extension = [fileNameString pathExtension];
+    NSURL *bundleURL = [NSBundle mainBundle].bundleURL;
+
+    NSArray<NSString *> *candidates = @[
+        // Folder reference copied to bundle root as "MetalCupEditor"
+        [[NSBundle mainBundle] pathForResource:basename ofType:extension inDirectory:@"MetalCupEditor/Icons"] ?: @"",
+        // Direct Icons folder under bundle resources
+        [[NSBundle mainBundle] pathForResource:basename ofType:extension inDirectory:@"Icons"] ?: @"",
+        // Flat copy fallback
+        [[NSBundle mainBundle] pathForResource:basename ofType:extension] ?: @""
+    ];
+
+    NSLog(@"[ImGuiBridge] Font lookup: %@ (bundle=%@)", fileNameString, bundleURL.path);
+    for (NSString *candidate in candidates) {
+        if (candidate.length == 0) { continue; }
+        BOOL exists = [fileManager fileExistsAtPath:candidate];
+        unsigned long long sizeBytes = 0;
+        if (exists) {
+            NSDictionary<NSFileAttributeKey, id> *attributes = [fileManager attributesOfItemAtPath:candidate error:nil];
+            NSNumber *sizeNumber = attributes[NSFileSize];
+            sizeBytes = sizeNumber != nil ? sizeNumber.unsignedLongLongValue : 0;
+        }
+        NSLog(@"[ImGuiBridge]  - candidate=%@ exists=%@ size=%llu", candidate, exists ? @"yes" : @"no", sizeBytes);
+        if (exists) {
+            return std::string(candidate.UTF8String);
+        }
+    }
+    return {};
+}
+
+static void LogFontAtlasSummary(ImGuiIO &io) {
+    NSLog(@"[ImGuiBridge] ImGui font atlas count=%d", io.Fonts->Fonts.Size);
+    for (int i = 0; i < io.Fonts->Fonts.Size; ++i) {
+        ImFont *font = io.Fonts->Fonts[i];
+        bool merged = false;
+        int sourceCount = font->Sources.Size;
+        for (int s = 0; s < sourceCount; ++s) {
+            ImFontConfig *cfg = font->Sources[s];
+            if (cfg && cfg->MergeMode) {
+                merged = true;
+            }
+        }
+        NSLog(@"[ImGuiBridge]  - font[%d] size=%.2f sources=%d merged=%@",
+              i,
+              font->LegacySize,
+              sourceCount,
+              merged ? @"yes" : @"no");
+    }
+}
+
+static void ValidateEditorIconGlyphs(ImFont *font) {
+    if (!font) { return; }
+    static bool validated = false;
+    if (validated) { return; }
+    validated = true;
+
+    const float bakedSize = font->LegacySize > 0.0f ? font->LegacySize : 14.0f;
+    ImFontBaked *baked = font->GetFontBaked(bakedSize);
+    if (!baked) {
+        NSLog(@"[ImGuiBridge] Icon glyph validation skipped: no baked font available.");
+        return;
+    }
+
+    const EditorIcons::Id sampleIds[] = {
+        EditorIcons::Id::Play,
+        EditorIcons::Id::Pause,
+        EditorIcons::Id::Stop,
+        EditorIcons::Id::Plus,
+        EditorIcons::Id::Folder
+    };
+
+    std::vector<std::string> missing;
+    for (EditorIcons::Id id : sampleIds) {
+        const ImWchar codepoint = EditorIcons::Codepoint(id);
+        ImFontGlyph *glyph = baked->FindGlyphNoFallback(codepoint);
+        char codepointLabel[16] = {0};
+        snprintf(codepointLabel, sizeof(codepointLabel), "U+%04X", static_cast<unsigned int>(codepoint));
+        if (glyph != nullptr) {
+            NSLog(@"[ImGuiBridge] Glyph OK: %s (%s)", EditorIcons::Name(id), codepointLabel);
+        } else {
+            missing.push_back(std::string(EditorIcons::Name(id)) + " (" + codepointLabel + ")");
+        }
+    }
+    if (!missing.empty()) {
+        std::string message = "Missing Font Awesome glyphs:";
+        for (const std::string &entry : missing) {
+            message += "\n - " + entry;
+        }
+        NSLog(@"[ImGuiBridge] %s", message.c_str());
+    }
+}
+
+static NSString *ResolveEditorIconMetadataPath() {
+    NSArray<NSString *> *candidates = @[
+        [[NSBundle mainBundle] pathForResource:@"icons" ofType:@"json" inDirectory:@"MetalCupEditor/Icons/metadata"] ?: @"",
+        [[NSBundle mainBundle] pathForResource:@"icons" ofType:@"json" inDirectory:@"Icons/metadata"] ?: @"",
+        [[NSBundle mainBundle] pathForResource:@"icons" ofType:@"json"] ?: @""
+    ];
+    for (NSString *candidate in candidates) {
+        if (candidate.length == 0) { continue; }
+        if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
+            return candidate;
+        }
+    }
+    return nil;
+}
+
+static void ValidateEditorIconsAgainstMetadata() {
+    static bool validated = false;
+    if (validated) { return; }
+    validated = true;
+
+    NSString *metadataPath = ResolveEditorIconMetadataPath();
+    if (!metadataPath) {
+        NSLog(@"[ImGuiBridge] Font Awesome metadata not found (Icons/metadata/icons.json).");
+        return;
+    }
+
+    NSData *data = [NSData dataWithContentsOfFile:metadataPath];
+    if (!data) { return; }
+    NSError *error = nil;
+    id root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
+    if (error || ![root isKindOfClass:[NSDictionary class]]) {
+        NSLog(@"[ImGuiBridge] Failed to parse Font Awesome metadata: %@", error.localizedDescription);
+        return;
+    }
+
+    NSDictionary *icons = (NSDictionary *)root;
+    std::vector<std::string> mismatches;
+    for (const EditorIcons::Definition &definition : EditorIcons::kDefinitions) {
+        if (!definition.metadataKey || definition.metadataKey[0] == 0) { continue; }
+        NSDictionary *entry = icons[[NSString stringWithUTF8String:definition.metadataKey]];
+        if (![entry isKindOfClass:[NSDictionary class]]) { continue; }
+        NSString *unicodeHex = entry[@"unicode"];
+        if (![unicodeHex isKindOfClass:[NSString class]]) { continue; }
+        unsigned int metadataCodepoint = 0;
+        NSScanner *scanner = [NSScanner scannerWithString:unicodeHex];
+        [scanner scanHexInt:&metadataCodepoint];
+        if (metadataCodepoint != static_cast<unsigned int>(definition.codepoint)) {
+            char currentCodepoint[16] = {0};
+            char fileCodepoint[16] = {0};
+            snprintf(currentCodepoint, sizeof(currentCodepoint), "U+%04X", static_cast<unsigned int>(definition.codepoint));
+            snprintf(fileCodepoint, sizeof(fileCodepoint), "U+%04X", metadataCodepoint);
+            mismatches.push_back(std::string(definition.name) + " metadata mismatch (" + currentCodepoint + " vs " + fileCodepoint + ")");
+        }
+    }
+    if (!mismatches.empty()) {
+        std::string message = "Font Awesome metadata mismatches:";
+        for (const std::string &entry : mismatches) {
+            message += "\n - " + entry;
+        }
+        NSLog(@"[ImGuiBridge] %s", message.c_str());
+    }
+}
 
 extern "C" void *MCEUIPanelStateCreate(void) {
     return new MCEPanelState::EditorUIPanelState();
@@ -72,6 +237,44 @@ extern "C" void MCEEditorSetPanelVisibility(MCE_CTX,  const char *panelId, uint3
 extern "C" uint32_t MCEEditorGetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t defaultValue);
 extern "C" void MCEEditorSetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t open);
 extern "C" void MCEEditorSaveSettings(MCE_CTX);
+extern "C" int32_t MCEEditorGetThemeMode(MCE_CTX);
+extern "C" void MCEEditorSetThemeMode(MCE_CTX, int32_t value);
+extern "C" void MCEEditorGetThemeAccent(MCE_CTX, float *r, float *g, float *b);
+extern "C" void MCEEditorSetThemeAccent(MCE_CTX, float r, float g, float b);
+extern "C" float MCEEditorGetThemeUIScale(MCE_CTX);
+extern "C" void MCEEditorSetThemeUIScale(MCE_CTX, float value);
+extern "C" uint32_t MCEEditorGetThemeRoundedUI(MCE_CTX);
+extern "C" void MCEEditorSetThemeRoundedUI(MCE_CTX, uint32_t value);
+extern "C" float MCEEditorGetThemeCornerRounding(MCE_CTX);
+extern "C" void MCEEditorSetThemeCornerRounding(MCE_CTX, float value);
+extern "C" int32_t MCEEditorGetThemeSpacingPreset(MCE_CTX);
+extern "C" void MCEEditorSetThemeSpacingPreset(MCE_CTX, int32_t value);
+extern "C" uint32_t MCEEditorGetViewportShowWorldIcons(MCE_CTX);
+extern "C" void MCEEditorSetViewportShowWorldIcons(MCE_CTX, uint32_t value);
+extern "C" float MCEEditorGetViewportWorldIconBaseSize(MCE_CTX);
+extern "C" void MCEEditorSetViewportWorldIconBaseSize(MCE_CTX, float value);
+extern "C" float MCEEditorGetViewportWorldIconDistanceScale(MCE_CTX);
+extern "C" void MCEEditorSetViewportWorldIconDistanceScale(MCE_CTX, float value);
+extern "C" float MCEEditorGetViewportWorldIconMinSize(MCE_CTX);
+extern "C" void MCEEditorSetViewportWorldIconMinSize(MCE_CTX, float value);
+extern "C" float MCEEditorGetViewportWorldIconMaxSize(MCE_CTX);
+extern "C" void MCEEditorSetViewportWorldIconMaxSize(MCE_CTX, float value);
+extern "C" uint32_t MCEEditorGetViewportShowSelectedCameraFrustum(MCE_CTX);
+extern "C" void MCEEditorSetViewportShowSelectedCameraFrustum(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetViewportPreviewEnabled(MCE_CTX);
+extern "C" void MCEEditorSetViewportPreviewEnabled(MCE_CTX, uint32_t value);
+extern "C" float MCEEditorGetViewportPreviewSize(MCE_CTX);
+extern "C" void MCEEditorSetViewportPreviewSize(MCE_CTX, float value);
+extern "C" int32_t MCEEditorGetViewportPreviewPosition(MCE_CTX);
+extern "C" void MCEEditorSetViewportPreviewPosition(MCE_CTX, int32_t value);
+extern "C" uint32_t MCEEditorGetViewportSnapEnabled(MCE_CTX);
+extern "C" void MCEEditorSetViewportSnapEnabled(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetDebugGridEnabled(MCE_CTX);
+extern "C" void MCEEditorSetDebugGridEnabled(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetDebugOutlineEnabled(MCE_CTX);
+extern "C" void MCEEditorSetDebugOutlineEnabled(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetDebugPhysicsEnabled(MCE_CTX);
+extern "C" void MCEEditorSetDebugPhysicsEnabled(MCE_CTX, uint32_t value);
 extern "C" uint32_t MCEEditorGetLastSelectedEntityId(MCE_CTX,  char *buffer, int32_t bufferSize);
 extern "C" void MCEEditorSetLastSelectedEntityId(MCE_CTX,  const char *value);
 extern "C" int32_t MCEEditorLogCount(MCE_CTX);
@@ -148,6 +351,7 @@ struct LogEntrySnapshot {
     bool _ShowProfilingPanel;
     bool _ShowLogsPanel;
     bool _ShowSettingsModal;
+    int _SettingsCategoryIndex;
     bool _LoadedPanelVisibility;
     char _SelectedEntityId[64];
 
@@ -169,85 +373,170 @@ struct LogEntrySnapshot {
 }
 @end
 
-static void ApplyEditorTheme() {
-    ImGuiStyle& style = ImGui::GetStyle();
-    style.WindowPadding = ImVec2(12.0f, 10.0f);
-    style.FramePadding = ImVec2(8.0f, 6.0f);
-    style.ItemSpacing = ImVec2(8.0f, 6.0f);
-    style.ItemInnerSpacing = ImVec2(6.0f, 4.0f);
-    style.ScrollbarSize = 12.0f;
-    style.WindowRounding = 6.0f;
-    style.ChildRounding = 6.0f;
-    style.FrameRounding = 6.0f;
-    style.GrabRounding = 4.0f;
-    style.PopupRounding = 6.0f;
-    style.TabRounding = 4.0f;
+struct EditorThemeSettings {
+    int mode = 0; // 0: Dark, 1: Dark Gray, 2: Light
+    float accent[3] = { 0.18f, 0.58f, 0.84f };
+    float uiScale = 1.0f;
+    bool roundedUI = true;
+    float cornerRounding = 6.0f;
+    int spacingPreset = 1; // 0: Compact, 1: Comfortable, 2: Spacious
+};
+
+static EditorThemeSettings gThemeSettings;
+static bool gThemeLoaded = false;
+
+static float Clamp01(float value) {
+    return std::max(0.0f, std::min(1.0f, value));
+}
+
+static ImVec4 LerpColor(const ImVec4 &a, const ImVec4 &b, float t) {
+    const float alpha = Clamp01(t);
+    return ImVec4(
+        a.x + (b.x - a.x) * alpha,
+        a.y + (b.y - a.y) * alpha,
+        a.z + (b.z - a.z) * alpha,
+        a.w + (b.w - a.w) * alpha
+    );
+}
+
+static void LoadThemeSettingsIfNeeded(void *context) {
+    if (gThemeLoaded) {
+        return;
+    }
+    gThemeLoaded = true;
+    gThemeSettings.mode = static_cast<int>(MCEEditorGetThemeMode(context));
+    MCEEditorGetThemeAccent(context, &gThemeSettings.accent[0], &gThemeSettings.accent[1], &gThemeSettings.accent[2]);
+    gThemeSettings.uiScale = MCEEditorGetThemeUIScale(context);
+    gThemeSettings.roundedUI = MCEEditorGetThemeRoundedUI(context) != 0;
+    gThemeSettings.cornerRounding = MCEEditorGetThemeCornerRounding(context);
+    gThemeSettings.spacingPreset = static_cast<int>(MCEEditorGetThemeSpacingPreset(context));
+}
+
+static void ApplyEditorTheme(const EditorThemeSettings &settings) {
+    ImGuiStyle &style = ImGui::GetStyle();
+    const float scale = std::max(0.75f, std::min(2.0f, settings.uiScale));
+    ImGui::GetIO().FontGlobalScale = scale;
+
+    const float spacingScale = settings.spacingPreset == 0 ? 0.85f : (settings.spacingPreset == 2 ? 1.2f : 1.0f);
+    style.WindowPadding = ImVec2(12.0f * spacingScale, 10.0f * spacingScale);
+    style.FramePadding = ImVec2(8.0f * spacingScale, 6.0f * spacingScale);
+    style.ItemSpacing = ImVec2(8.0f * spacingScale, 6.0f * spacingScale);
+    style.ItemInnerSpacing = ImVec2(6.0f * spacingScale, 4.0f * spacingScale);
+    style.ScrollbarSize = 12.0f * spacingScale;
+    const float round = settings.roundedUI ? std::max(0.0f, std::min(16.0f, settings.cornerRounding)) : 0.0f;
+    style.WindowRounding = round;
+    style.ChildRounding = round;
+    style.FrameRounding = round;
+    style.GrabRounding = round * 0.75f;
+    style.PopupRounding = round;
+    style.TabRounding = round * 0.8f;
     style.TabBarOverlineSize = 0.0f;
     style.WindowBorderSize = 1.0f;
     style.FrameBorderSize = 1.0f;
 
-    ImVec4* colors = style.Colors;
-    const ImVec4 accent = ImVec4(0.58f, 0.46f, 0.72f, 1.0f);
-    const ImVec4 accentMuted = ImVec4(0.48f, 0.4f, 0.6f, 1.0f);
-    colors[ImGuiCol_Text] = ImVec4(0.92f, 0.92f, 0.94f, 1.0f);
-    colors[ImGuiCol_TextDisabled] = ImVec4(0.55f, 0.55f, 0.58f, 1.0f);
-    colors[ImGuiCol_WindowBg] = ImVec4(0.11f, 0.11f, 0.12f, 1.0f);
-    colors[ImGuiCol_ChildBg] = ImVec4(0.12f, 0.12f, 0.13f, 1.0f);
-    colors[ImGuiCol_PopupBg] = ImVec4(0.13f, 0.13f, 0.14f, 1.0f);
-    colors[ImGuiCol_Border] = ImVec4(0.24f, 0.24f, 0.26f, 1.0f);
-    colors[ImGuiCol_BorderShadow] = ImVec4(0.0f, 0.0f, 0.0f, 0.0f);
+    const ImVec4 accent = ImVec4(Clamp01(settings.accent[0]), Clamp01(settings.accent[1]), Clamp01(settings.accent[2]), 1.0f);
+    const ImVec4 accentMuted = ImVec4(accent.x * 0.8f, accent.y * 0.8f, accent.z * 0.8f, 1.0f);
+    const bool lightTheme = settings.mode == 2;
+    const bool darkGray = settings.mode == 1;
 
-    colors[ImGuiCol_FrameBg] = ImVec4(0.18f, 0.18f, 0.2f, 1.0f);
-    colors[ImGuiCol_FrameBgHovered] = ImVec4(0.23f, 0.23f, 0.25f, 1.0f);
-    colors[ImGuiCol_FrameBgActive] = ImVec4(0.26f, 0.26f, 0.28f, 1.0f);
-
-    colors[ImGuiCol_TitleBg] = ImVec4(0.09f, 0.09f, 0.1f, 1.0f);
-    colors[ImGuiCol_TitleBgActive] = ImVec4(0.12f, 0.12f, 0.13f, 1.0f);
-    colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.09f, 0.09f, 0.1f, 1.0f);
-    colors[ImGuiCol_MenuBarBg] = ImVec4(0.09f, 0.09f, 0.1f, 1.0f);
-
-    colors[ImGuiCol_Button] = ImVec4(0.2f, 0.2f, 0.22f, 1.0f);
-    colors[ImGuiCol_ButtonHovered] = ImVec4(0.28f, 0.27f, 0.3f, 1.0f);
-    colors[ImGuiCol_ButtonActive] = ImVec4(0.32f, 0.31f, 0.35f, 1.0f);
-
-    colors[ImGuiCol_Header] = ImVec4(0.2f, 0.2f, 0.22f, 1.0f);
-    colors[ImGuiCol_HeaderHovered] = ImVec4(0.28f, 0.27f, 0.3f, 1.0f);
-    colors[ImGuiCol_HeaderActive] = ImVec4(0.32f, 0.31f, 0.36f, 1.0f);
-
-    colors[ImGuiCol_Tab] = ImVec4(0.16f, 0.16f, 0.18f, 1.0f);
-    colors[ImGuiCol_TabHovered] = ImVec4(0.26f, 0.24f, 0.29f, 1.0f);
-    colors[ImGuiCol_TabActive] = ImVec4(0.23f, 0.22f, 0.27f, 1.0f);
-    colors[ImGuiCol_TabSelectedOverline] = ImVec4(0.23f, 0.22f, 0.27f, 1.0f);
-    colors[ImGuiCol_TabUnfocused] = ImVec4(0.16f, 0.16f, 0.18f, 1.0f);
-    colors[ImGuiCol_TabUnfocusedActive] = ImVec4(0.2f, 0.2f, 0.24f, 1.0f);
-
-    colors[ImGuiCol_Separator] = ImVec4(0.22f, 0.22f, 0.24f, 1.0f);
-    colors[ImGuiCol_SeparatorHovered] = ImVec4(0.3f, 0.29f, 0.33f, 1.0f);
-    colors[ImGuiCol_SeparatorActive] = ImVec4(0.35f, 0.33f, 0.38f, 1.0f);
-
-    colors[ImGuiCol_ScrollbarBg] = ImVec4(0.14f, 0.14f, 0.16f, 1.0f);
-    colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.25f, 0.27f, 0.3f, 1.0f);
-    colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.3f, 0.32f, 0.35f, 1.0f);
-    colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.35f, 0.37f, 0.41f, 1.0f);
+    ImVec4 *colors = style.Colors;
+    if (lightTheme) {
+        colors[ImGuiCol_Text] = ImVec4(0.13f, 0.13f, 0.14f, 1.0f);
+        colors[ImGuiCol_TextDisabled] = ImVec4(0.45f, 0.45f, 0.48f, 1.0f);
+        colors[ImGuiCol_WindowBg] = ImVec4(0.93f, 0.93f, 0.95f, 1.0f);
+        colors[ImGuiCol_ChildBg] = ImVec4(0.96f, 0.96f, 0.98f, 1.0f);
+        colors[ImGuiCol_PopupBg] = ImVec4(0.97f, 0.97f, 0.98f, 1.0f);
+        colors[ImGuiCol_Border] = ImVec4(0.74f, 0.74f, 0.78f, 1.0f);
+        colors[ImGuiCol_FrameBg] = ImVec4(0.86f, 0.86f, 0.9f, 1.0f);
+        colors[ImGuiCol_FrameBgHovered] = ImVec4(0.81f, 0.82f, 0.86f, 1.0f);
+        colors[ImGuiCol_FrameBgActive] = ImVec4(0.76f, 0.77f, 0.82f, 1.0f);
+        colors[ImGuiCol_TitleBg] = ImVec4(0.89f, 0.89f, 0.92f, 1.0f);
+        colors[ImGuiCol_TitleBgActive] = ImVec4(0.86f, 0.86f, 0.9f, 1.0f);
+        colors[ImGuiCol_MenuBarBg] = ImVec4(0.88f, 0.88f, 0.9f, 1.0f);
+        colors[ImGuiCol_Button] = ImVec4(0.82f, 0.83f, 0.87f, 1.0f);
+        colors[ImGuiCol_ButtonHovered] = ImVec4(0.76f, 0.78f, 0.84f, 1.0f);
+        colors[ImGuiCol_ButtonActive] = ImVec4(0.71f, 0.73f, 0.8f, 1.0f);
+        colors[ImGuiCol_Header] = ImVec4(0.82f, 0.83f, 0.87f, 1.0f);
+        colors[ImGuiCol_HeaderHovered] = ImVec4(0.76f, 0.78f, 0.84f, 1.0f);
+        colors[ImGuiCol_HeaderActive] = ImVec4(0.71f, 0.73f, 0.8f, 1.0f);
+        colors[ImGuiCol_Tab] = ImVec4(0.82f, 0.83f, 0.88f, 1.0f);
+        colors[ImGuiCol_TabHovered] = ImVec4(0.77f, 0.79f, 0.85f, 1.0f);
+        colors[ImGuiCol_TabActive] = ImVec4(0.74f, 0.76f, 0.83f, 1.0f);
+        colors[ImGuiCol_ScrollbarBg] = ImVec4(0.9f, 0.9f, 0.93f, 1.0f);
+        colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.68f, 0.69f, 0.75f, 1.0f);
+    } else {
+        const float base = darkGray ? 0.16f : 0.11f;
+        const float frame = darkGray ? 0.22f : 0.18f;
+        colors[ImGuiCol_Text] = ImVec4(0.92f, 0.92f, 0.94f, 1.0f);
+        colors[ImGuiCol_TextDisabled] = ImVec4(0.55f, 0.55f, 0.58f, 1.0f);
+        colors[ImGuiCol_WindowBg] = ImVec4(base, base, base + 0.01f, 1.0f);
+        colors[ImGuiCol_ChildBg] = ImVec4(base + 0.01f, base + 0.01f, base + 0.02f, 1.0f);
+        colors[ImGuiCol_PopupBg] = ImVec4(base + 0.02f, base + 0.02f, base + 0.03f, 1.0f);
+        colors[ImGuiCol_Border] = ImVec4(base + 0.13f, base + 0.13f, base + 0.15f, 1.0f);
+        colors[ImGuiCol_FrameBg] = ImVec4(frame, frame, frame + 0.02f, 1.0f);
+        colors[ImGuiCol_FrameBgHovered] = ImVec4(frame + 0.05f, frame + 0.05f, frame + 0.07f, 1.0f);
+        colors[ImGuiCol_FrameBgActive] = ImVec4(frame + 0.08f, frame + 0.08f, frame + 0.1f, 1.0f);
+        colors[ImGuiCol_TitleBg] = ImVec4(base - 0.02f, base - 0.02f, base - 0.01f, 1.0f);
+        colors[ImGuiCol_TitleBgActive] = ImVec4(base + 0.01f, base + 0.01f, base + 0.02f, 1.0f);
+        colors[ImGuiCol_MenuBarBg] = ImVec4(base - 0.02f, base - 0.02f, base - 0.01f, 1.0f);
+        colors[ImGuiCol_Button] = ImVec4(frame + 0.02f, frame + 0.02f, frame + 0.04f, 1.0f);
+        colors[ImGuiCol_ButtonHovered] = ImVec4(frame + 0.1f, frame + 0.09f, frame + 0.12f, 1.0f);
+        colors[ImGuiCol_ButtonActive] = ImVec4(frame + 0.14f, frame + 0.13f, frame + 0.16f, 1.0f);
+        colors[ImGuiCol_Header] = ImVec4(frame + 0.02f, frame + 0.02f, frame + 0.04f, 1.0f);
+        colors[ImGuiCol_HeaderHovered] = ImVec4(frame + 0.1f, frame + 0.09f, frame + 0.12f, 1.0f);
+        colors[ImGuiCol_HeaderActive] = ImVec4(frame + 0.14f, frame + 0.13f, frame + 0.16f, 1.0f);
+        colors[ImGuiCol_Tab] = ImVec4(frame, frame, frame + 0.02f, 1.0f);
+        colors[ImGuiCol_TabHovered] = ImVec4(frame + 0.08f, frame + 0.08f, frame + 0.11f, 1.0f);
+        colors[ImGuiCol_TabActive] = ImVec4(frame + 0.06f, frame + 0.06f, frame + 0.09f, 1.0f);
+        colors[ImGuiCol_ScrollbarBg] = ImVec4(base + 0.03f, base + 0.03f, base + 0.05f, 1.0f);
+        colors[ImGuiCol_ScrollbarGrab] = ImVec4(frame + 0.07f, frame + 0.08f, frame + 0.11f, 1.0f);
+    }
 
     colors[ImGuiCol_CheckMark] = accent;
     colors[ImGuiCol_SliderGrab] = accentMuted;
     colors[ImGuiCol_SliderGrabActive] = accent;
-    colors[ImGuiCol_ResizeGrip] = ImVec4(0.35f, 0.33f, 0.38f, 0.6f);
-    colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.45f, 0.42f, 0.5f, 0.7f);
+    colors[ImGuiCol_ResizeGrip] = ImVec4(accent.x, accent.y, accent.z, 0.55f);
+    colors[ImGuiCol_ResizeGripHovered] = ImVec4(accent.x, accent.y, accent.z, 0.75f);
     colors[ImGuiCol_ResizeGripActive] = accent;
+    const ImVec4 tabBase = colors[ImGuiCol_Tab];
+    const ImVec4 tabHoverBase = colors[ImGuiCol_TabHovered];
+    const ImVec4 tabSelectedBase = colors[ImGuiCol_TabActive];
+    const ImVec4 tabUnfocusedBase = LerpColor(tabBase, colors[ImGuiCol_TitleBg], 0.35f);
+    const ImVec4 tabUnfocusedSelectedBase = LerpColor(tabSelectedBase, colors[ImGuiCol_TitleBg], 0.25f);
+    const float tabTint = lightTheme ? 0.18f : 0.28f;
+    const float tabHoverTint = lightTheme ? 0.24f : 0.34f;
+    const float tabSelectedTint = lightTheme ? 0.28f : 0.40f;
+    const float tabUnfocusedTint = lightTheme ? 0.12f : 0.18f;
+    const float tabUnfocusedSelectedTint = lightTheme ? 0.17f : 0.26f;
+    const ImVec4 themedTab = LerpColor(tabBase, accent, tabTint);
+    const ImVec4 themedTabHovered = LerpColor(tabHoverBase, accent, tabHoverTint);
+    const ImVec4 themedTabSelected = LerpColor(tabSelectedBase, accent, tabSelectedTint);
+    const ImVec4 themedTabUnfocused = LerpColor(tabUnfocusedBase, accent, tabUnfocusedTint);
+    const ImVec4 themedTabUnfocusedSelected = LerpColor(tabUnfocusedSelectedBase, accent, tabUnfocusedSelectedTint);
+    colors[ImGuiCol_Tab] = themedTab;
+    colors[ImGuiCol_TabHovered] = themedTabHovered;
+    colors[ImGuiCol_TabSelected] = themedTabSelected;
+    colors[ImGuiCol_TabActive] = themedTabSelected;
+    colors[ImGuiCol_TabDimmed] = themedTabUnfocused;
+    colors[ImGuiCol_TabUnfocused] = themedTabUnfocused;
+    colors[ImGuiCol_TabDimmedSelected] = themedTabUnfocusedSelected;
+    colors[ImGuiCol_TabUnfocusedActive] = themedTabUnfocusedSelected;
+    colors[ImGuiCol_TabSelectedOverline] = accent;
+    colors[ImGuiCol_TabDimmedSelectedOverline] = ImVec4(accent.x, accent.y, accent.z, lightTheme ? 0.55f : 0.45f);
     colors[ImGuiCol_NavHighlight] = accent;
     colors[ImGuiCol_DockingPreview] = ImVec4(accent.x, accent.y, accent.z, 0.35f);
-    colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.1f, 0.1f, 0.11f, 1.0f);
-    colors[ImGuiCol_TableHeaderBg] = ImVec4(0.17f, 0.17f, 0.2f, 1.0f);
-    colors[ImGuiCol_TableBorderStrong] = ImVec4(0.22f, 0.22f, 0.24f, 1.0f);
-    colors[ImGuiCol_TableBorderLight] = ImVec4(0.2f, 0.2f, 0.22f, 1.0f);
-    colors[ImGuiCol_TableRowBg] = ImVec4(0.12f, 0.12f, 0.13f, 1.0f);
-    colors[ImGuiCol_TableRowBgAlt] = ImVec4(0.14f, 0.14f, 0.15f, 1.0f);
+    colors[ImGuiCol_TableHeaderBg] = colors[ImGuiCol_Header];
+    colors[ImGuiCol_TableBorderStrong] = colors[ImGuiCol_Border];
+    colors[ImGuiCol_TableBorderLight] = colors[ImGuiCol_Border];
+    colors[ImGuiCol_TableRowBg] = colors[ImGuiCol_ChildBg];
+    colors[ImGuiCol_TableRowBgAlt] = ImVec4(colors[ImGuiCol_ChildBg].x + (lightTheme ? -0.02f : 0.02f),
+                                            colors[ImGuiCol_ChildBg].y + (lightTheme ? -0.02f : 0.02f),
+                                            colors[ImGuiCol_ChildBg].z + (lightTheme ? -0.02f : 0.02f),
+                                            1.0f);
     colors[ImGuiCol_TextSelectedBg] = ImVec4(accent.x, accent.y, accent.z, 0.35f);
     colors[ImGuiCol_DragDropTarget] = ImVec4(accent.x, accent.y, accent.z, 0.9f);
     colors[ImGuiCol_NavWindowingHighlight] = ImVec4(accent.x, accent.y, accent.z, 0.7f);
-    colors[ImGuiCol_NavWindowingDimBg] = ImVec4(0.1f, 0.1f, 0.12f, 0.7f);
+    colors[ImGuiCol_NavWindowingDimBg] = lightTheme ? ImVec4(0.6f, 0.6f, 0.65f, 0.25f) : ImVec4(0.1f, 0.1f, 0.12f, 0.7f);
 }
 
 static std::string FormatTimestamp(double seconds) {
@@ -478,9 +767,11 @@ static void DrawLogsPanel(ImGuiBridge *bridge, bool *isOpen) {
             } else if (entry.level == 3) {
                 color = ImVec4(0.95f, 0.4f, 0.35f, 1.0f);
             }
+            ImGui::PushID(entryIndex);
             ImGui::PushStyleColor(ImGuiCol_Text, color);
             bool clicked = ImGui::Selectable(entry.label.c_str(), false, ImGuiSelectableFlags_SpanAllColumns);
             ImGui::PopStyleColor();
+            ImGui::PopID();
             if (clicked) {
                 ImGui::SetClipboardText(entry.message.c_str());
             }
@@ -503,138 +794,336 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
     if (!EditorUI::BeginModal("Settings", &requestOpen, nullptr, ImGuiWindowFlags_None)) {
         return;
     }
+    static const struct {
+        EditorIcons::Id icon;
+        const char *label;
+    } kCategories[] = {
+        { EditorIcons::Id::Folder, "General" },
+        { EditorIcons::Id::Material, "UI & Theme" },
+        { EditorIcons::Id::Camera, "Viewport" },
+        { EditorIcons::Id::Translate, "Gizmos & Snapping" },
+        { EditorIcons::Id::Mesh, "Rendering" },
+        { EditorIcons::Id::DirectionalLight, "Lighting & Sky / IBL" },
+        { EditorIcons::Id::Warning, "Shadows" },
+        { EditorIcons::Id::Simulate, "Physics" },
+        { EditorIcons::Id::Texture, "Assets & Import" },
+        { EditorIcons::Id::File, "Advanced / Debug" }
+    };
+    bridge->_SettingsCategoryIndex = std::max(0, std::min(bridge->_SettingsCategoryIndex, static_cast<int>(IM_ARRAYSIZE(kCategories) - 1)));
 
-    if (ImGui::BeginTabBar("SettingsTabs")) {
-        if (ImGui::BeginTabItem("Renderer")) {
-            ImGuiRendererSettingsDraw(bridge->_context);
-            ImGui::EndTabItem();
+    auto Info = [&](const char *text) {
+        EditorUI::InfoIconTooltip(text, 420.0f);
+    };
+
+    const float footerHeight = 46.0f;
+    ImVec2 fullAvail = ImGui::GetContentRegionAvail();
+    ImVec2 contentSize(fullAvail.x, std::max(220.0f, fullAvail.y - footerHeight));
+    ImGui::BeginChild("SettingsContent", contentSize, false);
+    const float sidebarWidth = 220.0f;
+    ImGui::BeginChild("SettingsSidebar", ImVec2(sidebarWidth, 0.0f), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    for (int i = 0; i < IM_ARRAYSIZE(kCategories); ++i) {
+        const bool selected = bridge->_SettingsCategoryIndex == i;
+        std::string id = "settings_category_" + std::to_string(i);
+        if (EditorUI::IconSelectable(id.c_str(), EditorIcons::Glyph(kCategories[i].icon), kCategories[i].label, selected)) {
+            bridge->_SettingsCategoryIndex = i;
         }
-
-        if (ImGui::BeginTabItem("Physics")) {
-            void *engineContext = MCEContextGetEngineContext(bridge->_context);
-            ImGui::Spacing();
-            if (EditorUI::BeginPropertyTable("PhysicsSettingsTable")) {
-                bool physicsEnabled = MCEPhysicsGetEnabled(engineContext) != 0;
-                if (EditorUI::PropertyBool("Enable Physics", &physicsEnabled)) {
-                    MCEPhysicsSetEnabled(engineContext, physicsEnabled ? 1 : 0);
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Toggles physics simulation while playing.");
-                }
-
-                bool deterministic = MCEPhysicsGetDeterministic(engineContext) != 0;
-                if (EditorUI::PropertyBool("Deterministic Mode (Single Thread)", &deterministic)) {
-                    MCEPhysicsSetDeterministic(engineContext, deterministic ? 1 : 0);
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Ensures stable simulation order by running single-threaded (slightly slower).");
-                }
-
-                float gx = 0.0f, gy = -9.81f, gz = 0.0f;
-                MCEPhysicsGetGravity(engineContext, &gx, &gy, &gz);
-                float gravity[3] = { gx, gy, gz };
-                if (EditorUI::PropertyVec3("Gravity", gravity, 0.0f, 0.1f, 0.0f, 0.0f, "%.2f", false, true)) {
-                    MCEPhysicsSetGravity(engineContext, gravity[0], gravity[1], gravity[2]);
-                }
-
-                float fixedDelta = MCEPhysicsGetFixedDeltaTime(engineContext);
-                if (EditorUI::PropertyFloat("Fixed Dt (s)", &fixedDelta, 0.0001f, 0.001f, 0.1f, "%.6f", true, true, 1.0f / 60.0f)) {
-                    MCEPhysicsSetFixedDeltaTime(engineContext, fixedDelta);
-                }
-
-                int maxSubsteps = static_cast<int>(MCEPhysicsGetMaxSubsteps(engineContext));
-                if (EditorUI::PropertyInt("Max Substeps", &maxSubsteps, 1, 4)) {
-                    MCEPhysicsSetMaxSubsteps(engineContext, static_cast<int32_t>(maxSubsteps));
-                }
-
-                float defaultFriction = MCEPhysicsGetDefaultFriction(engineContext);
-                if (EditorUI::PropertyFloat("Default Friction", &defaultFriction, 0.01f, 0.0f, 1.0f, "%.2f", true, true, 0.6f)) {
-                    MCEPhysicsSetDefaultFriction(engineContext, defaultFriction);
-                }
-                float defaultRestitution = MCEPhysicsGetDefaultRestitution(engineContext);
-                if (EditorUI::PropertyFloat("Default Restitution", &defaultRestitution, 0.01f, 0.0f, 1.0f, "%.2f", true, true, 0.0f)) {
-                    MCEPhysicsSetDefaultRestitution(engineContext, defaultRestitution);
-                }
-                float defaultAngularDamping = MCEPhysicsGetDefaultAngularDamping(engineContext);
-                if (EditorUI::PropertyFloat("Default Angular Damping", &defaultAngularDamping, 0.01f, 0.0f, 5.0f, "%.2f", true, true, 0.2f)) {
-                    MCEPhysicsSetDefaultAngularDamping(engineContext, defaultAngularDamping);
-                }
-
-                const char *qualityItems[] = { "Low", "Medium", "High" };
-                int qualityIndex = static_cast<int>(MCEPhysicsGetQualityPreset(engineContext));
-                if (EditorUI::PropertyCombo("Quality Preset", &qualityIndex, qualityItems, IM_ARRAYSIZE(qualityItems))) {
-                    MCEPhysicsSetQualityPreset(engineContext, static_cast<uint32_t>(qualityIndex));
-                }
-
-                int substeps = static_cast<int>(MCEPhysicsGetSolverIterations(engineContext));
-                if (EditorUI::PropertyInt("Substeps (Collision Steps)", &substeps, 1, 8)) {
-                    MCEPhysicsSetSolverIterations(engineContext, static_cast<uint32_t>(substeps));
-                }
-
-                bool ccdEnabled = MCEPhysicsGetCCDEnabled(engineContext) != 0;
-                if (EditorUI::PropertyBool("CCD", &ccdEnabled)) {
-                    MCEPhysicsSetCCDEnabled(engineContext, ccdEnabled ? 1 : 0);
-                }
-
-                bool resolveInitial = MCEPhysicsGetResolveInitialOverlap(engineContext) != 0;
-                if (EditorUI::PropertyBool("Resolve Initial Overlap", &resolveInitial)) {
-                    MCEPhysicsSetResolveInitialOverlap(engineContext, resolveInitial ? 1 : 0);
-                }
-
-                bool debugDrawEnabled = MCEPhysicsGetDebugDrawEnabled(engineContext) != 0;
-                if (EditorUI::PropertyBool("Debug Draw", &debugDrawEnabled)) {
-                    MCEPhysicsSetDebugDrawEnabled(engineContext, debugDrawEnabled ? 1 : 0);
-                }
-                if (debugDrawEnabled) {
-                    bool debugDrawPlay = MCEPhysicsGetDebugDrawInPlay(engineContext) != 0;
-                    if (EditorUI::PropertyBool("Debug Draw During Play", &debugDrawPlay)) {
-                        MCEPhysicsSetDebugDrawInPlay(engineContext, debugDrawPlay ? 1 : 0);
-                    }
-
-                    bool showColliders = MCEPhysicsGetShowColliders(engineContext) != 0;
-                    if (EditorUI::PropertyBool("Draw Colliders", &showColliders)) {
-                        MCEPhysicsSetShowColliders(engineContext, showColliders ? 1 : 0);
-                    }
-
-                    bool showCOMAxes = MCEPhysicsGetShowCOMAxes(engineContext) != 0;
-                    if (EditorUI::PropertyBool("Draw COM Axes", &showCOMAxes)) {
-                        MCEPhysicsSetShowCOMAxes(engineContext, showCOMAxes ? 1 : 0);
-                    }
-
-                    bool showContacts = MCEPhysicsGetShowContacts(engineContext) != 0;
-                    if (EditorUI::PropertyBool("Draw Contacts", &showContacts)) {
-                        MCEPhysicsSetShowContacts(engineContext, showContacts ? 1 : 0);
-                    }
-
-                    bool showSleeping = MCEPhysicsGetShowSleeping(engineContext) != 0;
-                    if (EditorUI::PropertyBool("Draw Sleeping Bodies", &showSleeping)) {
-                        MCEPhysicsSetShowSleeping(engineContext, showSleeping ? 1 : 0);
-                    }
-
-                    bool showOverlaps = MCEPhysicsGetShowOverlaps(engineContext) != 0;
-                    if (EditorUI::PropertyBool("Draw Overlaps", &showOverlaps)) {
-                        MCEPhysicsSetShowOverlaps(engineContext, showOverlaps ? 1 : 0);
-                    }
-                }
-
-                EditorUI::EndPropertyTable();
-            }
-            if (ImGui::CollapsingHeader("Debug")) {
-                if (ImGui::Button("Raycast From Camera")) {
-                    MCEEditorDebugPhysicsRaycastFromCamera(bridge->_context, 50.0f);
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Casts a ray from the editor camera forward and draws a hit point + normal for one frame.");
-                }
-            }
-            ImGui::EndTabItem();
-        }
-
-        ImGui::EndTabBar();
     }
+    ImGui::EndChild();
+
+    ImGui::SameLine();
+    ImGui::BeginChild("SettingsPage", ImVec2(0.0f, 0.0f), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    const int category = bridge->_SettingsCategoryIndex;
+    void *engineContext = MCEContextGetEngineContext(bridge->_context);
+
+    if (category == 0) {
+        EditorUI::SectionHeader("General (Editor)");
+        if (EditorUI::BeginPropertyTable("SettingsGeneralTable")) {
+            bool logsVisible = bridge->_ShowLogsPanel;
+            EditorUI::SetNextPropertyInfoTooltip("Shows the Logs panel.\nUnits: N/A.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Show Logs Panel", &logsVisible)) {
+                bridge->_ShowLogsPanel = logsVisible;
+                SetPanelVisibility(bridge, "Logs", logsVisible);
+            }
+
+            bool profilerVisible = bridge->_ShowProfilingPanel;
+            EditorUI::SetNextPropertyInfoTooltip("Shows the Profiling panel.\nUnits: N/A.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Show Profiling Panel", &profilerVisible)) {
+                bridge->_ShowProfilingPanel = profilerVisible;
+                SetPanelVisibility(bridge, "Profiling", profilerVisible);
+            }
+            EditorUI::EndPropertyTable();
+        }
+        ImGui::Spacing();
+        ImGui::TextWrapped("Settings are stored per-project in editor state files unless stated otherwise.");
+    } else if (category == 1) {
+        EditorUI::SectionHeader("UI & Theme");
+        if (EditorUI::BeginPropertyTable("SettingsThemeTable")) {
+            const char *themeItems[] = { "Dark", "Dark Gray", "Light" };
+            int mode = gThemeSettings.mode;
+            EditorUI::SetNextPropertyInfoTooltip("Chooses the overall editor palette.\nUnits: N/A.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyCombo("Theme Mode", &mode, themeItems, IM_ARRAYSIZE(themeItems))) {
+                gThemeSettings.mode = mode;
+                MCEEditorSetThemeMode(bridge->_context, static_cast<int32_t>(mode));
+            }
+
+            EditorUI::SetNextPropertyInfoTooltip("Single accent used for selections, focus, frustum lines, icon highlights, and outline.\nUnits: RGB.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyColor3("Accent Color", gThemeSettings.accent)) {
+                MCEEditorSetThemeAccent(bridge->_context, gThemeSettings.accent[0], gThemeSettings.accent[1], gThemeSettings.accent[2]);
+            }
+
+            float uiScale = gThemeSettings.uiScale;
+            EditorUI::SetNextPropertyInfoTooltip("Global UI scale.\nUnits: scale factor.\nPerformance: minimal.\nPersistence: Editor.");
+            if (EditorUI::PropertyFloat("UI Scale", &uiScale, 0.01f, 0.75f, 2.0f, "%.2f", true, false)) {
+                gThemeSettings.uiScale = uiScale;
+                MCEEditorSetThemeUIScale(bridge->_context, uiScale);
+            }
+
+            bool rounded = gThemeSettings.roundedUI;
+            EditorUI::SetNextPropertyInfoTooltip("Enables rounded corners across editor chrome.\nUnits: boolean.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Rounded UI", &rounded)) {
+                gThemeSettings.roundedUI = rounded;
+                MCEEditorSetThemeRoundedUI(bridge->_context, rounded ? 1 : 0);
+            }
+
+            float rounding = gThemeSettings.cornerRounding;
+            EditorUI::SetNextPropertyInfoTooltip("Corner radius when Rounded UI is enabled.\nUnits: pixels.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyFloat("Corner Radius (px)", &rounding, 0.1f, 0.0f, 16.0f, "%.1f", true, false)) {
+                gThemeSettings.cornerRounding = rounding;
+                MCEEditorSetThemeCornerRounding(bridge->_context, rounding);
+            }
+
+            const char *spacingItems[] = { "Compact", "Comfortable", "Spacious" };
+            int spacing = gThemeSettings.spacingPreset;
+            EditorUI::SetNextPropertyInfoTooltip("Layout density preset.\nUnits: preset.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyCombo("Spacing Preset", &spacing, spacingItems, IM_ARRAYSIZE(spacingItems))) {
+                gThemeSettings.spacingPreset = spacing;
+                MCEEditorSetThemeSpacingPreset(bridge->_context, spacing);
+            }
+            EditorUI::EndPropertyTable();
+        }
+        ImGui::Spacing();
+        ImGui::TextWrapped("Theme settings are saved per-editor project state and applied every frame.");
+    } else if (category == 2) {
+        EditorUI::SectionHeader("Viewport");
+        if (EditorUI::BeginPropertyTable("SettingsViewportTable")) {
+            bool showIcons = MCEEditorGetViewportShowWorldIcons(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Show camera/light icons in world space (edit mode).\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Show World Icons", &showIcons)) {
+                MCEEditorSetViewportShowWorldIcons(bridge->_context, showIcons ? 1 : 0);
+            }
+
+            float baseSize = MCEEditorGetViewportWorldIconBaseSize(bridge->_context);
+            EditorUI::SetNextPropertyInfoTooltip("Base icon size before distance attenuation.\nUnits: pixels.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyFloat("Base Icon Size (px)", &baseSize, 0.25f, 8.0f, 48.0f, "%.1f", true, false)) {
+                MCEEditorSetViewportWorldIconBaseSize(bridge->_context, baseSize);
+            }
+
+            float distanceScale = MCEEditorGetViewportWorldIconDistanceScale(bridge->_context);
+            EditorUI::SetNextPropertyInfoTooltip("Distance attenuation scale for world icons.\nUnits: scalar.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyFloat("Distance Scale", &distanceScale, 0.01f, 0.1f, 2.0f, "%.2f", true, false)) {
+                MCEEditorSetViewportWorldIconDistanceScale(bridge->_context, distanceScale);
+            }
+
+            float minSize = MCEEditorGetViewportWorldIconMinSize(bridge->_context);
+            EditorUI::SetNextPropertyInfoTooltip("Minimum icon size clamp.\nUnits: pixels.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyFloat("Min Icon Size (px)", &minSize, 0.25f, 4.0f, 48.0f, "%.1f", true, false)) {
+                MCEEditorSetViewportWorldIconMinSize(bridge->_context, minSize);
+            }
+
+            float maxSize = MCEEditorGetViewportWorldIconMaxSize(bridge->_context);
+            EditorUI::SetNextPropertyInfoTooltip("Maximum icon size clamp.\nUnits: pixels.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyFloat("Max Icon Size (px)", &maxSize, 0.25f, 8.0f, 64.0f, "%.1f", true, false)) {
+                MCEEditorSetViewportWorldIconMaxSize(bridge->_context, maxSize);
+            }
+
+            bool frustum = MCEEditorGetViewportShowSelectedCameraFrustum(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Show selected camera frustum in edit mode.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Camera Frustums", &frustum)) {
+                MCEEditorSetViewportShowSelectedCameraFrustum(bridge->_context, frustum ? 1 : 0);
+            }
+
+            bool previewEnabled = MCEEditorGetViewportPreviewEnabled(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Enable camera preview overlay in viewport.\nUnits: boolean.\nPerformance: moderate extra pass.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Enable Preview", &previewEnabled)) {
+                MCEEditorSetViewportPreviewEnabled(bridge->_context, previewEnabled ? 1 : 0);
+            }
+
+            float previewSize = MCEEditorGetViewportPreviewSize(bridge->_context);
+            EditorUI::SetNextPropertyInfoTooltip("Preview size as viewport fraction.\nUnits: normalized fraction.\nPerformance: moderate extra pass.\nPersistence: Editor.");
+            if (EditorUI::PropertyFloat("Preview Size", &previewSize, 0.01f, 0.15f, 0.5f, "%.2f", true, false)) {
+                MCEEditorSetViewportPreviewSize(bridge->_context, previewSize);
+            }
+
+            const char *previewPosItems[] = { "Top-left", "Top-right", "Bottom-left", "Bottom-right" };
+            int previewPos = static_cast<int>(MCEEditorGetViewportPreviewPosition(bridge->_context));
+            EditorUI::SetNextPropertyInfoTooltip("Preview anchor location.\nUnits: preset.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyCombo("Preview Position", &previewPos, previewPosItems, IM_ARRAYSIZE(previewPosItems))) {
+                MCEEditorSetViewportPreviewPosition(bridge->_context, previewPos);
+            }
+            EditorUI::EndPropertyTable();
+        }
+    } else if (category == 3) {
+        EditorUI::SectionHeader("Gizmos & Snapping");
+        if (EditorUI::BeginPropertyTable("SettingsGizmoTable")) {
+            bool snapEnabled = MCEEditorGetViewportSnapEnabled(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Default snap toggle for transform gizmos.\nUnits: boolean.\nPerformance: negligible.\nPersistence: Project.");
+            if (EditorUI::PropertyBool("Snap Enabled", &snapEnabled)) {
+                MCEEditorSetViewportSnapEnabled(bridge->_context, snapEnabled ? 1 : 0);
+            }
+            EditorUI::EndPropertyTable();
+        }
+    } else if (category == 4) {
+        EditorUI::SectionHeader("Rendering");
+        ImGuiRendererSettingsCoreDraw(bridge->_context);
+    } else if (category == 5) {
+        EditorUI::SectionHeader("Lighting & Sky / IBL");
+        ImGuiRendererSettingsLightingDraw(bridge->_context);
+        ImGui::Spacing();
+        ImGui::TextWrapped("Directional and spot light direction is transform-driven (local -Z forward).\nSky sun ray direction remains consistent with this convention.");
+    } else if (category == 6) {
+        EditorUI::SectionHeader("Shadows");
+        ImGuiRendererSettingsShadowsDraw(bridge->_context);
+    } else if (category == 7) {
+        EditorUI::SectionHeader("Physics");
+        if (EditorUI::BeginPropertyTable("PhysicsSettingsTable")) {
+            bool physicsEnabled = MCEPhysicsGetEnabled(engineContext) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Enable physics simulation.\nUnits: boolean.\nPerformance: medium-to-high depending on scene.\nPersistence: Project.");
+            if (EditorUI::PropertyBool("Enable Physics", &physicsEnabled)) {
+                MCEPhysicsSetEnabled(engineContext, physicsEnabled ? 1 : 0);
+            }
+
+            bool deterministic = MCEPhysicsGetDeterministic(engineContext) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Single-thread deterministic stepping.\nUnits: boolean.\nPerformance: can reduce throughput.\nPersistence: Project.");
+            if (EditorUI::PropertyBool("Deterministic Mode", &deterministic)) {
+                MCEPhysicsSetDeterministic(engineContext, deterministic ? 1 : 0);
+            }
+            EditorUI::EndPropertyTable();
+        }
+        EditorUI::StandardSpacing();
+        EditorUI::SectionHeader("Advanced");
+        if (EditorUI::BeginPropertyTable("PhysicsAdvancedSettingsTable")) {
+            float gx = 0.0f, gy = -9.81f, gz = 0.0f;
+            MCEPhysicsGetGravity(engineContext, &gx, &gy, &gz);
+            float gravity[3] = { gx, gy, gz };
+            EditorUI::SetNextPropertyInfoTooltip("World gravity vector.\nUnits: m/s^2.\nPerformance: scene-dependent.\nPersistence: Project.");
+            if (EditorUI::PropertyVec3("Gravity (m/s^2)", gravity, 0.0f, 0.1f, 0.0f, 0.0f, "%.2f", false, true)) {
+                MCEPhysicsSetGravity(engineContext, gravity[0], gravity[1], gravity[2]);
+            }
+
+            float fixedDelta = MCEPhysicsGetFixedDeltaTime(engineContext);
+            EditorUI::SetNextPropertyInfoTooltip("Fixed physics step.\nUnits: seconds.\nPerformance: lower values increase CPU cost.\nPersistence: Project.");
+            if (EditorUI::PropertyFloat("Fixed Dt (s)", &fixedDelta, 0.0001f, 0.001f, 0.1f, "%.6f", true, true, 1.0f / 60.0f)) {
+                MCEPhysicsSetFixedDeltaTime(engineContext, fixedDelta);
+            }
+
+            int maxSubsteps = static_cast<int>(MCEPhysicsGetMaxSubsteps(engineContext));
+            EditorUI::SetNextPropertyInfoTooltip("Maximum simulation catch-up steps.\nUnits: count.\nPerformance: higher values increase CPU cost.\nPersistence: Project.");
+            if (EditorUI::PropertyInt("Max Substeps", &maxSubsteps, 1, 16)) {
+                MCEPhysicsSetMaxSubsteps(engineContext, static_cast<int32_t>(maxSubsteps));
+            }
+
+            int maxBodies = static_cast<int>(MCEPhysicsGetMaxBodies(engineContext));
+            EditorUI::SetNextPropertyInfoTooltip("Maximum number of physics bodies in the world.\nUnits: count.\nPerformance/Memory: higher values allocate more.\nPersistence: Project.");
+            if (EditorUI::PropertyInt("Max Bodies", &maxBodies, 1024, 131072)) {
+                MCEPhysicsSetMaxBodies(engineContext, static_cast<uint32_t>(maxBodies));
+            }
+
+            int maxBodyPairs = static_cast<int>(MCEPhysicsGetMaxBodyPairs(engineContext));
+            EditorUI::SetNextPropertyInfoTooltip("Maximum broad-phase body pairs.\nUnits: count.\nPerformance/Memory: higher values allocate more.\nPersistence: Project.");
+            if (EditorUI::PropertyInt("Max Body Pairs", &maxBodyPairs, 1024, 131072)) {
+                MCEPhysicsSetMaxBodyPairs(engineContext, static_cast<uint32_t>(maxBodyPairs));
+            }
+
+            int maxContactConstraints = static_cast<int>(MCEPhysicsGetMaxContactConstraints(engineContext));
+            EditorUI::SetNextPropertyInfoTooltip("Maximum contact constraints.\nUnits: count.\nPerformance/Memory: higher values allocate more.\nPersistence: Project.");
+            if (EditorUI::PropertyInt("Max Contact Constraints", &maxContactConstraints, 1024, 131072)) {
+                MCEPhysicsSetMaxContactConstraints(engineContext, static_cast<uint32_t>(maxContactConstraints));
+            }
+            EditorUI::EndPropertyTable();
+        }
+    } else if (category == 8) {
+        EditorUI::SectionHeader("Assets & Import");
+        ImGui::TextWrapped("Import defaults are configured per import operation. Reimport keeps handles stable.");
+        ImGui::Spacing();
+        ImGui::TextWrapped("Asset import and registry settings are saved per-project.");
+    } else {
+        EditorUI::SectionHeader("Advanced / Debug");
+        if (EditorUI::BeginPropertyTable("SettingsDebugTable")) {
+            bool gridEnabled = MCEEditorGetDebugGridEnabled(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Viewport grid visibility.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Grid", &gridEnabled)) {
+                MCEEditorSetDebugGridEnabled(bridge->_context, gridEnabled ? 1 : 0);
+            }
+
+            bool debugDrawEnabled = MCEEditorGetDebugPhysicsEnabled(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Physics debug wireframe overlays.\nUnits: boolean.\nPerformance: medium on heavy scenes.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Physics Debug Draw", &debugDrawEnabled)) {
+                MCEEditorSetDebugPhysicsEnabled(bridge->_context, debugDrawEnabled ? 1 : 0);
+            }
+
+            bool iconsEnabled = MCEEditorGetViewportShowWorldIcons(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("World-space camera/light icons.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("World Icons", &iconsEnabled)) {
+                MCEEditorSetViewportShowWorldIcons(bridge->_context, iconsEnabled ? 1 : 0);
+            }
+
+            bool outlineEnabled = MCEEditorGetDebugOutlineEnabled(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Selected entity outline visibility.\nUnits: boolean.\nPerformance: low-to-medium.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Selection Outline", &outlineEnabled)) {
+                MCEEditorSetDebugOutlineEnabled(bridge->_context, outlineEnabled ? 1 : 0);
+            }
+
+            bool frustumEnabled = MCEEditorGetViewportShowSelectedCameraFrustum(bridge->_context) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Selected camera frustum visualization.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
+            if (EditorUI::PropertyBool("Camera Frustum", &frustumEnabled)) {
+                MCEEditorSetViewportShowSelectedCameraFrustum(bridge->_context, frustumEnabled ? 1 : 0);
+            }
+            EditorUI::EndPropertyTable();
+        }
+        EditorUI::StandardSpacing();
+        EditorUI::SectionHeader("Debug Tools");
+        if (ImGui::Button("Raycast From Camera")) {
+            MCEEditorDebugPhysicsRaycastFromCamera(bridge->_context, 50.0f);
+        }
+        ImGui::SameLine();
+        Info("Casts a ray from the editor camera and draws one-frame hit debug lines.\nUnits: meters.\nPerformance: negligible.\nPersistence: N/A.");
+    }
+    ImGui::EndChild();
+    ImGui::EndChild();
 
     ImGui::Separator();
-    if (ImGui::Button("Close")) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextDisabled("Saved per-project/editor as noted.");
+    ImGui::SameLine();
+    const float closeWidth = 100.0f;
+    const float resetWidth = 150.0f;
+    const float rightEdge = ImGui::GetContentRegionAvail().x;
+    ImGui::SetCursorPosX(std::max(0.0f, rightEdge - closeWidth - resetWidth - ImGui::GetStyle().ItemSpacing.x));
+    if (ImGui::Button("Reset to Defaults", ImVec2(resetWidth, 0.0f))) {
+        gThemeSettings = EditorThemeSettings();
+        MCEEditorSetThemeMode(bridge->_context, gThemeSettings.mode);
+        MCEEditorSetThemeAccent(bridge->_context, gThemeSettings.accent[0], gThemeSettings.accent[1], gThemeSettings.accent[2]);
+        MCEEditorSetThemeUIScale(bridge->_context, gThemeSettings.uiScale);
+        MCEEditorSetThemeRoundedUI(bridge->_context, gThemeSettings.roundedUI ? 1 : 0);
+        MCEEditorSetThemeCornerRounding(bridge->_context, gThemeSettings.cornerRounding);
+        MCEEditorSetThemeSpacingPreset(bridge->_context, gThemeSettings.spacingPreset);
+        MCEEditorSetViewportShowWorldIcons(bridge->_context, 1);
+        MCEEditorSetViewportWorldIconBaseSize(bridge->_context, 18.0f);
+        MCEEditorSetViewportWorldIconDistanceScale(bridge->_context, 0.75f);
+        MCEEditorSetViewportWorldIconMinSize(bridge->_context, 11.0f);
+        MCEEditorSetViewportWorldIconMaxSize(bridge->_context, 28.0f);
+        MCEEditorSetViewportShowSelectedCameraFrustum(bridge->_context, 1);
+        MCEEditorSetViewportPreviewEnabled(bridge->_context, 1);
+        MCEEditorSetViewportPreviewSize(bridge->_context, 0.28f);
+        MCEEditorSetViewportPreviewPosition(bridge->_context, 3);
+        MCEEditorSetDebugOutlineEnabled(bridge->_context, 1);
+        MCEEditorSetDebugGridEnabled(bridge->_context, 1);
+        MCEEditorSetDebugPhysicsEnabled(bridge->_context, 0);
+    }
+    ImGui::SameLine();
+    Info("Reset editor theme and debug-visual toggles to defaults.\nPersistence: Editor.");
+    ImGui::SameLine();
+    if (ImGui::Button("Close", ImVec2(closeWidth, 0.0f))) {
         ImGui::CloseCurrentPopup();
     }
 
@@ -665,15 +1154,6 @@ static void DrawImportModal(void *context) {
     ImGui::Separator();
 
     if (typeCode == 0) {
-        bool srgb = MCEImportGetOptionBool(context, "srgb", 1) != 0;
-        if (ImGui::Checkbox("sRGB", &srgb)) {
-            MCEImportSetOptionBool(context, "srgb", srgb ? 1 : 0);
-        }
-        bool mipmaps = MCEImportGetOptionBool(context, "mipmaps", 1) != 0;
-        if (ImGui::Checkbox("Generate Mipmaps", &mipmaps)) {
-            MCEImportSetOptionBool(context, "mipmaps", mipmaps ? 1 : 0);
-        }
-
         const char *semanticOptions[] = {
             "Auto", "Albedo", "Normal", "Roughness", "Metallic", "Occlusion", "Height", "Emissive", "ORM"
         };
@@ -690,6 +1170,33 @@ static void DrawImportModal(void *context) {
             else if (strcmp(semanticValue, "emissive") == 0) semanticIndex = 7;
             else if (strcmp(semanticValue, "orm") == 0) semanticIndex = 8;
         }
+        bool semanticIsData = semanticIndex == 2
+            || semanticIndex == 3
+            || semanticIndex == 4
+            || semanticIndex == 5
+            || semanticIndex == 6
+            || semanticIndex == 8;
+        bool semanticIsColor = semanticIndex == 1 || semanticIndex == 7;
+        bool srgb = MCEImportGetOptionBool(context, "srgb", semanticIsColor ? 1 : 0) != 0;
+        if (semanticIsData) {
+            srgb = false;
+            MCEImportSetOptionBool(context, "srgb", 0);
+        }
+        if (semanticIsData) {
+            ImGui::BeginDisabled();
+        }
+        if (ImGui::Checkbox("sRGB", &srgb)) {
+            MCEImportSetOptionBool(context, "srgb", srgb ? 1 : 0);
+        }
+        if (semanticIsData) {
+            ImGui::EndDisabled();
+            ImGui::TextDisabled("Data textures are always linear.");
+        }
+        bool mipmaps = MCEImportGetOptionBool(context, "mipmaps", 1) != 0;
+        if (ImGui::Checkbox("Generate Mipmaps", &mipmaps)) {
+            MCEImportSetOptionBool(context, "mipmaps", mipmaps ? 1 : 0);
+        }
+
         if (ImGui::BeginCombo("Semantic", semanticOptions[semanticIndex])) {
             for (int i = 0; i < 9; ++i) {
                 bool selected = (i == semanticIndex);
@@ -708,6 +1215,13 @@ static void DrawImportModal(void *context) {
                         default: value = ""; break;
                     }
                     MCEImportSetOptionString(context, "semantic", value);
+                    const bool selectedData = i == 2 || i == 3 || i == 4 || i == 5 || i == 6 || i == 8;
+                    const bool selectedColor = i == 1 || i == 7;
+                    if (selectedData) {
+                        MCEImportSetOptionBool(context, "srgb", 0);
+                    } else if (selectedColor) {
+                        MCEImportSetOptionBool(context, "srgb", 1);
+                    }
                 }
                 if (selected) {
                     ImGui::SetItemDefaultFocus();
@@ -716,7 +1230,13 @@ static void DrawImportModal(void *context) {
             ImGui::EndCombo();
         }
     } else if (typeCode == 3) {
-        ImGui::TextUnformatted("No environment import options yet.");
+        bool srgb = false;
+        ImGui::BeginDisabled();
+        ImGui::Checkbox("sRGB", &srgb);
+        ImGui::EndDisabled();
+        ImGui::TextDisabled("Environment maps are always imported as linear HDR.");
+        MCEImportSetOptionBool(context, "srgb", 0);
+        MCEImportSetOptionString(context, "semantic", "environment");
     } else if (typeCode == 1) {
         int32_t meshCount = MCEImportGetMeshCount(context);
         int32_t submeshCount = MCEImportGetSubmeshCount(context);
@@ -1098,7 +1618,8 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
     io.ConfigInputTrickleEventQueue = false;
 
     ImGui::StyleColorsDark();
-    ApplyEditorTheme();
+    LoadThemeSettingsIfNeeded(_context);
+    ApplyEditorTheme(gThemeSettings);
     ImGuiStyle& style = ImGui::GetStyle();
     if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
         style.Colors[ImGuiCol_WindowBg].w = 1.0f;
@@ -1116,16 +1637,47 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
         "/System/Library/Fonts/SFNSDisplay.ttf",
         "/System/Library/Fonts/SFNSRounded.ttf"
     };
+    bool loadedBaseFont = false;
     for (const char *path : fontCandidates) {
         NSString *fontPath = [NSString stringWithUTF8String:path];
         if ([[NSFileManager defaultManager] fileExistsAtPath:fontPath]) {
             ImFont *font = io.Fonts->AddFontFromFileTTF(path, 14.5f);
             if (font != nullptr) {
                 io.FontDefault = font;
+                loadedBaseFont = true;
                 break;
             }
         }
     }
+    if (!loadedBaseFont) {
+        io.Fonts->AddFontDefault();
+    }
+
+    // Merge Font Awesome Free 7 fonts into the default atlas.
+    static const ImWchar iconRanges[] = { 0x0020, 0x00FF, 0xF000, 0xF8FF, 0 };
+    ImFontConfig iconConfig {};
+    iconConfig.MergeMode = true;
+    iconConfig.PixelSnapH = true;
+    iconConfig.OversampleH = 1;
+    iconConfig.OversampleV = 1;
+
+    bool loadedAnyIconFont = false;
+    const std::string solidFontPath = ResolveEditorIconFontPath("FA7Free-Solid-900.otf");
+    if (!solidFontPath.empty()) {
+        loadedAnyIconFont = io.Fonts->AddFontFromFileTTF(solidFontPath.c_str(), 13.0f, &iconConfig, iconRanges) != nullptr || loadedAnyIconFont;
+    }
+    const std::string regularFontPath = ResolveEditorIconFontPath("FA7Free-Regular-400.otf");
+    if (!regularFontPath.empty()) {
+        loadedAnyIconFont = io.Fonts->AddFontFromFileTTF(regularFontPath.c_str(), 13.0f, &iconConfig, iconRanges) != nullptr || loadedAnyIconFont;
+    }
+    if (!loadedAnyIconFont) {
+        NSLog(@"[ImGuiBridge] Font Awesome fonts not found. Icons will render as fallback glyphs.");
+    }
+
+    io.Fonts->Build();
+    LogFontAtlasSummary(io);
+    ValidateEditorIconsAgainstMetadata();
+    ValidateEditorIconGlyphs(io.FontDefault);
 }
 
 - (void)newFrameWithView:(MTKView *)view deltaTime:(float)dt {
@@ -1137,6 +1689,13 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
 
     ImGui_ImplMetal_NewFrame(view.currentRenderPassDescriptor);
     ImGui_ImplOSX_NewFrame(view);
+    LoadThemeSettingsIfNeeded(_context);
+    ApplyEditorTheme(gThemeSettings);
+    void *engineContext = MCEContextGetEngineContext(_context);
+    MCERendererSetOutlineColor(engineContext, gThemeSettings.accent[0], gThemeSettings.accent[1], gThemeSettings.accent[2]);
+    MCERendererSetGridEnabled(engineContext, MCEEditorGetDebugGridEnabled(_context));
+    MCERendererSetOutlineEnabled(engineContext, MCEEditorGetDebugOutlineEnabled(_context));
+    MCEPhysicsSetDebugDrawEnabled(engineContext, MCEEditorGetDebugPhysicsEnabled(_context));
     ImGui::NewFrame();
 }
 
@@ -1209,7 +1768,8 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
                 MCEProjectOpen(_context);
             }
             bool hasProject = MCEProjectHasOpen(_context) != 0;
-            if (ImGui::MenuItem("Save", nullptr, false, hasProject)) {
+            bool sceneDirty = MCESceneIsDirty(_context) != 0;
+            if (ImGui::MenuItem("Save", nullptr, false, hasProject && sceneDirty)) {
                 MCEProjectSaveAll(_context);
             }
             int32_t recentCount = MCEProjectRecentCount(_context);
@@ -1250,6 +1810,13 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
         }
         if (ImGui::MenuItem("Settings...")) {
             _ShowSettingsModal = true;
+        }
+        ImGui::SameLine();
+        ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - 140.0f);
+        if (MCESceneIsDirty(_context) != 0) {
+            ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Scene: Modified");
+        } else {
+            ImGui::TextDisabled("Scene: Saved");
         }
         ImGui::EndMenuBar();
     }
@@ -1492,6 +2059,9 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
 - (void)setSelectedEntityId:(NSString *)value {
     const char *utf8 = value != nil ? value.UTF8String : "";
     if (!utf8) { utf8 = ""; }
+    if (strncmp(_SelectedEntityId, utf8, sizeof(_SelectedEntityId)) == 0) {
+        return;
+    }
     strncpy(_SelectedEntityId, utf8, sizeof(_SelectedEntityId) - 1);
     _SelectedEntityId[sizeof(_SelectedEntityId) - 1] = 0;
     MCEEditorSetLastSelectedEntityId(_context, _SelectedEntityId);

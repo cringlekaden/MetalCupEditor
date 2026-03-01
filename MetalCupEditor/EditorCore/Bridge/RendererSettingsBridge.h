@@ -24,6 +24,10 @@ void MCERendererSetBloomKnee(MCE_CTX, float value);
 
 float MCERendererGetBloomIntensity(MCE_CTX);
 void MCERendererSetBloomIntensity(MCE_CTX, float value);
+uint32_t MCERendererGetBloomQualityPreset(MCE_CTX);
+void MCERendererSetBloomQualityPreset(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetBloomResolutionScale(MCE_CTX);
+void MCERendererSetBloomResolutionScale(MCE_CTX, uint32_t value);
 
 float MCERendererGetBloomUpsampleScale(MCE_CTX);
 void MCERendererSetBloomUpsampleScale(MCE_CTX, float value);
@@ -131,6 +135,16 @@ float MCERendererGetShadowNormalBias(MCE_CTX);
 void MCERendererSetShadowNormalBias(MCE_CTX, float value);
 float MCERendererGetShadowPCFRadius(MCE_CTX);
 void MCERendererSetShadowPCFRadius(MCE_CTX, float value);
+uint32_t MCERendererGetShadowPCFQualityPreset(MCE_CTX);
+void MCERendererSetShadowPCFQualityPreset(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetShadowPCFTapsCascade0(MCE_CTX);
+void MCERendererSetShadowPCFTapsCascade0(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetShadowPCFTapsCascade1(MCE_CTX);
+void MCERendererSetShadowPCFTapsCascade1(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetShadowPCFTapsCascade2(MCE_CTX);
+void MCERendererSetShadowPCFTapsCascade2(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetShadowPCFTapsCascade3(MCE_CTX);
+void MCERendererSetShadowPCFTapsCascade3(MCE_CTX, uint32_t value);
 uint32_t MCERendererGetShadowFilterMode(MCE_CTX);
 void MCERendererSetShadowFilterMode(MCE_CTX, uint32_t value);
 float MCERendererGetShadowMaxDistance(MCE_CTX);

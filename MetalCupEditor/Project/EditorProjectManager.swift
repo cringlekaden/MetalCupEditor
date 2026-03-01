@@ -303,6 +303,9 @@ final class EditorProjectManager {
             if sceneController.isPlaying {
                 sceneController.stop()
             }
+            if sceneController.isSimulating {
+                sceneController.resetSimulation()
+            }
             projectDocument = migrated
             projectURL = resolvedProjectURL
             projectRootURL = resolvedRootURL
@@ -558,6 +561,67 @@ final class EditorProjectManager {
     func setLastContentBrowserPath(_ path: String) {
         uiState.setLastContentBrowserPath(path)
     }
+
+    func viewportGizmoOperation() -> Int {
+        uiState.viewportGizmoOperation()
+    }
+
+    func setViewportGizmoOperation(_ value: Int) {
+        uiState.setViewportGizmoOperation(value)
+    }
+
+    func viewportGizmoSpaceMode() -> Int {
+        uiState.viewportGizmoSpaceMode()
+    }
+
+    func setViewportGizmoSpaceMode(_ value: Int) {
+        uiState.setViewportGizmoSpaceMode(value)
+    }
+
+    func viewportSnapEnabled() -> Bool {
+        uiState.viewportSnapEnabled()
+    }
+
+    func setViewportSnapEnabled(_ value: Bool) {
+        uiState.setViewportSnapEnabled(value)
+    }
+
+    func themeMode() -> Int { uiState.themeMode() }
+    func setThemeMode(_ value: Int) { uiState.setThemeMode(value) }
+    func themeAccent() -> (Float, Float, Float) { uiState.themeAccent() }
+    func setThemeAccent(r: Float, g: Float, b: Float) { uiState.setThemeAccent(r: r, g: g, b: b) }
+    func themeUIScale() -> Float { uiState.themeUIScale() }
+    func setThemeUIScale(_ value: Float) { uiState.setThemeUIScale(value) }
+    func themeRoundedUI() -> Bool { uiState.themeRoundedUI() }
+    func setThemeRoundedUI(_ value: Bool) { uiState.setThemeRoundedUI(value) }
+    func themeCornerRounding() -> Float { uiState.themeCornerRounding() }
+    func setThemeCornerRounding(_ value: Float) { uiState.setThemeCornerRounding(value) }
+    func themeSpacingPreset() -> Int { uiState.themeSpacingPreset() }
+    func setThemeSpacingPreset(_ value: Int) { uiState.setThemeSpacingPreset(value) }
+    func viewportShowWorldIcons() -> Bool { uiState.viewportShowWorldIcons() }
+    func setViewportShowWorldIcons(_ value: Bool) { uiState.setViewportShowWorldIcons(value) }
+    func viewportWorldIconBaseSize() -> Float { uiState.viewportWorldIconBaseSize() }
+    func setViewportWorldIconBaseSize(_ value: Float) { uiState.setViewportWorldIconBaseSize(value) }
+    func viewportWorldIconDistanceScale() -> Float { uiState.viewportWorldIconDistanceScale() }
+    func setViewportWorldIconDistanceScale(_ value: Float) { uiState.setViewportWorldIconDistanceScale(value) }
+    func viewportWorldIconMinSize() -> Float { uiState.viewportWorldIconMinSize() }
+    func setViewportWorldIconMinSize(_ value: Float) { uiState.setViewportWorldIconMinSize(value) }
+    func viewportWorldIconMaxSize() -> Float { uiState.viewportWorldIconMaxSize() }
+    func setViewportWorldIconMaxSize(_ value: Float) { uiState.setViewportWorldIconMaxSize(value) }
+    func viewportShowSelectedCameraFrustum() -> Bool { uiState.viewportShowSelectedCameraFrustum() }
+    func setViewportShowSelectedCameraFrustum(_ value: Bool) { uiState.setViewportShowSelectedCameraFrustum(value) }
+    func viewportPreviewEnabled() -> Bool { uiState.viewportPreviewEnabled() }
+    func setViewportPreviewEnabled(_ value: Bool) { uiState.setViewportPreviewEnabled(value) }
+    func viewportPreviewSize() -> Float { uiState.viewportPreviewSize() }
+    func setViewportPreviewSize(_ value: Float) { uiState.setViewportPreviewSize(value) }
+    func viewportPreviewPosition() -> Int { uiState.viewportPreviewPosition() }
+    func setViewportPreviewPosition(_ value: Int) { uiState.setViewportPreviewPosition(value) }
+    func editorDebugGridEnabled() -> Bool { uiState.editorDebugGridEnabled() }
+    func setEditorDebugGridEnabled(_ value: Bool) { uiState.setEditorDebugGridEnabled(value) }
+    func editorDebugOutlineEnabled() -> Bool { uiState.editorDebugOutlineEnabled() }
+    func setEditorDebugOutlineEnabled(_ value: Bool) { uiState.setEditorDebugOutlineEnabled(value) }
+    func editorDebugPhysicsEnabled() -> Bool { uiState.editorDebugPhysicsEnabled() }
+    func setEditorDebugPhysicsEnabled(_ value: Bool) { uiState.setEditorDebugPhysicsEnabled(value) }
 
     func metaURLForAsset(assetURL: URL, relativePath: String) -> URL? {
         assetRegistry?.metaURLForAsset(assetURL: assetURL, relativePath: relativePath)
@@ -1104,8 +1168,30 @@ public func MCEEditorSetLastSelectedEntityId(_ contextPtr: UnsafeMutableRawPoint
     guard let value else { return }
     let idString = String(cString: value)
     let context = resolveContext(contextPtr)
+    if context.editorProjectManager.lastSelectedEntityId() == idString {
+        if let primary = UUID(uuidString: idString) {
+            let current = context.editorSceneController.selectedEntityUUIDs()
+            if current.contains(primary) {
+                context.editorSceneController.setSelectedEntityIds(current, primary: primary)
+            } else {
+                context.editorSceneController.setSelectedEntityIds([primary], primary: primary)
+            }
+        } else {
+            context.editorSceneController.setSelectedEntityIds([], primary: nil)
+        }
+        return
+    }
     context.editorProjectManager.setLastSelectedEntityId(idString)
-    context.editorSceneController.setSelectedEntityId(idString)
+    if let primary = UUID(uuidString: idString) {
+        let current = context.editorSceneController.selectedEntityUUIDs()
+        if current.contains(primary) {
+            context.editorSceneController.setSelectedEntityIds(current, primary: primary)
+        } else {
+            context.editorSceneController.setSelectedEntityIds([primary], primary: primary)
+        }
+    } else {
+        context.editorSceneController.setSelectedEntityIds([], primary: nil)
+    }
     context.editorProjectManager.saveSettings()
 }
 
@@ -1127,7 +1213,310 @@ public func MCEEditorGetLastContentBrowserPath(_ contextPtr: UnsafeMutableRawPoi
 public func MCEEditorSetLastContentBrowserPath(_ contextPtr: UnsafeMutableRawPointer,
                                                _ value: UnsafePointer<CChar>?) {
     guard let value else { return }
+    let path = String(cString: value)
     let manager = resolveContext(contextPtr).editorProjectManager
-    manager.setLastContentBrowserPath(String(cString: value))
+    if manager.lastContentBrowserPath() == path {
+        return
+    }
+    manager.setLastContentBrowserPath(path)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportGizmoOperation")
+public func MCEEditorGetViewportGizmoOperation(_ contextPtr: UnsafeMutableRawPointer) -> Int32 {
+    Int32(resolveContext(contextPtr).editorProjectManager.viewportGizmoOperation())
+}
+
+@_cdecl("MCEEditorSetViewportGizmoOperation")
+public func MCEEditorSetViewportGizmoOperation(_ contextPtr: UnsafeMutableRawPointer,
+                                               _ value: Int32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = Int(value)
+    if manager.viewportGizmoOperation() == next { return }
+    manager.setViewportGizmoOperation(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportGizmoSpaceMode")
+public func MCEEditorGetViewportGizmoSpaceMode(_ contextPtr: UnsafeMutableRawPointer) -> Int32 {
+    Int32(resolveContext(contextPtr).editorProjectManager.viewportGizmoSpaceMode())
+}
+
+@_cdecl("MCEEditorSetViewportGizmoSpaceMode")
+public func MCEEditorSetViewportGizmoSpaceMode(_ contextPtr: UnsafeMutableRawPointer,
+                                               _ value: Int32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = Int(value)
+    if manager.viewportGizmoSpaceMode() == next { return }
+    manager.setViewportGizmoSpaceMode(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportSnapEnabled")
+public func MCEEditorGetViewportSnapEnabled(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.viewportSnapEnabled() ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetViewportSnapEnabled")
+public func MCEEditorSetViewportSnapEnabled(_ contextPtr: UnsafeMutableRawPointer,
+                                            _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = value != 0
+    if manager.viewportSnapEnabled() == next { return }
+    manager.setViewportSnapEnabled(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetThemeMode")
+public func MCEEditorGetThemeMode(_ contextPtr: UnsafeMutableRawPointer) -> Int32 {
+    Int32(resolveContext(contextPtr).editorProjectManager.themeMode())
+}
+
+@_cdecl("MCEEditorSetThemeMode")
+public func MCEEditorSetThemeMode(_ contextPtr: UnsafeMutableRawPointer, _ value: Int32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = Int(value)
+    if manager.themeMode() == next { return }
+    manager.setThemeMode(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetThemeAccent")
+public func MCEEditorGetThemeAccent(_ contextPtr: UnsafeMutableRawPointer,
+                                    _ r: UnsafeMutablePointer<Float>?,
+                                    _ g: UnsafeMutablePointer<Float>?,
+                                    _ b: UnsafeMutablePointer<Float>?) {
+    let accent = resolveContext(contextPtr).editorProjectManager.themeAccent()
+    r?.pointee = accent.0
+    g?.pointee = accent.1
+    b?.pointee = accent.2
+}
+
+@_cdecl("MCEEditorSetThemeAccent")
+public func MCEEditorSetThemeAccent(_ contextPtr: UnsafeMutableRawPointer,
+                                    _ r: Float,
+                                    _ g: Float,
+                                    _ b: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let current = manager.themeAccent()
+    if current.0 == r && current.1 == g && current.2 == b { return }
+    manager.setThemeAccent(r: r, g: g, b: b)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetThemeUIScale")
+public func MCEEditorGetThemeUIScale(_ contextPtr: UnsafeMutableRawPointer) -> Float {
+    resolveContext(contextPtr).editorProjectManager.themeUIScale()
+}
+
+@_cdecl("MCEEditorSetThemeUIScale")
+public func MCEEditorSetThemeUIScale(_ contextPtr: UnsafeMutableRawPointer, _ value: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    if manager.themeUIScale() == value { return }
+    manager.setThemeUIScale(value)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetThemeRoundedUI")
+public func MCEEditorGetThemeRoundedUI(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.themeRoundedUI() ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetThemeRoundedUI")
+public func MCEEditorSetThemeRoundedUI(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = value != 0
+    if manager.themeRoundedUI() == next { return }
+    manager.setThemeRoundedUI(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetThemeCornerRounding")
+public func MCEEditorGetThemeCornerRounding(_ contextPtr: UnsafeMutableRawPointer) -> Float {
+    resolveContext(contextPtr).editorProjectManager.themeCornerRounding()
+}
+
+@_cdecl("MCEEditorSetThemeCornerRounding")
+public func MCEEditorSetThemeCornerRounding(_ contextPtr: UnsafeMutableRawPointer, _ value: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    if manager.themeCornerRounding() == value { return }
+    manager.setThemeCornerRounding(value)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetThemeSpacingPreset")
+public func MCEEditorGetThemeSpacingPreset(_ contextPtr: UnsafeMutableRawPointer) -> Int32 {
+    Int32(resolveContext(contextPtr).editorProjectManager.themeSpacingPreset())
+}
+
+@_cdecl("MCEEditorSetThemeSpacingPreset")
+public func MCEEditorSetThemeSpacingPreset(_ contextPtr: UnsafeMutableRawPointer, _ value: Int32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = Int(value)
+    if manager.themeSpacingPreset() == next { return }
+    manager.setThemeSpacingPreset(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportShowWorldIcons")
+public func MCEEditorGetViewportShowWorldIcons(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.viewportShowWorldIcons() ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetViewportShowWorldIcons")
+public func MCEEditorSetViewportShowWorldIcons(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = value != 0
+    if manager.viewportShowWorldIcons() == next { return }
+    manager.setViewportShowWorldIcons(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportWorldIconBaseSize")
+public func MCEEditorGetViewportWorldIconBaseSize(_ contextPtr: UnsafeMutableRawPointer) -> Float {
+    resolveContext(contextPtr).editorProjectManager.viewportWorldIconBaseSize()
+}
+
+@_cdecl("MCEEditorSetViewportWorldIconBaseSize")
+public func MCEEditorSetViewportWorldIconBaseSize(_ contextPtr: UnsafeMutableRawPointer, _ value: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    if manager.viewportWorldIconBaseSize() == value { return }
+    manager.setViewportWorldIconBaseSize(value)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportWorldIconDistanceScale")
+public func MCEEditorGetViewportWorldIconDistanceScale(_ contextPtr: UnsafeMutableRawPointer) -> Float {
+    resolveContext(contextPtr).editorProjectManager.viewportWorldIconDistanceScale()
+}
+
+@_cdecl("MCEEditorSetViewportWorldIconDistanceScale")
+public func MCEEditorSetViewportWorldIconDistanceScale(_ contextPtr: UnsafeMutableRawPointer, _ value: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    if manager.viewportWorldIconDistanceScale() == value { return }
+    manager.setViewportWorldIconDistanceScale(value)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportWorldIconMinSize")
+public func MCEEditorGetViewportWorldIconMinSize(_ contextPtr: UnsafeMutableRawPointer) -> Float {
+    resolveContext(contextPtr).editorProjectManager.viewportWorldIconMinSize()
+}
+
+@_cdecl("MCEEditorSetViewportWorldIconMinSize")
+public func MCEEditorSetViewportWorldIconMinSize(_ contextPtr: UnsafeMutableRawPointer, _ value: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    if manager.viewportWorldIconMinSize() == value { return }
+    manager.setViewportWorldIconMinSize(value)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportWorldIconMaxSize")
+public func MCEEditorGetViewportWorldIconMaxSize(_ contextPtr: UnsafeMutableRawPointer) -> Float {
+    resolveContext(contextPtr).editorProjectManager.viewportWorldIconMaxSize()
+}
+
+@_cdecl("MCEEditorSetViewportWorldIconMaxSize")
+public func MCEEditorSetViewportWorldIconMaxSize(_ contextPtr: UnsafeMutableRawPointer, _ value: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    if manager.viewportWorldIconMaxSize() == value { return }
+    manager.setViewportWorldIconMaxSize(value)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportShowSelectedCameraFrustum")
+public func MCEEditorGetViewportShowSelectedCameraFrustum(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.viewportShowSelectedCameraFrustum() ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetViewportShowSelectedCameraFrustum")
+public func MCEEditorSetViewportShowSelectedCameraFrustum(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = value != 0
+    if manager.viewportShowSelectedCameraFrustum() == next { return }
+    manager.setViewportShowSelectedCameraFrustum(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportPreviewEnabled")
+public func MCEEditorGetViewportPreviewEnabled(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.viewportPreviewEnabled() ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetViewportPreviewEnabled")
+public func MCEEditorSetViewportPreviewEnabled(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = value != 0
+    if manager.viewportPreviewEnabled() == next { return }
+    manager.setViewportPreviewEnabled(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportPreviewSize")
+public func MCEEditorGetViewportPreviewSize(_ contextPtr: UnsafeMutableRawPointer) -> Float {
+    resolveContext(contextPtr).editorProjectManager.viewportPreviewSize()
+}
+
+@_cdecl("MCEEditorSetViewportPreviewSize")
+public func MCEEditorSetViewportPreviewSize(_ contextPtr: UnsafeMutableRawPointer, _ value: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    if manager.viewportPreviewSize() == value { return }
+    manager.setViewportPreviewSize(value)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportPreviewPosition")
+public func MCEEditorGetViewportPreviewPosition(_ contextPtr: UnsafeMutableRawPointer) -> Int32 {
+    Int32(resolveContext(contextPtr).editorProjectManager.viewportPreviewPosition())
+}
+
+@_cdecl("MCEEditorSetViewportPreviewPosition")
+public func MCEEditorSetViewportPreviewPosition(_ contextPtr: UnsafeMutableRawPointer, _ value: Int32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = Int(value)
+    if manager.viewportPreviewPosition() == next { return }
+    manager.setViewportPreviewPosition(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetDebugGridEnabled")
+public func MCEEditorGetDebugGridEnabled(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.editorDebugGridEnabled() ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetDebugGridEnabled")
+public func MCEEditorSetDebugGridEnabled(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = value != 0
+    if manager.editorDebugGridEnabled() == next { return }
+    manager.setEditorDebugGridEnabled(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetDebugOutlineEnabled")
+public func MCEEditorGetDebugOutlineEnabled(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.editorDebugOutlineEnabled() ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetDebugOutlineEnabled")
+public func MCEEditorSetDebugOutlineEnabled(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = value != 0
+    if manager.editorDebugOutlineEnabled() == next { return }
+    manager.setEditorDebugOutlineEnabled(next)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetDebugPhysicsEnabled")
+public func MCEEditorGetDebugPhysicsEnabled(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.editorDebugPhysicsEnabled() ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetDebugPhysicsEnabled")
+public func MCEEditorSetDebugPhysicsEnabled(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    let next = value != 0
+    if manager.editorDebugPhysicsEnabled() == next { return }
+    manager.setEditorDebugPhysicsEnabled(next)
     manager.saveSettings()
 }

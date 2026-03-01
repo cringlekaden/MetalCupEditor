@@ -290,9 +290,14 @@ public func MCEEditorListDirectory(_ contextPtr: UnsafeRawPointer?, _ relativePa
         guard let relative = PathUtils.relativePath(from: rootURL, to: url) else { continue }
         var assetType: Int32 = AssetTypes.code(for: .unknown)
         var handleString = ""
+        var importFailed = false
+        var importFailureReason = ""
         if !isDir, let meta = metadataLookup.first(where: { $0.sourcePath == relative }) {
             assetType = AssetTypes.code(for: meta.type)
             handleString = meta.handle.rawValue.uuidString
+            let rawFailed = (meta.importSettings["importFailed"] ?? "").lowercased()
+            importFailed = rawFailed == "true" || rawFailed == "1" || rawFailed == "yes"
+            importFailureReason = meta.importSettings["importFailureReason"] ?? ""
         }
         let displayName = isDir ? name : AssetIO.displayNameForFile(url: url, modifiedTime: modified)
         entries.append(DirectoryEntrySnapshot(
@@ -301,7 +306,9 @@ public func MCEEditorListDirectory(_ contextPtr: UnsafeRawPointer?, _ relativePa
             isDirectory: isDir,
             assetType: assetType,
             handle: handleString,
-            modifiedTime: modified
+            modifiedTime: modified,
+            importFailed: importFailed,
+            importFailureReason: importFailureReason
         ))
     }
 
@@ -317,7 +324,9 @@ public func MCEEditorGetDirectoryEntry(_ contextPtr: UnsafeRawPointer?,
                                        _ isDirectoryOut: UnsafeMutablePointer<UInt32>?,
                                        _ typeOut: UnsafeMutablePointer<Int32>?,
                                        _ handleBuffer: UnsafeMutablePointer<CChar>?, _ handleBufferSize: Int32,
-                                       _ modifiedOut: UnsafeMutablePointer<Double>?) -> UInt32 {
+                                       _ modifiedOut: UnsafeMutablePointer<Double>?,
+                                       _ importFailedOut: UnsafeMutablePointer<UInt32>?,
+                                       _ failureReasonBuffer: UnsafeMutablePointer<CChar>?, _ failureReasonBufferSize: Int32) -> UInt32 {
     guard let context = resolveContext(contextPtr) else { return 0 }
     let idx = Int(index)
     guard idx >= 0, idx < context.directorySnapshotStore.entries.count else { return 0 }
@@ -329,6 +338,8 @@ public func MCEEditorGetDirectoryEntry(_ contextPtr: UnsafeRawPointer?,
     typeOut?.pointee = entry.assetType
     _ = writeCString(entry.handle, to: handleBuffer, max: handleBufferSize)
     modifiedOut?.pointee = entry.modifiedTime
+    importFailedOut?.pointee = entry.importFailed ? 1 : 0
+    _ = writeCString(entry.importFailureReason, to: failureReasonBuffer, max: failureReasonBufferSize)
     return 1
 }
 

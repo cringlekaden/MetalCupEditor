@@ -8,6 +8,7 @@
 #import "PanelState.h"
 #import "../Widgets/UIWidgets.h"
 #import "../Widgets/UIConstants.h"
+#import "../EditorIcons.h"
 #include <string.h>
 #include <stdint.h>
 #include <string>
@@ -141,8 +142,38 @@ extern "C" void MCEEditorSetCollider(MCE_CTX,  const char *entityId,
                                      float offsetX, float offsetY, float offsetZ,
                                      float rotX, float rotY, float rotZ,
                                      uint32_t isTrigger);
+extern "C" int32_t MCEEditorGetColliderShapeCount(MCE_CTX, const char *entityId);
+extern "C" void MCEEditorAddColliderShape(MCE_CTX, const char *entityId);
+extern "C" void MCEEditorRemoveColliderShape(MCE_CTX, const char *entityId, int32_t shapeIndex);
+extern "C" uint32_t MCEEditorGetColliderShape(MCE_CTX, const char *entityId,
+                                              int32_t shapeIndex,
+                                              uint32_t *enabled,
+                                              int32_t *shapeType,
+                                              float *boxX, float *boxY, float *boxZ,
+                                              float *sphereRadius,
+                                              float *capsuleHalfHeight,
+                                              float *capsuleRadius,
+                                              float *offsetX, float *offsetY, float *offsetZ,
+                                              float *rotX, float *rotY, float *rotZ,
+                                              uint32_t *isTrigger,
+                                              uint32_t *hasLayerOverride,
+                                              int32_t *layerOverride);
+extern "C" void MCEEditorSetColliderShape(MCE_CTX, const char *entityId,
+                                          int32_t shapeIndex,
+                                          uint32_t enabled,
+                                          int32_t shapeType,
+                                          float boxX, float boxY, float boxZ,
+                                          float sphereRadius,
+                                          float capsuleHalfHeight,
+                                          float capsuleRadius,
+                                          float offsetX, float offsetY, float offsetZ,
+                                          float rotX, float rotY, float rotZ,
+                                          uint32_t isTrigger,
+                                          uint32_t hasLayerOverride,
+                                          int32_t layerOverride);
 extern "C" uint32_t MCEEditorRebuildPhysicsBody(MCE_CTX,  const char *entityId);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
+extern "C" uint32_t MCESceneIsSimulating(MCE_CTX);
 extern "C" uint32_t MCEEditorGetMaterialAsset(MCE_CTX, 
     const char *handle,
     char *nameBuffer, int32_t nameBufferSize,
@@ -183,6 +214,8 @@ extern "C" uint32_t MCEEditorSetMaterialAsset(MCE_CTX,
     const char *emissiveHandle);
 extern "C" uint32_t MCEEditorGetAssetDisplayName(MCE_CTX,  const char *handle, char *buffer, int32_t bufferSize);
 extern "C" uint32_t MCEEditorGetSelectedMaterial(MCE_CTX,  char *buffer, int32_t bufferSize);
+extern "C" int32_t MCEEditorGetSelectedEntityCount(MCE_CTX);
+extern "C" int32_t MCEEditorGetSelectedEntityIdAt(MCE_CTX, int32_t index, char *buffer, int32_t bufferSize);
 extern "C" uint32_t MCEEditorCreateMaterial(MCE_CTX,  const char *relativePath, const char *name, char *outHandle, int32_t outHandleSize);
 extern "C" void MCEEditorSetSelectedMaterial(MCE_CTX,  const char *handle);
 extern "C" void MCEEditorOpenMaterialEditor(MCE_CTX,  const char *handle);
@@ -193,6 +226,12 @@ extern "C" uint32_t MCEEditorGetAssetAt(MCE_CTX,  int32_t index,
                                         int32_t *typeOut,
                                         char *pathBuffer, int32_t pathBufferSize,
                                         char *nameBuffer, int32_t nameBufferSize);
+extern "C" uint32_t MCEEditorGetPrefabInstanceInfo(MCE_CTX,
+                                                   const char *entityId,
+                                                   char *prefabHandleOut, int32_t prefabHandleOutSize,
+                                                   char *prefabPathOut, int32_t prefabPathOutSize);
+extern "C" uint32_t MCEEditorApplyPrefabInstanceToAsset(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorRevertPrefabInstance(MCE_CTX, const char *entityId);
 extern "C" void *MCEContextGetUIPanelState(MCE_CTX);
 
 enum ComponentType : int32_t {
@@ -903,8 +942,21 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
     }
     ImGui::BeginChild("InspectorScroll", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
-    const bool hasEntityId = selectedEntityId && selectedEntityId[0] != 0;
+    std::vector<std::string> selectedIds;
+    const int32_t selectedCount = MCEEditorGetSelectedEntityCount(context);
+    selectedIds.reserve(selectedCount > 0 ? static_cast<size_t>(selectedCount) : 0);
+    for (int32_t i = 0; i < selectedCount; ++i) {
+        char idBuffer[64] = {0};
+        if (MCEEditorGetSelectedEntityIdAt(context, i, idBuffer, sizeof(idBuffer)) > 0) {
+            selectedIds.emplace_back(idBuffer);
+        }
+    }
+
+    const bool hasEntityId = !selectedIds.empty() || (selectedEntityId && selectedEntityId[0] != 0);
     const bool hasValidEntity = hasEntityId && (MCEEditorEntityExists(context, selectedEntityId) != 0);
+    const bool isPlaying = MCESceneIsPlaying(context) != 0;
+    const bool isSimulating = MCESceneIsSimulating(context) != 0;
+    const bool runtimeLocked = isPlaying || isSimulating;
     char selectedMaterial[64] = {0};
     const bool hasSelectedMaterial = MCEEditorGetSelectedMaterial(context, selectedMaterial, sizeof(selectedMaterial)) != 0;
 
@@ -929,10 +981,133 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         if (MCEEditorGetEntityName(context, selectedEntityId, nameBuffer, sizeof(nameBuffer)) <= 0) {
             strncpy(nameBuffer, "Entity", sizeof(nameBuffer) - 1);
         }
-        if (ImGui::InputText("Name", nameBuffer, sizeof(nameBuffer))) {
+        const float addButtonWidth = ImGui::CalcTextSize(EditorIcons::Glyph(EditorIcons::Id::Plus)).x + ImGui::GetStyle().FramePadding.x * 2.0f;
+        ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x - addButtonWidth - ImGui::GetStyle().ItemSpacing.x));
+        if (ImGui::InputText("##EntityName", nameBuffer, sizeof(nameBuffer))) {
             MCEEditorSetEntityName(context, selectedEntityId, nameBuffer);
         }
+        ImGui::SameLine();
+        if (EditorUI::IconButton("inspector_add_component",
+                                 EditorIcons::Glyph(EditorIcons::Id::Plus),
+                                 "Add Component",
+                                 false,
+                                 false)) {
+            ImGui::OpenPopup("AddComponentPopup");
+        }
         ImGui::Spacing();
+    }
+
+    if (runtimeLocked) {
+        ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Runtime Locked (Stop to Edit)");
+        ImGui::Separator();
+    }
+    ImGui::BeginDisabled(runtimeLocked);
+
+    if (selectedIds.size() > 1) {
+        ImGui::Text("Multiple selection (%d)", static_cast<int>(selectedIds.size()));
+        ImGui::Separator();
+
+        bool allHaveTransform = true;
+        for (const std::string &id : selectedIds) {
+            if (MCEEditorEntityHasComponent(context, id.c_str(), ComponentTransform) == 0) {
+                allHaveTransform = false;
+                break;
+            }
+        }
+        if (!allHaveTransform) {
+            ImGui::TextUnformatted("Batch editing currently supports Transform only.");
+            ImGui::EndDisabled();
+            ImGui::PopStyleVar();
+            ImGui::EndChild();
+            EditorUI::EndPanel();
+            return;
+        }
+
+        float px = 0, py = 0, pz = 0;
+        float rx = 0, ry = 0, rz = 0;
+        float sx = 1, sy = 1, sz = 1;
+        if (MCEEditorGetTransform(context, selectedIds.front().c_str(), &px, &py, &pz, &rx, &ry, &rz, &sx, &sy, &sz) != 0) {
+            float position[3] = {px, py, pz};
+            float rotation[3] = {rx * kRadToDeg, ry * kRadToDeg, rz * kRadToDeg};
+            float scale[3] = {sx, sy, sz};
+            bool dirty = false;
+            if (EditorUI::BeginPropertyTable("TransformPropsMulti")) {
+                dirty |= EditorUI::PropertyVec3("Position",
+                                               position,
+                                               0.0f,
+                                               EditorUIConstants::kPositionStep,
+                                               0.0f,
+                                               0.0f,
+                                               "%.3f",
+                                               false,
+                                               true);
+                dirty |= EditorUI::PropertyVec3("Rotation (deg)",
+                                               rotation,
+                                               0.0f,
+                                               EditorUIConstants::kRotationStepDeg,
+                                               EditorUIConstants::kRotationMinDeg,
+                                               EditorUIConstants::kRotationMaxDeg,
+                                               "%.2f",
+                                               true,
+                                               true);
+                dirty |= EditorUI::PropertyVec3("Scale",
+                                               scale,
+                                               1.0f,
+                                               EditorUIConstants::kScaleStep,
+                                               0.0f,
+                                               0.0f,
+                                               "%.3f",
+                                               false,
+                                               true);
+                EditorUI::EndPropertyTable();
+            }
+            if (dirty) {
+                float rotationRad[3] = {rotation[0] * kDegToRad, rotation[1] * kDegToRad, rotation[2] * kDegToRad};
+                for (const std::string &id : selectedIds) {
+                    MCEEditorSetTransform(context, id.c_str(),
+                                          position[0], position[1], position[2],
+                                          rotationRad[0], rotationRad[1], rotationRad[2],
+                                          scale[0], scale[1], scale[2]);
+                }
+            }
+        }
+
+        ImGui::EndDisabled();
+        ImGui::PopStyleVar();
+        ImGui::EndChild();
+        EditorUI::EndPanel();
+        return;
+    }
+
+    if (hasValidEntity) {
+        char prefabHandle[64] = {0};
+        char prefabPath[512] = {0};
+        if (MCEEditorGetPrefabInstanceInfo(context,
+                                           selectedEntityId,
+                                           prefabHandle,
+                                           sizeof(prefabHandle),
+                                           prefabPath,
+                                           sizeof(prefabPath)) != 0) {
+            EditorUI::SectionHeader("Prefab");
+            ImGui::TextWrapped("%s", prefabPath[0] != 0 ? prefabPath : prefabHandle);
+            const char *applyTooltip = "Apply All: writes this instance's current component values into the prefab asset and refreshes all loaded instances.";
+            const char *revertTooltip = "Revert All: discards this instance's overrides and rebuilds it from the prefab asset.";
+
+            if (ImGui::Button("Apply to Prefab")) {
+                MCEEditorApplyPrefabInstanceToAsset(context, selectedEntityId);
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", applyTooltip);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Revert")) {
+                MCEEditorRevertPrefabInstance(context, selectedEntityId);
+            }
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+                ImGui::SetTooltip("%s", revertTooltip);
+            }
+            ImGui::Spacing();
+        }
     }
 
     if (hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentTransform) != 0) {
@@ -956,6 +1131,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 float scale[3] = {sx, sy, sz};
                 bool dirty = false;
                 if (EditorUI::BeginPropertyTable("TransformProps")) {
+                    EditorUI::SetNextPropertyInfoTooltip("Entity position in world space.\nUnits: meters.\nPerformance: none.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyVec3("Position",
                                                    position,
                                                    0.0f,
@@ -965,6 +1141,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                    "%.3f",
                                                    false,
                                                    true);
+                    EditorUI::SetNextPropertyInfoTooltip("Entity Euler rotation.\nUnits: degrees.\nPerformance: none.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyVec3("Rotation (deg)",
                                                    rotation,
                                                    0.0f,
@@ -974,6 +1151,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                    "%.2f",
                                                    true,
                                                    true);
+                    EditorUI::SetNextPropertyInfoTooltip("Entity local scale.\nUnits: scalar.\nPerformance: none.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyVec3("Scale",
                                                    scale,
                                                    1.0f,
@@ -1014,15 +1192,20 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             if (!hasCollider) {
                 ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Requires a Collider component.");
             }
-            const bool isPlaying = MCESceneIsPlaying(context) != 0;
             if (isPlaying) {
                 ImGui::TextColored(ImVec4(0.75f, 0.82f, 0.9f, 1.0f), "Changes apply next time you press Play.");
             }
+            ImGui::BeginDisabled(!isPlaying || !hasCollider);
             if (ImGui::Button("Rebuild Body")) {
                 if (isPlaying) {
                     MCEEditorRebuildPhysicsBody(context, selectedEntityId);
                 }
             }
+            ImGui::SameLine();
+            EditorUI::InfoIconTooltip(isPlaying
+                                      ? "Rebuilds the runtime physics body from current component values.\nUnits: N/A.\nPerformance: moderate one-shot rebuild.\nPersistence: runtime-only."
+                                      : "Play mode required to rebuild runtime body.\nUnits: N/A.\nPersistence: N/A.");
+            ImGui::EndDisabled();
             ImGui::Spacing();
             uint32_t enabled = 1;
             int32_t motionType = 1;
@@ -1073,17 +1256,21 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 if (EditorUI::BeginPropertyTable("RigidbodyProps")) {
                     const char* typeItems[] = { "Static", "Dynamic", "Kinematic" };
                     int typeIndex = motionType;
+                    EditorUI::SetNextPropertyInfoTooltip("Rigid body simulation mode.\nUnits: enum.\nPerformance: dynamic is highest cost.\nPersistence: Scene.");
                     if (EditorUI::PropertyCombo("Motion Type", &typeIndex, typeItems, IM_ARRAYSIZE(typeItems))) {
                         motionType = typeIndex;
                         dirty = true;
                     }
                     if (motionType == 1) {
+                        EditorUI::SetNextPropertyInfoTooltip("Body mass.\nUnits: kilograms.\nPerformance: none.\nPersistence: Scene.");
                         if (EditorUI::PropertyFloat("Mass", &mass, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 1.0f)) {
                             dirty = true;
                         }
+                        EditorUI::SetNextPropertyInfoTooltip("Linear velocity damping.\nUnits: unitless.\nPerformance: low.\nPersistence: Scene.");
                         if (EditorUI::PropertyFloat("Linear Damping", &linearDamping, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.02f)) {
                             dirty = true;
                         }
+                        EditorUI::SetNextPropertyInfoTooltip("Angular velocity damping.\nUnits: unitless.\nPerformance: low.\nPersistence: Scene.");
                         if (EditorUI::PropertyFloat("Angular Damping", &angularDamping, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.2f)) {
                             dirty = true;
                         }
@@ -1158,11 +1345,11 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
 
     if (hasCollider) {
         bool colliderOpen = EditorUI::BeginSectionWithContext(context,
-            "Collider",
-            "Inspector.Collider",
+            "Colliders",
+            "Inspector.Colliders",
             "ColliderContext",
             [&]() {
-                if (ImGui::MenuItem("Remove")) {
+                if (ImGui::MenuItem("Remove Collider Component")) {
                     MCEEditorRemoveComponent(context, selectedEntityId, ComponentCollider);
                 }
             },
@@ -1171,115 +1358,125 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             if (!hasRigidbody) {
                 ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Requires a Rigidbody to simulate.");
             }
-            uint32_t enabled = 1;
-            int32_t shapeType = 0;
-            float boxX = 0.5f, boxY = 0.5f, boxZ = 0.5f;
-            float sphereRadius = 0.5f;
-            float capsuleHalfHeight = 0.5f;
-            float capsuleRadius = 0.5f;
-            float offsetX = 0.0f, offsetY = 0.0f, offsetZ = 0.0f;
-            float rotX = 0.0f, rotY = 0.0f, rotZ = 0.0f;
-            uint32_t isTrigger = 0;
-            if (MCEEditorGetCollider(context, selectedEntityId,
-                                     &enabled,
-                                     &shapeType,
-                                     &boxX, &boxY, &boxZ,
-                                     &sphereRadius,
-                                     &capsuleHalfHeight,
-                                     &capsuleRadius,
-                                     &offsetX, &offsetY, &offsetZ,
-                                     &rotX, &rotY, &rotZ,
-                                     &isTrigger) != 0) {
-                bool dirty = false;
-                const char* shapeItems[] = { "Box", "Sphere", "Capsule" };
-                float rotationDeg[3] = { rotX * kRadToDeg, rotY * kRadToDeg, rotZ * kRadToDeg };
-                float offset[3] = { offsetX, offsetY, offsetZ };
-                float sx = 1.0f, sy = 1.0f, sz = 1.0f;
-                if (MCEEditorGetTransform(context, selectedEntityId,
-                                          nullptr, nullptr, nullptr,
-                                          nullptr, nullptr, nullptr,
-                                          &sx, &sy, &sz) != 0) {
-                    const float maxScale = std::max(sx, std::max(sy, sz));
-                    const float minScale = std::min(sx, std::min(sy, sz));
-                    if (fabsf(maxScale - minScale) > 0.001f) {
-                        ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f),
-                                           "Non-uniform scale may not be fully supported.");
-                    }
+            const int32_t shapeCount = MCEEditorGetColliderShapeCount(context, selectedEntityId);
+            if (ImGui::Button("+ Add Collider")) {
+                MCEEditorAddColliderShape(context, selectedEntityId);
+            }
+            ImGui::Separator();
+            const char* shapeItems[] = { "Box", "Sphere", "Capsule" };
+            for (int32_t shapeIndex = 0; shapeIndex < shapeCount; ++shapeIndex) {
+                ImGui::PushID(shapeIndex);
+                uint32_t enabled = 1;
+                int32_t shapeType = 0;
+                float boxX = 0.5f, boxY = 0.5f, boxZ = 0.5f;
+                float sphereRadius = 0.5f;
+                float capsuleHalfHeight = 0.5f;
+                float capsuleRadius = 0.5f;
+                float offsetX = 0.0f, offsetY = 0.0f, offsetZ = 0.0f;
+                float rotX = 0.0f, rotY = 0.0f, rotZ = 0.0f;
+                uint32_t isTrigger = 0;
+                uint32_t hasLayerOverride = 0;
+                int32_t layerOverride = 0;
+                if (MCEEditorGetColliderShape(context, selectedEntityId, shapeIndex,
+                                              &enabled, &shapeType,
+                                              &boxX, &boxY, &boxZ,
+                                              &sphereRadius,
+                                              &capsuleHalfHeight,
+                                              &capsuleRadius,
+                                              &offsetX, &offsetY, &offsetZ,
+                                              &rotX, &rotY, &rotZ,
+                                              &isTrigger,
+                                              &hasLayerOverride,
+                                              &layerOverride) == 0) {
+                    ImGui::PopID();
+                    continue;
                 }
-                if ((shapeType == 0 && (boxX <= 0.0f || boxY <= 0.0f || boxZ <= 0.0f)) ||
-                    (shapeType == 1 && sphereRadius <= 0.0f) ||
-                    (shapeType == 2 && (capsuleRadius <= 0.0f || capsuleHalfHeight <= 0.0f))) {
-                    ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f),
-                                       "Collider dimensions must be > 0.");
-                }
-                if (EditorUI::BeginPropertyTable("ColliderProps")) {
-                    int shapeIndex = shapeType;
-                    if (EditorUI::PropertyCombo("Shape", &shapeIndex, shapeItems, IM_ARRAYSIZE(shapeItems))) {
-                        shapeType = shapeIndex;
-                        dirty = true;
+
+                bool open = ImGui::CollapsingHeader((std::string("Collider ") + std::to_string(shapeIndex)).c_str(), ImGuiTreeNodeFlags_DefaultOpen);
+                if (open) {
+                    if (ImGui::Button("Remove Collider")) {
+                        MCEEditorRemoveColliderShape(context, selectedEntityId, shapeIndex);
+                        ImGui::PopID();
+                        continue;
                     }
-                    if (shapeType == 0) {
-                        float extents[3] = { boxX, boxY, boxZ };
-                        if (EditorUI::PropertyVec3("Half Extents", extents, 0.5f, 0.05f, 0.0f, 0.0f, "%.3f", false, true)) {
-                            boxX = extents[0];
-                            boxY = extents[1];
-                            boxZ = extents[2];
-                            dirty = true;
-                        }
-                    } else if (shapeType == 1) {
-                        if (EditorUI::PropertyFloat("Radius", &sphereRadius, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
-                            dirty = true;
-                        }
-                    } else if (shapeType == 2) {
-                        if (EditorUI::PropertyFloat("Radius", &capsuleRadius, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
-                            dirty = true;
-                        }
-                        if (EditorUI::PropertyFloat("Half Height", &capsuleHalfHeight, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
-                            dirty = true;
-                        }
-                    }
-                    if (EditorUI::PropertyVec3("Offset Position", offset, 0.0f, 0.05f, 0.0f, 0.0f, "%.3f", false, true)) {
-                        offsetX = offset[0];
-                        offsetY = offset[1];
-                        offsetZ = offset[2];
-                        dirty = true;
-                    }
-                    if (EditorUI::PropertyVec3("Offset Rotation (deg)", rotationDeg, 0.0f, EditorUIConstants::kRotationStepDeg,
-                                               EditorUIConstants::kRotationMinDeg, EditorUIConstants::kRotationMaxDeg, "%.2f", true, true)) {
-                        rotX = rotationDeg[0] * kDegToRad;
-                        rotY = rotationDeg[1] * kDegToRad;
-                        rotZ = rotationDeg[2] * kDegToRad;
-                        dirty = true;
-                    }
+                    bool dirty = false;
+                    int shapeTypeIndex = shapeType;
+                    float offset[3] = { offsetX, offsetY, offsetZ };
+                    float rotationDeg[3] = { rotX * kRadToDeg, rotY * kRadToDeg, rotZ * kRadToDeg };
                     bool triggerBool = isTrigger != 0;
-                    if (EditorUI::PropertyBool("Is Trigger", &triggerBool)) {
-                        isTrigger = triggerBool ? 1 : 0;
-                        dirty = true;
-                    }
-                    EditorUI::EndPropertyTable();
-                }
-                if (ImGui::CollapsingHeader("Advanced##Collider")) {
                     bool enabledBool = enabled != 0;
-                    if (EditorUI::BeginPropertyTable("ColliderAdvanced")) {
+                    bool overrideBool = hasLayerOverride != 0;
+
+                    if (EditorUI::BeginPropertyTable("ColliderShapeProps")) {
                         if (EditorUI::PropertyBool("Enabled", &enabledBool)) {
                             enabled = enabledBool ? 1 : 0;
                             dirty = true;
                         }
+                        if (EditorUI::PropertyCombo("Shape", &shapeTypeIndex, shapeItems, IM_ARRAYSIZE(shapeItems))) {
+                            shapeType = shapeTypeIndex;
+                            dirty = true;
+                        }
+                        if (shapeType == 0) {
+                            float extents[3] = { boxX, boxY, boxZ };
+                            if (EditorUI::PropertyVec3("Half Extents", extents, 0.5f, 0.05f, 0.0f, 0.0f, "%.3f", false, true)) {
+                                boxX = extents[0];
+                                boxY = extents[1];
+                                boxZ = extents[2];
+                                dirty = true;
+                            }
+                        } else if (shapeType == 1) {
+                            if (EditorUI::PropertyFloat("Radius", &sphereRadius, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
+                                dirty = true;
+                            }
+                        } else {
+                            if (EditorUI::PropertyFloat("Radius", &capsuleRadius, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
+                                dirty = true;
+                            }
+                            if (EditorUI::PropertyFloat("Half Height", &capsuleHalfHeight, 0.05f, 0.0f, 0.0f, "%.3f", false, true, 0.5f)) {
+                                dirty = true;
+                            }
+                        }
+                        if (EditorUI::PropertyVec3("Offset Position", offset, 0.0f, 0.05f, 0.0f, 0.0f, "%.3f", false, true)) {
+                            offsetX = offset[0];
+                            offsetY = offset[1];
+                            offsetZ = offset[2];
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyVec3("Offset Rotation (deg)", rotationDeg, 0.0f, EditorUIConstants::kRotationStepDeg,
+                                                   EditorUIConstants::kRotationMinDeg, EditorUIConstants::kRotationMaxDeg, "%.2f", true, true)) {
+                            rotX = rotationDeg[0] * kDegToRad;
+                            rotY = rotationDeg[1] * kDegToRad;
+                            rotZ = rotationDeg[2] * kDegToRad;
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyBool("Is Trigger", &triggerBool)) {
+                            isTrigger = triggerBool ? 1 : 0;
+                            dirty = true;
+                        }
+                        if (EditorUI::PropertyBool("Override Layer", &overrideBool)) {
+                            hasLayerOverride = overrideBool ? 1 : 0;
+                            dirty = true;
+                        }
+                        if (overrideBool && EditorUI::PropertyInt("Layer", &layerOverride, 0, 15)) {
+                            dirty = true;
+                        }
                         EditorUI::EndPropertyTable();
                     }
+                    if (dirty) {
+                        MCEEditorSetColliderShape(context, selectedEntityId, shapeIndex,
+                                                  enabled, shapeType,
+                                                  boxX, boxY, boxZ,
+                                                  sphereRadius,
+                                                  capsuleHalfHeight,
+                                                  capsuleRadius,
+                                                  offsetX, offsetY, offsetZ,
+                                                  rotX, rotY, rotZ,
+                                                  isTrigger,
+                                                  hasLayerOverride,
+                                                  layerOverride);
+                    }
                 }
-                if (dirty) {
-                    MCEEditorSetCollider(context, selectedEntityId,
-                                         enabled,
-                                         shapeType,
-                                         boxX, boxY, boxZ,
-                                         sphereRadius,
-                                         capsuleHalfHeight,
-                                         capsuleRadius,
-                                         offsetX, offsetY, offsetZ,
-                                         rotX, rotY, rotZ,
-                                         isTrigger);
-                }
+                ImGui::PopID();
             }
         }
     }
@@ -1317,13 +1514,18 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 bool dirty = false;
                 bool primaryDirty = false;
                 if (EditorUI::BeginPropertyTable("CameraProps")) {
+                    EditorUI::SetNextPropertyInfoTooltip("Camera projection model.\nUnits: enum.\nPerformance: similar.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyCombo("Projection", &projectionIndex, projectionItems, 2);
                     if (projectionIndex == 0) {
+                        EditorUI::SetNextPropertyInfoTooltip("Perspective field of view.\nUnits: degrees.\nPerformance: none.\nPersistence: Scene.");
                         dirty |= EditorUI::PropertyFloat("FOV (deg)", &fovDegrees, 0.1f, 1.0f, 179.0f, "%.1f", true);
                     } else {
+                        EditorUI::SetNextPropertyInfoTooltip("Orthographic vertical size.\nUnits: world units.\nPerformance: none.\nPersistence: Scene.");
                         dirty |= EditorUI::PropertyFloat("Ortho Size", &orthoSize, 0.05f, 0.01f, 10000.0f, "%.2f", true);
                     }
+                    EditorUI::SetNextPropertyInfoTooltip("Near clipping plane.\nUnits: meters.\nPerformance: precision-sensitive.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyFloat("Near", &nearPlane, 0.01f, 0.01f, 10000.0f, "%.3f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Far clipping plane.\nUnits: meters.\nPerformance: precision-sensitive.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyFloat("Far", &farPlane, 1.0f, 0.1f, 100000.0f, "%.1f", true);
                     bool primary = isPrimary != 0;
                     if (isEditor != 0) {
@@ -1348,15 +1550,6 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
                 if (isEditor != 0) {
                     ImGui::TextDisabled("Editor Camera");
-                }
-                if (isEditor != 0) {
-                    ImGui::BeginDisabled();
-                }
-                if (ImGui::Button("Remove Camera")) {
-                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentCamera);
-                }
-                if (isEditor != 0) {
-                    ImGui::EndDisabled();
                 }
             }
         }
@@ -1385,9 +1578,11 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             MCEEditorGetMeshRenderer(context, selectedEntityId, meshHandle, sizeof(meshHandle), materialHandle, sizeof(materialHandle));
 
             if (EditorUI::BeginPropertyTable("MeshRendererProps")) {
+                EditorUI::SetNextPropertyInfoTooltip("Mesh asset reference for rendering.\nUnits: asset handle.\nPerformance: mesh complexity dependent.\nPersistence: Scene.");
                 if (DrawMeshHandleRow(context, state, "Mesh", meshHandle, sizeof(meshHandle), "MCE_ASSET_MODEL", selectedEntityId, materialHandle)) {
                     MCEEditorSetMeshRenderer(context, selectedEntityId, meshHandle, materialHandle);
                 }
+                EditorUI::SetNextPropertyInfoTooltip("Material asset used for shading.\nUnits: asset handle.\nPerformance: shader/material dependent.\nPersistence: Scene.");
                 if (DrawMaterialHandleRow(context, state, "Material", materialHandle, sizeof(materialHandle), "MCE_ASSET_MATERIAL", selectedEntityId, meshHandle, true)) {
                     MCEEditorSetMeshRenderer(context, selectedEntityId, meshHandle, materialHandle);
                     MCEEditorSetMaterialComponent(context, selectedEntityId, materialHandle);
@@ -1439,14 +1634,6 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                         MCEEditorSetSelectedMaterial(context, outHandle);
                     }
                 }
-            } else {
-                if (ImGui::Button("Select Material")) {
-                    MCEEditorSetSelectedMaterial(context, materialHandle);
-                }
-            }
-
-            if (ImGui::Button("Remove Mesh Renderer")) {
-                MCEEditorRemoveComponent(context, selectedEntityId, ComponentMeshRenderer);
             }
         }
     }
@@ -1557,21 +1744,43 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 const char* types[] = {"Point", "Spot", "Directional"};
                 bool dirty = false;
                 if (EditorUI::BeginPropertyTable("LightProps")) {
+                    EditorUI::SetNextPropertyInfoTooltip("Light type.\nUnits: enum.\nPerformance: shadows + spot/directional often costlier.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyCombo("Type", &type, types, IM_ARRAYSIZE(types));
                     float color[3] = {colorX, colorY, colorZ};
                     const float lightDefault[3] = {1.0f, 1.0f, 1.0f};
+                    EditorUI::SetNextPropertyInfoTooltip("Light color.\nUnits: linear RGB.\nPerformance: none.\nPersistence: Scene.");
                     if (EditorUI::PropertyColor3("Color", color, lightDefault, true)) {
                         colorX = color[0];
                         colorY = color[1];
                         colorZ = color[2];
                         dirty = true;
                     }
+                    EditorUI::SetNextPropertyInfoTooltip("Luminous intensity multiplier.\nUnits: unitless.\nPerformance: high values can increase bloom/overdraw perception.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyFloat("Brightness", &brightness, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 1.0f);
+                    EditorUI::SetNextPropertyInfoTooltip("Attenuation range.\nUnits: meters.\nPerformance: larger ranges can affect more pixels.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyFloat("Range", &range, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 0.0f);
-                    dirty |= EditorUI::PropertyFloat("Inner Cone", &innerCos, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.95f);
-                    dirty |= EditorUI::PropertyFloat("Outer Cone", &outerCos, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.9f);
+                    if (type == 1) {
+                        EditorUI::SetNextPropertyInfoTooltip("Spot inner cone cosine.\nUnits: cosine value.\nPerformance: low.\nPersistence: Scene.");
+                        dirty |= EditorUI::PropertyFloat("Inner Cone", &innerCos, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.95f);
+                        EditorUI::SetNextPropertyInfoTooltip("Spot outer cone cosine.\nUnits: cosine value.\nPerformance: low.\nPersistence: Scene.");
+                        dirty |= EditorUI::PropertyFloat("Outer Cone", &outerCos, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.9f);
+                    }
                     if (type == 2) {
+                        float direction[3] = {dirX, dirY, dirZ};
+                        ImGui::BeginDisabled(true);
+                        EditorUI::SetNextPropertyInfoTooltip("Read-only transform-derived light direction.\nUnits: normalized vector.\nPersistence: Scene transform.");
+                        EditorUI::PropertyVec3("Direction (from transform)",
+                                               direction,
+                                               0.0f,
+                                               EditorUIConstants::kPositionStep,
+                                               0.0f,
+                                               0.0f,
+                                               "%.3f",
+                                               false,
+                                               true);
+                        ImGui::EndDisabled();
                         bool castsShadowsBool = castsShadows != 0;
+                        EditorUI::SetNextPropertyInfoTooltip("Enables shadow casting for this directional light.\nUnits: boolean.\nPerformance: medium-to-high GPU cost.\nPersistence: Scene.");
                         if (EditorUI::PropertyBool("Casts Shadows", &castsShadowsBool)) {
                             castsShadows = castsShadowsBool ? 1 : 0;
                             dirty = true;
@@ -1582,9 +1791,6 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 if (dirty) {
                     MCEEditorSetLight(context, selectedEntityId, type, colorX, colorY, colorZ, brightness, range, innerCos, outerCos, dirX, dirY, dirZ, castsShadows);
                 }
-            }
-            if (ImGui::Button("Remove Light")) {
-                MCEEditorRemoveComponent(context, selectedEntityId, ComponentLight);
             }
         }
     }
@@ -2232,15 +2438,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                          editHdriHandle);
                 }
             }
-            if (ImGui::Button("Remove Sky")) {
-                MCEEditorRemoveComponent(context, selectedEntityId, ComponentSkyLight);
-            }
         }
     }
 
-    if (hasValidEntity && ImGui::Button("Add Component")) {
-        ImGui::OpenPopup("AddComponentPopup");
-    }
     if (ImGui::BeginPopup("AddComponentPopup")) {
         if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentMeshRenderer) == 0) {
             if (ImGui::MenuItem("Mesh Renderer")) {
@@ -2330,6 +2530,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         }
     }
 
+    ImGui::EndDisabled();
     ImGui::PopStyleVar();
     ImGui::EndChild();
 

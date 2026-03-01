@@ -153,22 +153,89 @@ final class AssetRegistry: AssetDatabase {
                 updated.lastModified = lastModified
                 didChange = true
             }
+            let normalizedImport = normalizedImportSettings(
+                for: relativePath,
+                assetType: assetType,
+                existing: updated.importSettings
+            )
+            if updated.importSettings != normalizedImport {
+                updated.importSettings = normalizedImport
+                didChange = true
+            }
             if didChange {
                 saveMetadata(updated, to: metaURL)
             }
             return updated
         }
 
+        let importSettings = normalizedImportSettings(
+            for: relativePath,
+            assetType: assetType,
+            existing: [:]
+        )
         let meta = AssetMetadata(
             handle: AssetHandle(),
             type: assetType,
             sourcePath: relativePath,
-            importSettings: [:],
+            importSettings: importSettings,
             dependencies: [],
             lastModified: lastModified
         )
         saveMetadata(meta, to: metaURL)
         return meta
+    }
+
+    private func normalizedImportSettings(for relativePath: String,
+                                          assetType: AssetType,
+                                          existing: [String: String]) -> [String: String] {
+        var settings = existing
+        switch assetType {
+        case .texture:
+            if settings["origin"] == nil {
+                settings["origin"] = "topLeft"
+            }
+            let semantic = (settings["semantic"] ?? settings["meshTextureSemantic"])?.lowercased()
+                ?? inferTextureSemantic(from: relativePath)
+            settings["semantic"] = semantic
+            if isColorSemantic(semantic) {
+                if settings["srgb"] == nil {
+                    settings["srgb"] = "true"
+                }
+            } else {
+                settings["srgb"] = isColorSemantic(semantic) ? "true" : "false"
+            }
+        case .environment:
+            settings["semantic"] = "environment"
+            settings["srgb"] = "false"
+            if settings["origin"] == nil {
+                settings["origin"] = "topLeft"
+            }
+        default:
+            break
+        }
+        return settings
+    }
+
+    private func inferTextureSemantic(from relativePath: String) -> String {
+        let name = relativePath.lowercased()
+        if name.contains("orm") || name.contains("arm") || name.contains("rma") { return "orm" }
+        if name.contains("normal") { return "normal" }
+        if name.contains("rough") { return "roughness" }
+        if name.contains("metal") { return "metallic" }
+        if name.contains("ao") || name.contains("occlusion") { return "ao" }
+        if name.contains("height") || name.contains("displace") { return "height" }
+        if name.contains("emissive") { return "emissive" }
+        if name.contains("albedo") || name.contains("basecolor") || name.contains("diff") { return "basecolor" }
+        return "basecolor"
+    }
+
+    private func isColorSemantic(_ semantic: String) -> Bool {
+        switch semantic {
+        case "basecolor", "albedo", "diffuse", "diff", "emissive":
+            return true
+        default:
+            return false
+        }
     }
 
 }

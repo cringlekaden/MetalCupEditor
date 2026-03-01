@@ -21,6 +21,8 @@ struct DirectoryEntrySnapshot {
     let assetType: Int32
     let handle: String
     let modifiedTime: TimeInterval
+    let importFailed: Bool
+    let importFailureReason: String
 }
 
 final class MCEContext {

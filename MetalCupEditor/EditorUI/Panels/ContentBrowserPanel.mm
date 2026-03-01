@@ -7,6 +7,7 @@
 #import "../../ImGui/imgui.h"
 #import "PanelState.h"
 #import "../Widgets/UIWidgets.h"
+#import "../EditorIcons.h"
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -24,7 +25,9 @@ extern "C" uint32_t MCEEditorGetDirectoryEntry(MCE_CTX,  int32_t index,
                                                 uint32_t *isDirectoryOut,
                                                 int32_t *typeOut,
                                                 char *handleBuffer, int32_t handleBufferSize,
-                                                double *modifiedOut);
+                                                double *modifiedOut,
+                                                uint32_t *importFailedOut,
+                                                char *failureReasonBuffer, int32_t failureReasonBufferSize);
 extern "C" uint32_t MCEEditorCreateFolder(MCE_CTX,  const char *relativePath, const char *name);
 extern "C" uint32_t MCEEditorCreateMaterial(MCE_CTX,  const char *relativePath, const char *name, char *outHandle, int32_t outHandleSize);
 extern "C" uint32_t MCEEditorCreateScene(MCE_CTX,  const char *relativePath, const char *name);
@@ -212,7 +215,9 @@ namespace {
             char nameBuffer[256] = {0};
             char pathBuffer[512] = {0};
             char handleBuffer[64] = {0};
+            char failureReasonBuffer[512] = {0};
             uint32_t isDirectory = 0;
+            uint32_t importFailed = 0;
             int32_t type = AssetUnknown;
             double modified = 0.0;
             if (MCEEditorGetDirectoryEntry(context, i,
@@ -221,7 +226,9 @@ namespace {
                                           &isDirectory,
                                           &type,
                                           handleBuffer, sizeof(handleBuffer),
-                                          &modified) == 0) {
+                                          &modified,
+                                          &importFailed,
+                                          failureReasonBuffer, sizeof(failureReasonBuffer)) == 0) {
                 continue;
             }
 
@@ -233,6 +240,8 @@ namespace {
             entry.type = type;
             entry.handle = handleBuffer;
             entry.modified = modified;
+            entry.importFailed = importFailed != 0;
+            entry.importFailureReason = failureReasonBuffer;
             std::string rel = entry.relativePath;
             size_t slash = rel.find_last_of('/');
             entry.fileName = (slash == std::string::npos) ? rel : rel.substr(slash + 1);
@@ -322,6 +331,18 @@ namespace {
         }
     }
 
+    const char *IconForEntry(const BrowserEntry &entry) {
+        if (entry.isDirectory) { return EditorIcons::Glyph(EditorIcons::Id::Folder); }
+        switch (entry.type) {
+        case AssetScene: return EditorIcons::Glyph(EditorIcons::Id::Scene);
+        case AssetMaterial: return EditorIcons::Glyph(EditorIcons::Id::Material);
+        case AssetModel: return EditorIcons::Glyph(EditorIcons::Id::Mesh);
+        case AssetTexture: return EditorIcons::Glyph(EditorIcons::Id::Texture);
+        case AssetEnvironment: return EditorIcons::Glyph(EditorIcons::Id::HDRI);
+        default: return EditorIcons::Glyph(EditorIcons::Id::File);
+        }
+    }
+
     void DrawItemIcon(const BrowserEntry &entry, const ImVec2 &size, const ImVec2 &origin) {
         ImDrawList *drawList = ImGui::GetWindowDrawList();
         ImU32 color = IM_COL32(105, 105, 115, 255);
@@ -339,6 +360,10 @@ namespace {
         ImVec2 max(origin.x + size.x, origin.y + size.y);
         drawList->AddRectFilled(origin, max, color, 6.0f);
         drawList->AddRect(origin, max, IM_COL32(20, 20, 20, 255), 6.0f);
+        const char *iconGlyph = IconForEntry(entry);
+        ImVec2 glyphSize = ImGui::CalcTextSize(iconGlyph);
+        ImVec2 glyphPos(origin.x + (size.x - glyphSize.x) * 0.5f, origin.y + (size.y - glyphSize.y) * 0.5f);
+        drawList->AddText(glyphPos, IM_COL32(232, 232, 236, 255), iconGlyph);
     }
 
     void BeginAssetDragPayload(const BrowserEntry &entry) {
@@ -376,6 +401,8 @@ namespace {
         state.contextTarget.handle = entry.handle;
         state.contextTarget.isDirectory = entry.isDirectory;
         state.contextTarget.type = entry.type;
+        state.contextTarget.importFailed = entry.importFailed;
+        state.contextTarget.importFailureReason = entry.importFailureReason;
         SelectEntry(context, state, entry, false);
     }
 
@@ -389,6 +416,8 @@ namespace {
             entry.handle = state.contextTarget.handle;
             entry.isDirectory = state.contextTarget.isDirectory;
             entry.type = state.contextTarget.type;
+            entry.importFailed = state.contextTarget.importFailed;
+            entry.importFailureReason = state.contextTarget.importFailureReason;
 
             if (ImGui::MenuItem("Rename")) {
                 BeginRename(state, entry);
@@ -424,6 +453,12 @@ namespace {
                 }
                 if (!entry.handle.empty() &&
                     MCEImportCanReimportHandle(context, entry.handle.c_str()) != 0) {
+                    if (ImGui::MenuItem("Reimport")) {
+                        MCEImportBeginForHandle(context, entry.handle.c_str());
+                    }
+                } else if (!entry.handle.empty() &&
+                           entry.type == AssetTexture &&
+                           entry.importFailed) {
                     if (ImGui::MenuItem("Reimport")) {
                         MCEImportBeginForHandle(context, entry.handle.c_str());
                     }
@@ -620,6 +655,15 @@ void ImGuiContentBrowserPanelDraw(void *context, bool *isOpen) {
                         }
 
                         DrawItemIcon(entry, iconSize, ImVec2(itemMin.x + tilePadding, itemMin.y + tilePadding));
+                        if (!entry.isDirectory && entry.importFailed) {
+                            const ImVec2 badgePos(itemMin.x + tilePadding + iconSize.x - 8.0f, itemMin.y + tilePadding - 2.0f);
+                            drawList->AddCircleFilled(badgePos, 6.5f, IM_COL32(220, 170, 70, 245), 16);
+                            drawList->AddText(ImVec2(badgePos.x - 4.0f, badgePos.y - 6.0f), IM_COL32(30, 20, 10, 255), EditorIcons::Glyph(EditorIcons::Id::Warning));
+                            if (hovered) {
+                                const std::string reason = entry.importFailureReason.empty() ? "Texture import failed." : entry.importFailureReason;
+                                ImGui::SetTooltip("Import warning:\n%s", reason.c_str());
+                            }
+                        }
 
                         ImVec2 textPos(itemMin.x + tilePadding, itemMin.y + tilePadding + iconSize.y + 6.0f);
                         float textAreaWidth = tileWidth - tilePadding * 2.0f;
@@ -671,10 +715,10 @@ void ImGuiContentBrowserPanelDraw(void *context, bool *isOpen) {
                                 SetContextTarget(context, state, entry);
                                 state.openContextMenu = true;
                             }
-                            if (ImGui::IsItemClicked(0)) {
-                                if (!isSelected) {
-                                    SelectEntry(context, state, entry, false);
-                                }
+                            if (ImGui::IsItemClicked(0) && !isSelected) {
+                                SelectEntry(context, state, entry, false);
+                            }
+                            if (isSelected && ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_F2)) {
                                 BeginRename(state, entry);
                             }
                         }

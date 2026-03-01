@@ -123,6 +123,8 @@ namespace EditorUIConstants {
     constexpr float kBloomIntensityMax = 5.0f;
     constexpr float kBloomIntensityStep = 0.05f;
     constexpr float kDefaultBloomIntensity = 0.15f;
+    constexpr int kDefaultBloomResolutionScale = 4;
+    constexpr int kDefaultBloomQualityPreset = 2;
     constexpr float kBloomUpsampleMin = 0.5f;
     constexpr float kBloomUpsampleMax = 2.0f;
     constexpr float kBloomUpsampleStep = 0.02f;
@@ -175,6 +177,8 @@ namespace EditorUIConstants {
     constexpr float kShadowPCFRadiusMin = 0.5f;
     constexpr float kShadowPCFRadiusMax = 4.0f;
     constexpr float kShadowPCFRadiusStep = 0.1f;
+    constexpr int kShadowPCFTapsMin = 1;
+    constexpr int kShadowPCFTapsMax = 25;
     constexpr float kShadowMaxDistanceMin = 0.0f;
     constexpr float kShadowMaxDistanceMax = 500.0f;
     constexpr float kShadowMaxDistanceStep = 1.0f;

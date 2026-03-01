@@ -26,6 +26,7 @@ final class ImGuiLayer: Layer {
     private let previewUpdateInterval: UInt64 = 8
     private let previewTextureSize = SIMD2<Int>(256, 256)
     private var lastFrameTime: FrameTime?
+    private var persistedSelectedEntityId: String = ""
 
     nonisolated override init(name: String) {
         fatalError("Use init(name:context:contextPtr:)")
@@ -74,28 +75,29 @@ final class ImGuiLayer: Layer {
                 selectionId: sceneContext.selectedEntityIds.first
             )
         }
+        if let scene = sceneContext.activeScene {
+            submitSelectedCameraFrustumGizmoIfNeeded(scene: scene)
+        }
         context.engineContext.debugDraw.endFrame()
 
-        if let selected = context.editorSceneController.selectedEntityUUID() {
-            if sceneContext.selectedEntityIds.first != selected {
-                sceneContext.selectedEntityIds = [selected]
-            }
-        } else if !sceneContext.selectedEntityIds.isEmpty {
-            sceneContext.selectedEntityIds = []
+        let controllerSelection = context.editorSceneController.selectedEntityUUIDs()
+        if sceneContext.selectedEntityIds != controllerSelection {
+            sceneContext.selectedEntityIds = controllerSelection
         }
 
-        if let activeScene = sceneContext.activeScene,
-           let selectedId = sceneContext.selectedEntityIds.first,
-           activeScene.ecs.entity(with: selectedId) == nil {
-            sceneContext.selectedEntityIds = []
-            context.editorSceneController.setSelectedEntityId("")
-            imguiBridge.setSelectedEntityId("")
-        } else if let selectedId = sceneContext.selectedEntityIds.first {
-            context.editorSceneController.setSelectedEntityId(selectedId.uuidString)
-            imguiBridge.setSelectedEntityId(selectedId.uuidString)
+        if let activeScene = sceneContext.activeScene {
+            sceneContext.selectedEntityIds.removeAll { activeScene.ecs.entity(with: $0) == nil }
+        }
+        if sceneContext.selectedEntityIds != context.editorSceneController.selectedEntityUUIDs() {
+            context.editorSceneController.setSelectedEntityIds(
+                sceneContext.selectedEntityIds,
+                primary: sceneContext.selectedEntityIds.last
+            )
+        }
+        if let primary = context.editorSceneController.selectedEntityUUID() {
+            persistSelectedEntityIfNeeded(primary.uuidString)
         } else {
-            context.editorSceneController.setSelectedEntityId("")
-            imguiBridge.setSelectedEntityId("")
+            persistSelectedEntityIfNeeded("")
         }
     }
 
@@ -204,22 +206,30 @@ final class ImGuiLayer: Layer {
         if result.pickedId == 0 {
             sceneContext.selectedEntityIds = []
             sceneContext.lastPickResult = nil
-            context.editorSceneController.setSelectedEntityId("")
-            imguiBridge.setSelectedEntityId("")
+            context.editorSceneController.setSelectedEntityIds([], primary: nil)
+            persistSelectedEntityIfNeeded("")
             return
         }
         if let entity = context.engineContext.pickingSystem.entity(for: result.pickedId),
            let hit = scene.raycast(hitEntity: entity, mask: result.mask) {
             sceneContext.selectedEntityIds = [hit.id]
             sceneContext.lastPickResult = hit.id
-            context.editorSceneController.setSelectedEntityId(hit.id.uuidString)
-            imguiBridge.setSelectedEntityId(hit.id.uuidString)
+            context.editorSceneController.setSelectedEntityIds([hit.id], primary: hit.id)
+            persistSelectedEntityIfNeeded(hit.id.uuidString)
         } else {
             sceneContext.selectedEntityIds = []
             sceneContext.lastPickResult = nil
-            context.editorSceneController.setSelectedEntityId("")
-            imguiBridge.setSelectedEntityId("")
+            context.editorSceneController.setSelectedEntityIds([], primary: nil)
+            persistSelectedEntityIfNeeded("")
         }
+    }
+
+    private func persistSelectedEntityIfNeeded(_ id: String) {
+        if persistedSelectedEntityId == id {
+            return
+        }
+        persistedSelectedEntityId = id
+        imguiBridge.setSelectedEntityId(id)
     }
 
     private func shouldCaptureEvent(_ event: Event) -> Bool {
@@ -344,6 +354,105 @@ final class ImGuiLayer: Layer {
             && lhs.projectionType == rhs.projectionType
             && lhs.isPrimary == rhs.isPrimary
             && lhs.isEditor == rhs.isEditor
+    }
+
+    private func submitSelectedCameraFrustumGizmoIfNeeded(scene: EngineScene) {
+        if context.editorSceneController.isPlaying || context.editorSceneController.isSimulating {
+            return
+        }
+        if !context.editorProjectManager.viewportShowSelectedCameraFrustum() {
+            return
+        }
+        guard let selectedId = context.editorSceneController.selectedEntityUUID(),
+              let entity = scene.ecs.entity(with: selectedId),
+              let camera = scene.ecs.get(CameraComponent.self, for: entity),
+              scene.ecs.get(TransformComponent.self, for: entity) != nil else {
+            return
+        }
+        if camera.isEditor {
+            return
+        }
+
+        let accent = context.editorProjectManager.themeAccent()
+        let color = SIMD4<Float>(accent.0, accent.1, accent.2, 1.0)
+        let debugDraw = context.engineContext.debugDraw
+
+        let worldTransform = scene.ecs.worldTransform(for: entity)
+        let position = worldTransform.position
+        let normalizedRotation = TransformMath.normalizedQuaternion(worldTransform.rotation)
+        let rotation = simd_quatf(
+            real: normalizedRotation.w,
+            imag: SIMD3<Float>(normalizedRotation.x, normalizedRotation.y, normalizedRotation.z)
+        )
+
+        let right = safeNormalize(rotation.act(SIMD3<Float>(1, 0, 0)), fallback: SIMD3<Float>(1, 0, 0))
+        let up = safeNormalize(rotation.act(SIMD3<Float>(0, 1, 0)), fallback: SIMD3<Float>(0, 1, 0))
+        let forward = safeNormalize(rotation.act(SIMD3<Float>(0, 0, -1)), fallback: SIMD3<Float>(0, 0, -1))
+
+        let gizmoLength: Float = 2.0
+        let nearDepth = gizmoLength * 0.05
+        let farDepth = gizmoLength
+        let aspect = max(0.1, sceneContext.viewportSize.x / max(1.0, sceneContext.viewportSize.y))
+
+        let nearHalfW: Float
+        let nearHalfH: Float
+        let farHalfW: Float
+        let farHalfH: Float
+        switch camera.projectionType {
+        case .perspective:
+            let fov = max(1.0, min(179.0, camera.fovDegrees)) * (.pi / 180.0)
+            let tanHalfFov = tan(fov * 0.5)
+            nearHalfH = nearDepth * tanHalfFov
+            nearHalfW = nearHalfH * aspect
+            farHalfH = farDepth * tanHalfFov
+            farHalfW = farHalfH * aspect
+        case .orthographic:
+            let baseHalfHeight = max(0.05, camera.orthoSize * 0.5)
+            let clampedHalfHeight = min(baseHalfHeight, gizmoLength * 0.75)
+            nearHalfH = clampedHalfHeight
+            nearHalfW = clampedHalfHeight * aspect
+            farHalfH = clampedHalfHeight
+            farHalfW = clampedHalfHeight * aspect
+        }
+
+        let nearCenter = position + forward * nearDepth
+        let farCenter = position + forward * farDepth
+
+        let nearCorners = makeFrustumCorners(center: nearCenter, right: right, up: up, halfWidth: nearHalfW, halfHeight: nearHalfH)
+        let farCorners = makeFrustumCorners(center: farCenter, right: right, up: up, halfWidth: farHalfW, halfHeight: farHalfH)
+
+        submitFrustumRect(corners: nearCorners, debugDraw: debugDraw, color: color)
+        submitFrustumRect(corners: farCorners, debugDraw: debugDraw, color: color)
+        for i in 0..<4 {
+            debugDraw.submitLine(nearCorners[i], farCorners[i], color: color)
+        }
+        debugDraw.submitLine(position, farCenter, color: color)
+    }
+
+    private func makeFrustumCorners(center: SIMD3<Float>,
+                                    right: SIMD3<Float>,
+                                    up: SIMD3<Float>,
+                                    halfWidth: Float,
+                                    halfHeight: Float) -> [SIMD3<Float>] {
+        [
+            center - right * halfWidth + up * halfHeight,
+            center + right * halfWidth + up * halfHeight,
+            center + right * halfWidth - up * halfHeight,
+            center - right * halfWidth - up * halfHeight
+        ]
+    }
+
+    private func submitFrustumRect(corners: [SIMD3<Float>], debugDraw: DebugDraw, color: SIMD4<Float>) {
+        guard corners.count == 4 else { return }
+        debugDraw.submitPolyline(corners, color: color, closed: true)
+    }
+
+    private func safeNormalize(_ v: SIMD3<Float>, fallback: SIMD3<Float>) -> SIMD3<Float> {
+        let lenSq = simd_length_squared(v)
+        if lenSq < 1e-8 || !lenSq.isFinite {
+            return fallback
+        }
+        return v / sqrt(lenSq)
     }
 }
 final class EditorSceneContext {

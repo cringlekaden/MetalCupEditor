@@ -34,6 +34,14 @@ private func readColumnMajorMatrix(from buffer: UnsafePointer<Float>) -> matrix_
     ))
 }
 
+private func isFinite(_ value: SIMD3<Float>) -> Bool {
+    value.x.isFinite && value.y.isFinite && value.z.isFinite
+}
+
+private func isFinite(_ value: SIMD4<Float>) -> Bool {
+    value.x.isFinite && value.y.isFinite && value.z.isFinite && value.w.isFinite
+}
+
 private enum EditorComponentType: Int32 {
     case name = 0
     case transform = 1
@@ -115,6 +123,29 @@ private func metadata(for handle: AssetHandle, projectManager: EditorProjectMana
 private func prefabURL(from handleString: String, context: MCEContext) -> URL? {
     guard let handle = handleFromString(handleString) else { return nil }
     return context.editorProjectManager.assetURL(for: handle)
+}
+
+private func parseEntityIdCSV(_ csv: UnsafePointer<CChar>?) -> [UUID] {
+    guard let csv else { return [] }
+    let raw = String(cString: csv)
+    guard !raw.isEmpty else { return [] }
+    var ids: [UUID] = []
+    for token in raw.split(separator: ",") {
+        let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let id = UUID(uuidString: trimmed), !ids.contains(id) else { continue }
+        ids.append(id)
+    }
+    return ids
+}
+
+private func resolvePrefabInstance(_ context: MCEContext,
+                                   _ entityId: UnsafePointer<CChar>?) -> (scene: EngineScene, entity: Entity, link: PrefabInstanceComponent)? {
+    guard let scene = context.editorSceneController.activeScene(),
+          let entity = entity(from: entityId, context: context),
+          let link = scene.ecs.get(PrefabInstanceComponent.self, for: entity) else {
+        return nil
+    }
+    return (scene, entity, link)
 }
 
 private func componentsDocument(for entity: Entity, ecs: SceneECS) -> ComponentsDocument {
@@ -238,6 +269,152 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
     )
 }
 
+private func applyComponentsDocument(_ components: ComponentsDocument, to entity: Entity, ecs: SceneECS) {
+    if let name = components.name {
+        ecs.add(NameComponent(name: name.name), to: entity)
+    }
+    if let transform = components.transform {
+        ecs.add(
+            TransformComponent(
+                position: transform.position.toSIMD(),
+                rotation: transform.rotationQuat.toSIMD(),
+                scale: transform.scale.toSIMD()
+            ),
+            to: entity
+        )
+    } else {
+        ecs.add(TransformComponent(), to: entity)
+    }
+    if let layer = components.layer {
+        ecs.add(LayerComponent(index: layer.layerIndex), to: entity)
+    } else {
+        ecs.add(LayerComponent(), to: entity)
+    }
+    if let meshRenderer = components.meshRenderer {
+        ecs.add(
+            MeshRendererComponent(
+                meshHandle: meshRenderer.meshHandle,
+                materialHandle: meshRenderer.materialHandle,
+                submeshMaterialHandles: meshRenderer.submeshMaterialHandles,
+                material: meshRenderer.material?.toMaterial(),
+                albedoMapHandle: meshRenderer.albedoMapHandle,
+                normalMapHandle: meshRenderer.normalMapHandle,
+                metallicMapHandle: meshRenderer.metallicMapHandle,
+                roughnessMapHandle: meshRenderer.roughnessMapHandle,
+                mrMapHandle: meshRenderer.mrMapHandle,
+                ormMapHandle: meshRenderer.ormMapHandle,
+                aoMapHandle: meshRenderer.aoMapHandle,
+                emissiveMapHandle: meshRenderer.emissiveMapHandle
+            ),
+            to: entity
+        )
+    }
+    if let materialComponent = components.materialComponent {
+        ecs.add(MaterialComponent(materialHandle: materialComponent.materialHandle), to: entity)
+    }
+    if let rigidbody = components.rigidbody {
+        ecs.add(rigidbody.toComponent(), to: entity)
+    }
+    if let collider = components.collider {
+        ecs.add(collider.toComponent(), to: entity)
+    }
+    if let light = components.light {
+        ecs.add(
+            LightComponent(
+                type: light.type.toLightType(),
+                data: light.data.toLightData(),
+                direction: light.direction.toSIMD(),
+                range: light.range,
+                innerConeCos: light.innerConeCos,
+                outerConeCos: light.outerConeCos,
+                castsShadows: light.castsShadows
+            ),
+            to: entity
+        )
+    }
+    if let lightOrbit = components.lightOrbit {
+        ecs.add(lightOrbit.toComponent(), to: entity)
+    }
+    if let camera = components.camera {
+        ecs.add(camera.toComponent(), to: entity)
+    }
+    if let sky = components.sky {
+        ecs.add(SkyComponent(environmentMapHandle: sky.environmentMapHandle), to: entity)
+    }
+    if let skyLight = components.skyLight {
+        ecs.add(
+            SkyLightComponent(
+                mode: SkyMode(rawValue: skyLight.mode) ?? .hdri,
+                enabled: skyLight.enabled,
+                intensity: skyLight.intensity,
+                skyTint: skyLight.skyTint.toSIMD(),
+                turbidity: skyLight.turbidity,
+                azimuthDegrees: skyLight.azimuthDegrees,
+                elevationDegrees: skyLight.elevationDegrees,
+                sunSizeDegrees: skyLight.sunSizeDegrees,
+                zenithTint: skyLight.zenithTint.toSIMD(),
+                horizonTint: skyLight.horizonTint.toSIMD(),
+                gradientStrength: skyLight.gradientStrength,
+                hazeDensity: skyLight.hazeDensity,
+                hazeFalloff: skyLight.hazeFalloff,
+                hazeHeight: skyLight.hazeHeight,
+                ozoneStrength: skyLight.ozoneStrength,
+                ozoneTint: skyLight.ozoneTint.toSIMD(),
+                sunHaloSize: skyLight.sunHaloSize,
+                sunHaloIntensity: skyLight.sunHaloIntensity,
+                sunHaloSoftness: skyLight.sunHaloSoftness,
+                cloudsEnabled: skyLight.cloudsEnabled,
+                cloudsCoverage: skyLight.cloudsCoverage,
+                cloudsSoftness: skyLight.cloudsSoftness,
+                cloudsScale: skyLight.cloudsScale,
+                cloudsSpeed: skyLight.cloudsSpeed,
+                cloudsWindDirection: SIMD2<Float>(skyLight.cloudsWindX, skyLight.cloudsWindY),
+                cloudsHeight: skyLight.cloudsHeight,
+                cloudsThickness: skyLight.cloudsThickness,
+                cloudsBrightness: skyLight.cloudsBrightness,
+                cloudsSunInfluence: skyLight.cloudsSunInfluence,
+                hdriHandle: skyLight.hdriHandle,
+                needsRebuild: true,
+                rebuildRequested: false,
+                realtimeUpdate: skyLight.realtimeUpdate,
+                lastRebuildTime: 0.0
+            ),
+            to: entity
+        )
+    }
+    if components.skyLightTag != nil {
+        ecs.add(SkyLightTag(), to: entity)
+    }
+    if components.skySunTag != nil {
+        ecs.add(SkySunTag(), to: entity)
+    }
+}
+
+private func makeUniqueCopyName(_ base: String, existingLowerNames: Set<String>) -> String {
+    let trimmed = base.trimmingCharacters(in: .whitespacesAndNewlines)
+    let source = trimmed.isEmpty ? "Entity" : trimmed
+    let initial = "\(source) (Copy)"
+    if !existingLowerNames.contains(initial.lowercased()) {
+        return initial
+    }
+    var index = 2
+    while index < 10000 {
+        let candidate = "\(source) (Copy \(index))"
+        if !existingLowerNames.contains(candidate.lowercased()) {
+            return candidate
+        }
+        index += 1
+    }
+    return "\(source) (Copy \(UUID().uuidString.prefix(4)))"
+}
+
+private func markHierarchyOverrideIfPrefabInstance(_ ecs: SceneECS, _ entity: Entity) {
+    guard ecs.has(PrefabInstanceComponent.self, entity) else { return }
+    var overrides = ecs.get(PrefabOverrideComponent.self, for: entity) ?? PrefabOverrideComponent()
+    overrides.overridden.insert(.hierarchy)
+    ecs.add(overrides, to: entity)
+}
+
 private func allSkyEntities(ecs: SceneECS) -> [Entity] {
     return ecs.allEntities().filter { ecs.get(SkyLightComponent.self, for: $0) != nil }
 }
@@ -308,6 +485,154 @@ public func MCEEditorGetEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
     return Int32(ecs.allEntities().count)
 }
 
+@_cdecl("MCEEditorGetSelectedEntityCount")
+public func MCEEditorGetSelectedEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr) else { return 0 }
+    return Int32(context.editorSceneController.selectedEntityUUIDs().count)
+}
+
+@_cdecl("MCEEditorGetSelectedEntityIdAt")
+public func MCEEditorGetSelectedEntityIdAt(_ contextPtr: UnsafeRawPointer?,
+                                           _ index: Int32,
+                                           _ buffer: UnsafeMutablePointer<CChar>?,
+                                           _ bufferSize: Int32) -> Int32 {
+    guard let context = resolveContext(contextPtr), index >= 0 else { return 0 }
+    let ids = context.editorSceneController.selectedEntityUUIDs()
+    guard index < Int32(ids.count) else { return 0 }
+    return writeCString(ids[Int(index)].uuidString, to: buffer, max: bufferSize)
+}
+
+@_cdecl("MCEEditorSetSelectedEntitiesCSV")
+public func MCEEditorSetSelectedEntitiesCSV(_ contextPtr: UnsafeRawPointer?,
+                                            _ csv: UnsafePointer<CChar>?,
+                                            _ primaryId: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr) else { return }
+    let requested = parseEntityIdCSV(csv)
+    guard let scene = context.editorSceneController.activeScene() else {
+        context.editorSceneController.setSelectedEntityIds([], primary: nil)
+        return
+    }
+    var filtered: [UUID] = []
+    filtered.reserveCapacity(requested.count)
+    for id in requested where scene.ecs.entity(with: id) != nil {
+        filtered.append(id)
+    }
+    let primary = primaryId.flatMap { UUID(uuidString: String(cString: $0)) }
+    context.editorSceneController.setSelectedEntityIds(filtered, primary: primary)
+}
+
+@_cdecl("MCEEditorGetRootEntityCount")
+public func MCEEditorGetRootEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context) else { return 0 }
+    return Int32(ecs.rootLevelEntities().count)
+}
+
+@_cdecl("MCEEditorGetRootEntityIdAt")
+public func MCEEditorGetRootEntityIdAt(_ contextPtr: UnsafeRawPointer?,
+                                       _ index: Int32,
+                                       _ buffer: UnsafeMutablePointer<CChar>?,
+                                       _ bufferSize: Int32) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          index >= 0 else { return 0 }
+    let roots = ecs.rootLevelEntities()
+    guard index < Int32(roots.count) else { return 0 }
+    return writeCString(roots[Int(index)].id.uuidString, to: buffer, max: bufferSize)
+}
+
+@_cdecl("MCEEditorGetChildEntityCount")
+public func MCEEditorGetChildEntityCount(_ contextPtr: UnsafeRawPointer?,
+                                         _ parentId: UnsafePointer<CChar>?) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let parent = entity(from: parentId, context: context) else { return 0 }
+    return Int32(ecs.getChildren(parent).count)
+}
+
+@_cdecl("MCEEditorGetChildEntityIdAt")
+public func MCEEditorGetChildEntityIdAt(_ contextPtr: UnsafeRawPointer?,
+                                        _ parentId: UnsafePointer<CChar>?,
+                                        _ index: Int32,
+                                        _ buffer: UnsafeMutablePointer<CChar>?,
+                                        _ bufferSize: Int32) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let parent = entity(from: parentId, context: context),
+          index >= 0 else { return 0 }
+    let children = ecs.getChildren(parent)
+    guard index < Int32(children.count) else { return 0 }
+    return writeCString(children[Int(index)].id.uuidString, to: buffer, max: bufferSize)
+}
+
+@_cdecl("MCEEditorGetParentEntityId")
+public func MCEEditorGetParentEntityId(_ contextPtr: UnsafeRawPointer?,
+                                       _ childId: UnsafePointer<CChar>?,
+                                       _ buffer: UnsafeMutablePointer<CChar>?,
+                                       _ bufferSize: Int32) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let child = entity(from: childId, context: context),
+          let parent = ecs.getParent(child) else { return 0 }
+    return writeCString(parent.id.uuidString, to: buffer, max: bufferSize)
+}
+
+@_cdecl("MCEEditorSetParent")
+public func MCEEditorSetParent(_ contextPtr: UnsafeRawPointer?,
+                               _ childId: UnsafePointer<CChar>?,
+                               _ parentId: UnsafePointer<CChar>?,
+                               _ keepWorldTransform: UInt32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let child = entity(from: childId, context: context) else { return 0 }
+    let keepWorld = keepWorldTransform != 0
+    let parent = entity(from: parentId, context: context)
+    let success = ecs.setParent(child, parent, keepWorldTransform: keepWorld)
+    if success {
+        markHierarchyOverrideIfPrefabInstance(ecs, child)
+        context.editorProjectManager.notifySceneMutation()
+    }
+    return success ? 1 : 0
+}
+
+@_cdecl("MCEEditorUnparent")
+public func MCEEditorUnparent(_ contextPtr: UnsafeRawPointer?,
+                              _ childId: UnsafePointer<CChar>?,
+                              _ keepWorldTransform: UInt32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let child = entity(from: childId, context: context) else { return 0 }
+    let success = ecs.unparent(child, keepWorldTransform: keepWorldTransform != 0)
+    if success {
+        markHierarchyOverrideIfPrefabInstance(ecs, child)
+        context.editorProjectManager.notifySceneMutation()
+    }
+    return success ? 1 : 0
+}
+
+@_cdecl("MCEEditorReorderEntity")
+public func MCEEditorReorderEntity(_ contextPtr: UnsafeRawPointer?,
+                                   _ entityId: UnsafePointer<CChar>?,
+                                   _ parentId: UnsafePointer<CChar>?,
+                                   _ newIndex: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let child = entity(from: entityId, context: context) else { return 0 }
+    let parent = entity(from: parentId, context: context)
+    let success = ecs.reorderChild(parent: parent, child: child, newIndex: Int(newIndex))
+    if success {
+        markHierarchyOverrideIfPrefabInstance(ecs, child)
+        context.editorProjectManager.notifySceneMutation()
+    }
+    return success ? 1 : 0
+}
+
 @_cdecl("MCEEditorGetEntityIdAt")
 public func MCEEditorGetEntityIdAt(_ contextPtr: UnsafeRawPointer?,
                                    _ index: Int32,
@@ -316,14 +641,7 @@ public func MCEEditorGetEntityIdAt(_ contextPtr: UnsafeRawPointer?,
     guard let context = resolveContext(contextPtr),
           let ecs = editorECS(context),
           index >= 0 else { return 0 }
-    let entities = ecs.allEntities().sorted { lhs, rhs in
-        let lhsName = ecs.get(NameComponent.self, for: lhs)?.name ?? ""
-        let rhsName = ecs.get(NameComponent.self, for: rhs)?.name ?? ""
-        if lhsName != rhsName {
-            return lhsName.localizedCaseInsensitiveCompare(rhsName) == .orderedAscending
-        }
-        return lhs.id.uuidString < rhs.id.uuidString
-    }
+    let entities = ecs.allEntities()
     guard index < Int32(entities.count) else { return 0 }
     let idString = entities[Int(index)].id.uuidString
     return writeCString(idString, to: buffer, max: bufferSize)
@@ -354,6 +672,7 @@ public func MCEEditorSetEntityName(_ contextPtr: UnsafeRawPointer?,
                                    _ name: UnsafePointer<CChar>?) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           let name else { return }
@@ -370,11 +689,84 @@ public func MCEEditorCreateEntity(_ contextPtr: UnsafeRawPointer?,
                                   _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context) else { return 0 }
     let entityName = name != nil ? String(cString: name!) : "Entity"
     let entity = ecs.createEntity(name: entityName)
     context.editorProjectManager.notifySceneMutation()
     return writeCString(entity.id.uuidString, to: outId, max: outIdSize)
+}
+
+@_cdecl("MCEEditorDuplicateSelectedEntities")
+public func MCEEditorDuplicateSelectedEntities(_ contextPtr: UnsafeRawPointer?,
+                                               _ outPrimaryId: UnsafeMutablePointer<CChar>?,
+                                               _ outPrimaryIdSize: Int32) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context) else { return 0 }
+
+    let selected = context.editorSceneController.selectedEntityUUIDs().compactMap { ecs.entity(with: $0) }
+    guard !selected.isEmpty else { return 0 }
+    let selectedSet = Set(selected)
+    let orderedAll = ecs.allEntities()
+    let topLevel = orderedAll.filter { entity in
+        guard selectedSet.contains(entity) else { return false }
+        var current = ecs.getParent(entity)
+        while let parent = current {
+            if selectedSet.contains(parent) { return false }
+            current = ecs.getParent(parent)
+        }
+        return true
+    }
+    guard !topLevel.isEmpty else { return 0 }
+
+    var existingNamesLower = Set(orderedAll.compactMap { ecs.get(NameComponent.self, for: $0)?.name.lowercased() })
+    var insertionOffsets: [Entity?: Int] = [:]
+    var duplicatedRoots: [Entity] = []
+    duplicatedRoots.reserveCapacity(topLevel.count)
+
+    func cloneSubtree(_ source: Entity, newParent: Entity?, isRoot: Bool) -> Entity {
+        let originalName = ecs.get(NameComponent.self, for: source)?.name ?? "Entity"
+        let cloneName: String
+        if isRoot {
+            cloneName = makeUniqueCopyName(originalName, existingLowerNames: existingNamesLower)
+            existingNamesLower.insert(cloneName.lowercased())
+        } else {
+            cloneName = originalName
+        }
+
+        let clone = ecs.createEntity(name: cloneName)
+        let components = componentsDocument(for: source, ecs: ecs)
+        applyComponentsDocument(components, to: clone, ecs: ecs)
+        _ = ecs.setParent(clone, newParent, keepWorldTransform: false)
+
+        for child in ecs.getChildren(source) {
+            _ = cloneSubtree(child, newParent: clone, isRoot: false)
+        }
+        return clone
+    }
+
+    for sourceRoot in topLevel {
+        let parent = ecs.getParent(sourceRoot)
+        let siblingList = parent.map { ecs.getChildren($0) } ?? ecs.rootLevelEntities()
+        let sourceIndex = siblingList.firstIndex(of: sourceRoot) ?? max(0, siblingList.count - 1)
+        let offset = insertionOffsets[parent] ?? 0
+        let desiredIndex = min(siblingList.count, sourceIndex + 1 + offset)
+
+        let cloneRoot = cloneSubtree(sourceRoot, newParent: parent, isRoot: true)
+        _ = ecs.reorderChild(parent: parent, child: cloneRoot, newIndex: desiredIndex)
+        insertionOffsets[parent] = offset + 1
+        duplicatedRoots.append(cloneRoot)
+    }
+
+    let newSelectionIds = duplicatedRoots.map { $0.id }
+    context.editorSceneController.setSelectedEntityIds(newSelectionIds, primary: duplicatedRoots.last?.id)
+    context.editorProjectManager.notifySceneMutation()
+    if let primary = duplicatedRoots.last {
+        return writeCString(primary.id.uuidString, to: outPrimaryId, max: outPrimaryIdSize)
+    }
+    return 0
 }
 
 @_cdecl("MCEEditorCreateMeshEntity")
@@ -384,6 +776,7 @@ public func MCEEditorCreateMeshEntity(_ contextPtr: UnsafeRawPointer?,
                                       _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context) else { return 0 }
     let entity: Entity
     let meshHandle: AssetHandle?
@@ -416,6 +809,7 @@ public func MCEEditorCreateMeshEntityFromHandle(_ contextPtr: UnsafeRawPointer?,
                                                 _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context) else { return 0 }
     let meshString = meshHandle != nil ? String(cString: meshHandle!) : ""
     let meshHandleValue = handleFromString(meshString)
@@ -433,6 +827,7 @@ public func MCEEditorCreateMeshEntityFromHandleWithMaterials(_ contextPtr: Unsaf
                                                              _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context) else { return 0 }
     let meshString = meshHandle != nil ? String(cString: meshHandle!) : ""
     let meshHandleValue = handleFromString(meshString)
@@ -469,6 +864,7 @@ public func MCEEditorInstantiatePrefabFromHandle(_ contextPtr: UnsafeRawPointer?
                                                  _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context),
           let prefabHandle else { return 0 }
     let handleString = String(cString: prefabHandle)
@@ -499,11 +895,113 @@ public func MCEEditorCreatePrefabFromEntity(_ contextPtr: UnsafeRawPointer?,
           let entity = entity(from: entityId, context: context),
           let scene = context.editorSceneController.activeScene() else { return 0 }
     let name = scene.ecs.get(NameComponent.self, for: entity)?.name ?? "Prefab"
-    let components = componentsDocument(for: entity, ecs: scene.ecs)
-    let prefabEntity = PrefabEntityDocument(localId: entity.id, parentLocalId: nil, components: components)
-    let prefab = PrefabDocument(name: name, entities: [prefabEntity])
+    var prefabEntities: [PrefabEntityDocument] = []
+    func appendSubtree(_ current: Entity, parentLocalId: UUID?) {
+        let components = componentsDocument(for: current, ecs: scene.ecs)
+        prefabEntities.append(
+            PrefabEntityDocument(
+                localId: current.id,
+                parentLocalId: parentLocalId,
+                components: components
+            )
+        )
+        for child in scene.ecs.getChildren(current) {
+            appendSubtree(child, parentLocalId: current.id)
+        }
+    }
+    appendSubtree(entity, parentLocalId: nil)
+    let prefab = PrefabDocument(name: name, entities: prefabEntities)
     guard let relativePath = AssetOps.createPrefab(context: contextPtr, prefab: prefab, relativePath: "Prefabs", name: name) else { return 0 }
     _ = writeCString(relativePath, to: outPath, max: outPathSize)
+    return 1
+}
+
+@_cdecl("MCEEditorGetPrefabInstanceInfo")
+public func MCEEditorGetPrefabInstanceInfo(_ contextPtr: UnsafeRawPointer?,
+                                           _ entityId: UnsafePointer<CChar>?,
+                                           _ prefabHandleOut: UnsafeMutablePointer<CChar>?,
+                                           _ prefabHandleOutSize: Int32,
+                                           _ prefabPathOut: UnsafeMutablePointer<CChar>?,
+                                           _ prefabPathOutSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let resolved = resolvePrefabInstance(context, entityId) else { return 0 }
+    let handleString = resolved.link.prefabHandle.rawValue.uuidString
+    _ = writeCString(handleString, to: prefabHandleOut, max: prefabHandleOutSize)
+
+    let metadataPath = context.editorProjectManager
+        .assetMetadataSnapshot()
+        .first(where: { $0.handle == resolved.link.prefabHandle })?
+        .sourcePath
+    let fallbackPath = context.editorProjectManager.assetURL(for: resolved.link.prefabHandle)?.lastPathComponent
+    _ = writeCString(metadataPath ?? fallbackPath ?? "", to: prefabPathOut, max: prefabPathOutSize)
+    return 1
+}
+
+@_cdecl("MCEEditorApplyPrefabInstanceToAsset")
+public func MCEEditorApplyPrefabInstanceToAsset(_ contextPtr: UnsafeRawPointer?,
+                                                _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let resolved = resolvePrefabInstance(context, entityId),
+          let prefabURL = context.editorProjectManager.assetURL(for: resolved.link.prefabHandle) else { return 0 }
+
+    do {
+        let prefab = try PrefabSerializer.load(from: prefabURL)
+        guard let entityIndex = prefab.entities.firstIndex(where: { $0.localId == resolved.link.prefabEntityId }) else {
+            context.editorAlertCenter.enqueueError("Prefab entity could not be found for this instance.")
+            return 0
+        }
+
+        let components = componentsDocument(for: resolved.entity, ecs: resolved.scene.ecs)
+        var updatedEntities = prefab.entities
+        let existing = updatedEntities[entityIndex]
+        updatedEntities[entityIndex] = PrefabEntityDocument(
+            localId: existing.localId,
+            parentLocalId: existing.parentLocalId,
+            components: components
+        )
+        let updatedPrefab = PrefabDocument(schemaVersion: prefab.schemaVersion, name: prefab.name, entities: updatedEntities)
+
+        let saved = context.editorProjectManager.performAssetMutation {
+            try PrefabSerializer.save(prefab: updatedPrefab, to: prefabURL)
+            return true
+        }
+        guard saved else { return 0 }
+
+        resolved.scene.ecs.remove(PrefabOverrideComponent.self, from: resolved.entity)
+        context.engineContext.prefabSystem.applyPrefabs(handles: Set([resolved.link.prefabHandle]), to: resolved.scene)
+        context.editorProjectManager.notifySceneMutation()
+        return 1
+    } catch {
+        context.editorAlertCenter.enqueueError("Failed to apply prefab: \(error.localizedDescription)")
+        return 0
+    }
+}
+
+@_cdecl("MCEEditorRevertPrefabInstance")
+public func MCEEditorRevertPrefabInstance(_ contextPtr: UnsafeRawPointer?,
+                                          _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let resolved = resolvePrefabInstance(context, entityId) else { return 0 }
+
+    do {
+        guard let prefabURL = context.editorProjectManager.assetURL(for: resolved.link.prefabHandle) else { return 0 }
+        let prefab = try PrefabSerializer.load(from: prefabURL)
+        guard prefab.entities.contains(where: { $0.localId == resolved.link.prefabEntityId }) else {
+            context.editorAlertCenter.enqueueError("Prefab entity could not be found for this instance.")
+            return 0
+        }
+    } catch {
+        context.editorAlertCenter.enqueueError("Failed to load prefab for revert: \(error.localizedDescription)")
+        return 0
+    }
+
+    resolved.scene.ecs.remove(PrefabOverrideComponent.self, from: resolved.entity)
+    guard context.engineContext.prefabSystem.reapplyInstance(entity: resolved.entity, in: resolved.scene) else { return 0 }
+    context.editorProjectManager.notifySceneMutation()
     return 1
 }
 
@@ -514,6 +1012,7 @@ public func MCEEditorCreateLightEntity(_ contextPtr: UnsafeRawPointer?,
                                        _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context) else { return 0 }
     let entityName: String
     let lightTypeValue: LightType
@@ -543,6 +1042,7 @@ public func MCEEditorCreateSkyEntity(_ contextPtr: UnsafeRawPointer?,
                                      _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context) else { return 0 }
     let entity = ecs.createEntity(name: "Sky")
     var sky = SkyLightComponent()
@@ -560,6 +1060,7 @@ public func MCEEditorCreateCameraEntity(_ contextPtr: UnsafeRawPointer?,
                                         _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context) else { return 0 }
     let entity = ecs.createEntity(name: "Camera")
     var component = CameraComponent(isPrimary: false, isEditor: false)
@@ -577,6 +1078,7 @@ public func MCEEditorCreateCameraFromView(_ contextPtr: UnsafeRawPointer?,
                                           _ outIdSize: Int32) -> Int32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context) else { return 0 }
     let entity = ecs.createEntity(name: "Camera")
     if let editorCamera = findEditorCamera(ecs: ecs) {
@@ -594,9 +1096,38 @@ public func MCEEditorCreateCameraFromView(_ contextPtr: UnsafeRawPointer?,
 public func MCEEditorDestroyEntity(_ contextPtr: UnsafeRawPointer?, _ entityId: UnsafePointer<CChar>?) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return }
     ecs.destroyEntity(entity)
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorDestroySelectedEntities")
+public func MCEEditorDestroySelectedEntities(_ contextPtr: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context) else { return }
+    let selected = context.editorSceneController.selectedEntityUUIDs().compactMap { ecs.entity(with: $0) }
+    guard !selected.isEmpty else { return }
+
+    let selectedSet = Set(selected)
+    let orderedAll = ecs.allEntities()
+    let topLevel = orderedAll.filter { entity in
+        guard selectedSet.contains(entity) else { return false }
+        var current = ecs.getParent(entity)
+        while let parent = current {
+            if selectedSet.contains(parent) { return false }
+            current = ecs.getParent(parent)
+        }
+        return true
+    }
+
+    for entity in topLevel.reversed() {
+        ecs.destroyEntity(entity)
+    }
+    context.editorSceneController.setSelectedEntityIds([], primary: nil)
     context.editorProjectManager.notifySceneMutation()
 }
 
@@ -667,6 +1198,7 @@ public func MCEEditorAddComponent(_ contextPtr: UnsafeRawPointer?,
         let component = RigidbodyComponent(
             friction: defaults.defaultFriction,
             restitution: defaults.defaultRestitution,
+            linearDamping: defaults.defaultLinearDamping,
             angularDamping: defaults.defaultAngularDamping
         )
         ecs.add(component, to: entity)
@@ -798,21 +1330,22 @@ public func MCEEditorGetCollider(_ contextPtr: UnsafeRawPointer?,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           let collider = ecs.get(ColliderComponent.self, for: entity) else { return 0 }
-    enabled?.pointee = collider.isEnabled ? 1 : 0
-    shapeType?.pointee = Int32(collider.shapeType.rawValue)
-    boxX?.pointee = collider.boxHalfExtents.x
-    boxY?.pointee = collider.boxHalfExtents.y
-    boxZ?.pointee = collider.boxHalfExtents.z
-    sphereRadius?.pointee = collider.sphereRadius
-    capsuleHalfHeight?.pointee = collider.capsuleHalfHeight
-    capsuleRadius?.pointee = collider.capsuleRadius
-    offsetX?.pointee = collider.offset.x
-    offsetY?.pointee = collider.offset.y
-    offsetZ?.pointee = collider.offset.z
-    rotX?.pointee = collider.rotationOffset.x
-    rotY?.pointee = collider.rotationOffset.y
-    rotZ?.pointee = collider.rotationOffset.z
-    isTrigger?.pointee = collider.isTrigger ? 1 : 0
+    let shape = collider.primaryShape()
+    enabled?.pointee = shape.isEnabled ? 1 : 0
+    shapeType?.pointee = Int32(shape.shapeType.rawValue)
+    boxX?.pointee = shape.boxHalfExtents.x
+    boxY?.pointee = shape.boxHalfExtents.y
+    boxZ?.pointee = shape.boxHalfExtents.z
+    sphereRadius?.pointee = shape.sphereRadius
+    capsuleHalfHeight?.pointee = shape.capsuleHalfHeight
+    capsuleRadius?.pointee = shape.capsuleRadius
+    offsetX?.pointee = shape.offset.x
+    offsetY?.pointee = shape.offset.y
+    offsetZ?.pointee = shape.offset.z
+    rotX?.pointee = shape.rotationOffset.x
+    rotY?.pointee = shape.rotationOffset.y
+    rotZ?.pointee = shape.rotationOffset.z
+    isTrigger?.pointee = shape.isTrigger ? 1 : 0
     return 1
 }
 
@@ -838,16 +1371,170 @@ public func MCEEditorSetCollider(_ contextPtr: UnsafeRawPointer?,
           !context.editorSceneController.isPlaying,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return }
-    let component = ColliderComponent(isEnabled: enabled != 0,
-                                      shapeType: ColliderShapeType(rawValue: UInt32(shapeType)) ?? .box,
-                                      boxHalfExtents: SIMD3<Float>(boxX, boxY, boxZ),
-                                      sphereRadius: sphereRadius,
-                                      capsuleHalfHeight: capsuleHalfHeight,
-                                      capsuleRadius: capsuleRadius,
-                                      offset: SIMD3<Float>(offsetX, offsetY, offsetZ),
-                                      rotationOffset: SIMD3<Float>(rotX, rotY, rotZ),
-                                      isTrigger: isTrigger != 0)
+    var component = ecs.get(ColliderComponent.self, for: entity) ?? ColliderComponent()
+    var shapes = component.allShapes()
+    if shapes.isEmpty {
+        shapes = [ColliderShape()]
+    }
+    shapes[0] = ColliderShape(isEnabled: enabled != 0,
+                              shapeType: ColliderShapeType(rawValue: UInt32(shapeType)) ?? .box,
+                              boxHalfExtents: SIMD3<Float>(boxX, boxY, boxZ),
+                              sphereRadius: sphereRadius,
+                              capsuleHalfHeight: capsuleHalfHeight,
+                              capsuleRadius: capsuleRadius,
+                              offset: SIMD3<Float>(offsetX, offsetY, offsetZ),
+                              rotationOffset: SIMD3<Float>(rotX, rotY, rotZ),
+                              isTrigger: isTrigger != 0,
+                              collisionLayerOverride: shapes[0].collisionLayerOverride,
+                              physicsMaterial: shapes[0].physicsMaterial)
+    component.setShapes(shapes)
     ecs.add(component, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetColliderShapeCount")
+public func MCEEditorGetColliderShapeCount(_ contextPtr: UnsafeRawPointer?,
+                                           _ entityId: UnsafePointer<CChar>?) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let collider = ecs.get(ColliderComponent.self, for: entity) else { return 0 }
+    return Int32(collider.allShapes().count)
+}
+
+@_cdecl("MCEEditorAddColliderShape")
+public func MCEEditorAddColliderShape(_ contextPtr: UnsafeRawPointer?,
+                                      _ entityId: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var collider = ecs.get(ColliderComponent.self, for: entity) else { return }
+    var shapes = collider.allShapes()
+    shapes.append(ColliderShape())
+    collider.setShapes(shapes)
+    ecs.add(collider, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorRemoveColliderShape")
+public func MCEEditorRemoveColliderShape(_ contextPtr: UnsafeRawPointer?,
+                                         _ entityId: UnsafePointer<CChar>?,
+                                         _ shapeIndex: Int32) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var collider = ecs.get(ColliderComponent.self, for: entity) else { return }
+    var shapes = collider.allShapes()
+    guard shapeIndex >= 0, shapeIndex < Int32(shapes.count) else { return }
+    if shapes.count == 1 {
+        ecs.remove(ColliderComponent.self, from: entity)
+        context.editorProjectManager.notifySceneMutation()
+        return
+    } else {
+        shapes.remove(at: Int(shapeIndex))
+    }
+    collider.setShapes(shapes)
+    ecs.add(collider, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetColliderShape")
+public func MCEEditorGetColliderShape(_ contextPtr: UnsafeRawPointer?,
+                                      _ entityId: UnsafePointer<CChar>?,
+                                      _ shapeIndex: Int32,
+                                      _ enabled: UnsafeMutablePointer<UInt32>?,
+                                      _ shapeType: UnsafeMutablePointer<Int32>?,
+                                      _ boxX: UnsafeMutablePointer<Float>?,
+                                      _ boxY: UnsafeMutablePointer<Float>?,
+                                      _ boxZ: UnsafeMutablePointer<Float>?,
+                                      _ sphereRadius: UnsafeMutablePointer<Float>?,
+                                      _ capsuleHalfHeight: UnsafeMutablePointer<Float>?,
+                                      _ capsuleRadius: UnsafeMutablePointer<Float>?,
+                                      _ offsetX: UnsafeMutablePointer<Float>?,
+                                      _ offsetY: UnsafeMutablePointer<Float>?,
+                                      _ offsetZ: UnsafeMutablePointer<Float>?,
+                                      _ rotX: UnsafeMutablePointer<Float>?,
+                                      _ rotY: UnsafeMutablePointer<Float>?,
+                                      _ rotZ: UnsafeMutablePointer<Float>?,
+                                      _ isTrigger: UnsafeMutablePointer<UInt32>?,
+                                      _ hasLayerOverride: UnsafeMutablePointer<UInt32>?,
+                                      _ layerOverride: UnsafeMutablePointer<Int32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let collider = ecs.get(ColliderComponent.self, for: entity) else { return 0 }
+    let shapes = collider.allShapes()
+    guard shapeIndex >= 0, shapeIndex < Int32(shapes.count) else { return 0 }
+    let shape = shapes[Int(shapeIndex)]
+    enabled?.pointee = shape.isEnabled ? 1 : 0
+    shapeType?.pointee = Int32(shape.shapeType.rawValue)
+    boxX?.pointee = shape.boxHalfExtents.x
+    boxY?.pointee = shape.boxHalfExtents.y
+    boxZ?.pointee = shape.boxHalfExtents.z
+    sphereRadius?.pointee = shape.sphereRadius
+    capsuleHalfHeight?.pointee = shape.capsuleHalfHeight
+    capsuleRadius?.pointee = shape.capsuleRadius
+    offsetX?.pointee = shape.offset.x
+    offsetY?.pointee = shape.offset.y
+    offsetZ?.pointee = shape.offset.z
+    rotX?.pointee = shape.rotationOffset.x
+    rotY?.pointee = shape.rotationOffset.y
+    rotZ?.pointee = shape.rotationOffset.z
+    isTrigger?.pointee = shape.isTrigger ? 1 : 0
+    if let override = shape.collisionLayerOverride {
+        hasLayerOverride?.pointee = 1
+        layerOverride?.pointee = override
+    } else {
+        hasLayerOverride?.pointee = 0
+        layerOverride?.pointee = 0
+    }
+    return 1
+}
+
+@_cdecl("MCEEditorSetColliderShape")
+public func MCEEditorSetColliderShape(_ contextPtr: UnsafeRawPointer?,
+                                      _ entityId: UnsafePointer<CChar>?,
+                                      _ shapeIndex: Int32,
+                                      _ enabled: UInt32,
+                                      _ shapeType: Int32,
+                                      _ boxX: Float,
+                                      _ boxY: Float,
+                                      _ boxZ: Float,
+                                      _ sphereRadius: Float,
+                                      _ capsuleHalfHeight: Float,
+                                      _ capsuleRadius: Float,
+                                      _ offsetX: Float,
+                                      _ offsetY: Float,
+                                      _ offsetZ: Float,
+                                      _ rotX: Float,
+                                      _ rotY: Float,
+                                      _ rotZ: Float,
+                                      _ isTrigger: UInt32,
+                                      _ hasLayerOverride: UInt32,
+                                      _ layerOverride: Int32) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var collider = ecs.get(ColliderComponent.self, for: entity) else { return }
+    var shapes = collider.allShapes()
+    guard shapeIndex >= 0, shapeIndex < Int32(shapes.count) else { return }
+    let index = Int(shapeIndex)
+    shapes[index] = ColliderShape(isEnabled: enabled != 0,
+                                  shapeType: ColliderShapeType(rawValue: UInt32(shapeType)) ?? .box,
+                                  boxHalfExtents: SIMD3<Float>(boxX, boxY, boxZ),
+                                  sphereRadius: sphereRadius,
+                                  capsuleHalfHeight: capsuleHalfHeight,
+                                  capsuleRadius: capsuleRadius,
+                                  offset: SIMD3<Float>(offsetX, offsetY, offsetZ),
+                                  rotationOffset: SIMD3<Float>(rotX, rotY, rotZ),
+                                  isTrigger: isTrigger != 0,
+                                  collisionLayerOverride: hasLayerOverride != 0 ? layerOverride : nil,
+                                  physicsMaterial: shapes[index].physicsMaterial)
+    collider.setShapes(shapes)
+    ecs.add(collider, to: entity)
     context.editorProjectManager.notifySceneMutation()
 }
 
@@ -1023,8 +1710,19 @@ public func MCEEditorSetTransformFromMatrix(_ contextPtr: UnsafeRawPointer?,
         return 0
     }
 
-    let matrixValue = readColumnMajorMatrix(from: matrix)
-    let decomposed = TransformMath.decomposeMatrix(matrixValue)
+    let worldMatrix = readColumnMajorMatrix(from: matrix)
+    let localMatrix: matrix_float4x4
+    if let parent = ecs.getParent(entity) {
+        localMatrix = simd_inverse(ecs.worldMatrix(for: parent)) * worldMatrix
+    } else {
+        localMatrix = worldMatrix
+    }
+    let decomposed = TransformMath.decomposeMatrix(localMatrix)
+    guard isFinite(decomposed.position),
+          isFinite(decomposed.rotation),
+          isFinite(decomposed.scale) else {
+        return 0
+    }
     let transform = TransformComponent(
         position: decomposed.position,
         rotation: decomposed.rotation,
@@ -1042,12 +1740,10 @@ public func MCEEditorGetModelMatrix(_ contextPtr: UnsafeRawPointer?,
     guard let context = resolveContext(contextPtr),
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
-          let transform = ecs.get(TransformComponent.self, for: entity),
+          ecs.get(TransformComponent.self, for: entity) != nil,
           let matrixOut else { return 0 }
 
-    let matrix = TransformMath.makeMatrix(position: transform.position,
-                                          rotation: transform.rotation,
-                                          scale: transform.scale)
+    let matrix = ecs.worldMatrix(for: entity)
     writeColumnMajorMatrix(matrix, to: matrixOut)
 
     return 1
@@ -1091,7 +1787,7 @@ public func MCEEditorDebugPhysicsRaycastFromCamera(_ contextPtr: UnsafeRawPointe
     }
     let direction = forward / dirLength
     let clampedDistance = max(Float(0.01), maxDistance)
-    let result = physicsSystem.raycastClosest(origin: origin, direction: direction, maxDistance: clampedDistance)
+    let result = physicsSystem.raycastForEditorPicking(origin: origin, direction: direction, maxDistance: clampedDistance)
     if let hit = result {
         let debugDraw = context.engineContext.debugDraw
         let pointSize = max(0.02, debugDraw.lineThickness * 2.0)
@@ -1226,9 +1922,16 @@ public func MCEEditorGetLight(_ contextPtr: UnsafeRawPointer?,
     range?.pointee = light.range
     innerCos?.pointee = light.innerConeCos
     outerCos?.pointee = light.outerConeCos
-    dirX?.pointee = light.direction.x
-    dirY?.pointee = light.direction.y
-    dirZ?.pointee = light.direction.z
+    let direction: SIMD3<Float>
+    if (light.type == .directional || light.type == .spot),
+       let transform = ecs.get(TransformComponent.self, for: entity) {
+        direction = TransformMath.directionalLightDirection(from: transform.rotation)
+    } else {
+        direction = light.direction
+    }
+    dirX?.pointee = direction.x
+    dirY?.pointee = direction.y
+    dirZ?.pointee = direction.z
     castsShadows?.pointee = light.castsShadows ? 1 : 0
     return 1
 }
@@ -1255,7 +1958,15 @@ public func MCEEditorSetLight(_ contextPtr: UnsafeRawPointer?,
     light.range = max(0.0, range)
     light.innerConeCos = innerCos
     light.outerConeCos = outerCos
-    light.direction = SIMD3<Float>(dirX, dirY, dirZ)
+    if light.type != .directional && light.type != .spot {
+        light.direction = SIMD3<Float>(dirX, dirY, dirZ)
+    } else if var transform = ecs.get(TransformComponent.self, for: entity) {
+        let requestedDirection = SIMD3<Float>(dirX, dirY, dirZ)
+        if simd_length_squared(requestedDirection) > 0.000001 {
+            transform.rotation = TransformMath.rotationForDirectionalLight(direction: simd_normalize(requestedDirection))
+            ecs.add(transform, to: entity)
+        }
+    }
     light.castsShadows = castsShadows != 0
     ecs.add(light, to: entity)
     if ecs.has(PrefabInstanceComponent.self, entity) {

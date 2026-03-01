@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "../../ImGui/imgui.h"
+#include "../ImGui/imgui.h"
 #include <array>
 #include <cstdint>
 
@@ -30,6 +30,10 @@ namespace EditorIcons {
         Mesh,
         Texture,
         HDRI,
+        Info,
+        DirectionalLight,
+        PointLight,
+        SpotLight,
         Warning,
         File,
         Count
@@ -38,32 +42,37 @@ namespace EditorIcons {
     struct Definition {
         Id id;
         const char *name;
+        const char *metadataKey;
         ImWchar codepoint;
     };
 
     inline constexpr Definition kDefinitions[] = {
-        { Id::Play, "Play", 0xf04b },
-        { Id::Pause, "Pause", 0xf04c },
-        { Id::Stop, "Stop", 0xf04d },
-        { Id::Simulate, "Simulate", 0xf0c3 },
-        { Id::Reset, "Reset", 0xf2ea },
-        { Id::Translate, "Translate", 0xf047 },
-        { Id::Rotate, "Rotate", 0xf2f1 },
-        { Id::Scale, "Scale", 0xf424 },
-        { Id::Select, "Select", 0xf245 },
-        { Id::Snap, "Snap", 0xf890 },
-        { Id::Local, "Local", 0xf3c5 },
-        { Id::World, "World", 0xf57d },
-        { Id::Camera, "Camera", 0xf030 },
-        { Id::Plus, "Plus", 0x2b },
-        { Id::Folder, "Folder", 0xf07b },
-        { Id::Scene, "Scene", 0xf5fd },
-        { Id::Material, "Material", 0xf5a1 },
-        { Id::Mesh, "Mesh", 0xf1b2 },
-        { Id::Texture, "Texture", 0xf03e },
-        { Id::HDRI, "HDRI", 0xf57d },
-        { Id::Warning, "Warning", 0xf071 },
-        { Id::File, "File", 0xf15b }
+        { Id::Play, "Play", "play", 0xf04b },
+        { Id::Pause, "Pause", "pause", 0xf04c },
+        { Id::Stop, "Stop", "stop", 0xf04d },
+        { Id::Simulate, "Simulate", "flask", 0xf0c3 },
+        { Id::Reset, "Reset", "rotate-left", 0xf2ea },
+        { Id::Translate, "Translate", "arrows-up-down-left-right", 0xf047 },
+        { Id::Rotate, "Rotate", "rotate", 0xf2f1 },
+        { Id::Scale, "Scale", "up-right-and-down-left-from-center", 0xf424 },
+        { Id::Select, "Select", "hand-pointer", 0xf245 },
+        { Id::Snap, "Snap", "magnet", 0xf076 },
+        { Id::Local, "Local", "map-marker-alt", 0xf3c5 },
+        { Id::World, "World", "globe", 0xf57d },
+        { Id::Camera, "Camera", "camera", 0xf030 },
+        { Id::Plus, "Plus", "plus", 0x2b },
+        { Id::Folder, "Folder", "folder", 0xf07b },
+        { Id::Scene, "Scene", "cubes", 0xf1b3 },
+        { Id::Material, "Material", "palette", 0xf53f },
+        { Id::Mesh, "Mesh", "cube", 0xf1b2 },
+        { Id::Texture, "Texture", "image", 0xf03e },
+        { Id::HDRI, "HDRI", "globe", 0xf57d },
+        { Id::Info, "Info", "circle-info", 0xf05a },
+        { Id::DirectionalLight, "DirectionalLight", "", 0xf185 },
+        { Id::PointLight, "PointLight", "", 0xf0eb },
+        { Id::SpotLight, "SpotLight", "", 0xf3c5 },
+        { Id::Warning, "Warning", "triangle-exclamation", 0xf071 },
+        { Id::File, "File", "file", 0xf15b }
     };
 
     inline int EncodeUtf8(ImWchar codepoint, char out[5]) {
@@ -119,4 +128,3 @@ namespace EditorIcons {
         return glyphs[static_cast<size_t>(id)].data();
     }
 }
-

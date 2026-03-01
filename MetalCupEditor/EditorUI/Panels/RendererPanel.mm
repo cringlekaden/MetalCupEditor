@@ -13,219 +13,242 @@
 extern "C" void MCEEditorRequestActiveSkyRebuild(MCE_CTX);
 
 namespace {
-    struct BloomPreset {
-        const char *label;
-        uint32_t halfRes;
-        uint32_t blurPasses;
-        float upsampleScale;
-        uint32_t maxMips;
-    };
-
-    const BloomPreset kBloomPresets[] = {
-        {"Low", 1, 2, 0.8f, 3},
-        {"Medium", 1, 3, 1.0f, 4},
-        {"High", 0, 4, 1.1f, 5},
-        {"Ultra", 0, 6, 1.25f, 6}
-    };
-
-    bool NearlyEqual(float a, float b, float epsilon = 0.01f) {
-        return fabsf(a - b) <= epsilon;
-    }
-
     void *EngineContextFromMCE(void *context) {
         return MCEContextGetEngineContext(context);
     }
 
-    int ResolveBloomPresetIndex(void *engineContext) {
-        const uint32_t halfRes = MCERendererGetHalfResBloom(engineContext);
-        const uint32_t blurPasses = MCERendererGetBlurPasses(engineContext);
-        const uint32_t maxMips = MCERendererGetBloomMaxMips(engineContext);
-        const float upsampleScale = MCERendererGetBloomUpsampleScale(engineContext);
-        for (int i = 0; i < static_cast<int>(IM_ARRAYSIZE(kBloomPresets)); ++i) {
-            const BloomPreset &preset = kBloomPresets[i];
-            if (preset.halfRes == halfRes &&
-                preset.blurPasses == blurPasses &&
-                preset.maxMips == maxMips &&
-                NearlyEqual(preset.upsampleScale, upsampleScale)) {
-                return i + 1;
-            }
+    void ApplyBloomPresetDefaults(void *engineContext, int presetIndex) {
+        // Keep max mips artist-tweakable while presets control primary quality knobs.
+        if (presetIndex == 0) { // Low
+            MCERendererSetBloomResolutionScale(engineContext, 2);
+            MCERendererSetBloomMaxMips(engineContext, 4);
+        } else if (presetIndex == 1) { // Medium
+            MCERendererSetBloomResolutionScale(engineContext, 4);
+            MCERendererSetBloomMaxMips(engineContext, 4);
+        } else if (presetIndex == 2) { // High
+            MCERendererSetBloomResolutionScale(engineContext, 4);
+            MCERendererSetBloomMaxMips(engineContext, 5);
+        } else if (presetIndex == 3) { // Ultra
+            MCERendererSetBloomResolutionScale(engineContext, 4);
+            MCERendererSetBloomMaxMips(engineContext, 6);
         }
-        return 0;
     }
-
-    void ApplyBloomPreset(void *engineContext, int presetIndex) {
-        if (presetIndex <= 0) { return; }
-        const BloomPreset &preset = kBloomPresets[presetIndex - 1];
-        MCERendererSetHalfResBloom(engineContext, preset.halfRes);
-        MCERendererSetBlurPasses(engineContext, preset.blurPasses);
-        MCERendererSetBloomUpsampleScale(engineContext, preset.upsampleScale);
-        MCERendererSetBloomMaxMips(engineContext, preset.maxMips);
-    }
-
 }
 
 
-static void DrawRendererSettingsBody(void *context, const char *childId) {
+enum RendererSettingsSectionMask : uint32_t {
+    RendererSectionCore = 1 << 0,
+    RendererSectionOutline = 1 << 1,
+    RendererSectionShadows = 1 << 2,
+    RendererSectionGrid = 1 << 3,
+    RendererSectionLighting = 1 << 4,
+    RendererSectionPerformance = 1 << 5,
+    RendererSectionDebug = 1 << 6,
+    RendererSectionAll = 0xFFFFFFFFu
+};
+
+static bool SectionEnabled(uint32_t sectionMask, RendererSettingsSectionMask section) {
+    return (sectionMask & section) != 0;
+}
+
+static void SectionTitle(const char *title) {
+    EditorUI::SectionHeader(title);
+}
+
+static void DrawRendererSettingsBody(void *context, const char *childId, uint32_t sectionMask = RendererSectionAll) {
     ImGui::BeginChild(childId, ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 
     void *engineContext = EngineContextFromMCE(context);
-    bool bloomOpen = EditorUI::BeginSection(context, "Bloom", "Renderer.Bloom", true);
-    if (bloomOpen) {
-        if (EditorUI::BeginPropertyTable("BloomTable")) {
+    if (SectionEnabled(sectionMask, RendererSectionCore)) {
+        SectionTitle("Post Processing");
+        if (EditorUI::BeginPropertyTable("PostProcessTable")) {
             bool bloomEnabled = MCERendererGetBloomEnabled(engineContext) != 0;
-            if (EditorUI::PropertyBool("Enable Bloom", &bloomEnabled)) {
+            EditorUI::SetNextPropertyInfoTooltip("Enable bloom post-processing.\nUnits: boolean.\nPerformance: medium GPU cost.\nPersistence: Project.");
+            if (EditorUI::PropertyBool("Bloom Enabled", &bloomEnabled)) {
                 MCERendererSetBloomEnabled(engineContext, bloomEnabled ? 1 : 0);
             }
 
             if (bloomEnabled) {
-            const char* qualityItems[] = { "Custom", "Low", "Medium", "High", "Ultra" };
-            int qualityIndex = ResolveBloomPresetIndex(engineContext);
-            if (EditorUI::PropertyCombo("Quality Preset", &qualityIndex, qualityItems, IM_ARRAYSIZE(qualityItems))) {
-                ApplyBloomPreset(engineContext, qualityIndex);
-            }
+                const char* qualityItems[] = { "Low", "Medium", "High", "Ultra", "Custom" };
+                int qualityIndex = static_cast<int>(MCERendererGetBloomQualityPreset(engineContext));
+                qualityIndex = qualityIndex < 0 || qualityIndex > 4 ? 2 : qualityIndex;
+                EditorUI::SetNextPropertyInfoTooltip("Bloom quality preset.\nUnits: preset.\nPerformance: higher presets increase blur quality/cost.\nPersistence: Project.");
+                if (EditorUI::PropertyCombo("Bloom Quality", &qualityIndex, qualityItems, IM_ARRAYSIZE(qualityItems))) {
+                    MCERendererSetBloomQualityPreset(engineContext, static_cast<uint32_t>(qualityIndex));
+                    if (qualityIndex >= 0 && qualityIndex <= 3) {
+                        ApplyBloomPresetDefaults(engineContext, qualityIndex);
+                    }
+                }
 
-            float threshold = MCERendererGetBloomThreshold(engineContext);
-            if (EditorUI::PropertyFloat("Threshold", &threshold, EditorUIConstants::kBloomThresholdStep,
-                                        EditorUIConstants::kBloomThresholdMin, EditorUIConstants::kBloomThresholdMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomThreshold)) {
-                MCERendererSetBloomThreshold(engineContext, threshold);
-            }
-            float knee = MCERendererGetBloomKnee(engineContext);
-            if (EditorUI::PropertyFloat("Knee", &knee, EditorUIConstants::kBloomKneeStep,
-                                        EditorUIConstants::kBloomKneeMin, EditorUIConstants::kBloomKneeMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomKnee)) {
-                MCERendererSetBloomKnee(engineContext, knee);
-            }
-            float intensity = MCERendererGetBloomIntensity(engineContext);
-            if (EditorUI::PropertyFloat("Intensity", &intensity, EditorUIConstants::kBloomIntensityStep,
-                                        EditorUIConstants::kBloomIntensityMin, EditorUIConstants::kBloomIntensityMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomIntensity)) {
-                MCERendererSetBloomIntensity(engineContext, intensity);
-            }
-            float upsampleScale = MCERendererGetBloomUpsampleScale(engineContext);
-            if (EditorUI::PropertyFloat("Upsample Scale", &upsampleScale, EditorUIConstants::kBloomUpsampleStep,
-                                        EditorUIConstants::kBloomUpsampleMin, EditorUIConstants::kBloomUpsampleMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomUpsample)) {
-                MCERendererSetBloomUpsampleScale(engineContext, upsampleScale);
-            }
-            float dirtIntensity = MCERendererGetBloomDirtIntensity(engineContext);
-            if (EditorUI::PropertyFloat("Dirt Intensity", &dirtIntensity, EditorUIConstants::kBloomDirtStep,
-                                        EditorUIConstants::kBloomDirtMin, EditorUIConstants::kBloomDirtMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomDirt)) {
-                MCERendererSetBloomDirtIntensity(engineContext, dirtIntensity);
-            }
-            int blurPasses = static_cast<int>(MCERendererGetBlurPasses(engineContext));
-            if (EditorUI::PropertyInt("Blur Passes (per mip)", &blurPasses, 0, 8)) {
-                MCERendererSetBlurPasses(engineContext, static_cast<uint32_t>(blurPasses));
-            }
-            int maxMips = static_cast<int>(MCERendererGetBloomMaxMips(engineContext));
-            if (EditorUI::PropertyInt("Max Mip Levels", &maxMips, 1, 8)) {
-                MCERendererSetBloomMaxMips(engineContext, static_cast<uint32_t>(maxMips));
-            }
-            bool halfRes = MCERendererGetHalfResBloom(engineContext) != 0;
-            if (EditorUI::PropertyBool("Half-Res Bloom", &halfRes)) {
-                MCERendererSetHalfResBloom(engineContext, halfRes ? 1 : 0);
-            }
+                const char* resolutionItems[] = { "1/2", "1/4" };
+                uint32_t bloomScale = MCERendererGetBloomResolutionScale(engineContext);
+                int scaleIndex = bloomScale <= 2 ? 0 : 1;
+                EditorUI::SetNextPropertyInfoTooltip("Bloom base resolution scale.\nUnits: relative to viewport.\nPerformance: 1/4 is much faster.\nPersistence: Project.");
+                if (EditorUI::PropertyCombo("Resolution Scale", &scaleIndex, resolutionItems, IM_ARRAYSIZE(resolutionItems))) {
+                    MCERendererSetBloomResolutionScale(engineContext, scaleIndex == 0 ? 2 : 4);
+                }
+
+                float threshold = MCERendererGetBloomThreshold(engineContext);
+                EditorUI::SetNextPropertyInfoTooltip("Luminance threshold where bloom starts.\nUnits: linear HDR luminance.\nPersistence: Project.");
+                if (EditorUI::PropertyFloat("Threshold", &threshold, EditorUIConstants::kBloomThresholdStep,
+                                            EditorUIConstants::kBloomThresholdMin, EditorUIConstants::kBloomThresholdMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomThreshold)) {
+                    MCERendererSetBloomThreshold(engineContext, threshold);
+                }
+                float knee = MCERendererGetBloomKnee(engineContext);
+                EditorUI::SetNextPropertyInfoTooltip("Soft-knee around threshold.\nUnits: normalized.\nPersistence: Project.");
+                if (EditorUI::PropertyFloat("Knee", &knee, EditorUIConstants::kBloomKneeStep,
+                                            EditorUIConstants::kBloomKneeMin, EditorUIConstants::kBloomKneeMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomKnee)) {
+                    MCERendererSetBloomKnee(engineContext, knee);
+                }
+                float intensity = MCERendererGetBloomIntensity(engineContext);
+                if (EditorUI::PropertyFloat("Intensity", &intensity, EditorUIConstants::kBloomIntensityStep,
+                                            EditorUIConstants::kBloomIntensityMin, EditorUIConstants::kBloomIntensityMax, "%.3f", true, true, EditorUIConstants::kDefaultBloomIntensity)) {
+                    MCERendererSetBloomIntensity(engineContext, intensity);
+                }
+                int maxMips = static_cast<int>(MCERendererGetBloomMaxMips(engineContext));
+                if (EditorUI::PropertyInt("Max Mips", &maxMips, 1, 8)) {
+                    MCERendererSetBloomMaxMips(engineContext, static_cast<uint32_t>(maxMips));
+                }
             }
             EditorUI::EndPropertyTable();
         }
+        EditorUI::StandardSpacing();
     }
 
-    bool tonemapOpen = EditorUI::BeginSection(context, "Tonemap", "Renderer.Tonemap", true);
-    if (tonemapOpen) {
+    if (SectionEnabled(sectionMask, RendererSectionCore)) {
+        SectionTitle("Tonemap");
         if (EditorUI::BeginPropertyTable("TonemapTable")) {
             const char* tonemapItems[] = { "None", "Reinhard", "ACES", "MetalCup Custom" };
             int tonemap = static_cast<int>(MCERendererGetTonemap(engineContext));
+            EditorUI::SetNextPropertyInfoTooltip("Tone mapping operator.\nUnits: enum.\nPerformance: low.\nPersistence: Project.");
             if (EditorUI::PropertyCombo("Tonemap", &tonemap, tonemapItems, IM_ARRAYSIZE(tonemapItems))) {
                 MCERendererSetTonemap(engineContext, static_cast<uint32_t>(tonemap));
             }
             float exposure = MCERendererGetExposure(engineContext);
+            EditorUI::SetNextPropertyInfoTooltip("Global exposure compensation.\nUnits: EV-like scalar.\nPerformance: low.\nPersistence: Project.");
             if (EditorUI::PropertyFloat("Exposure", &exposure, EditorUIConstants::kExposureStep,
                                         EditorUIConstants::kExposureMin, EditorUIConstants::kExposureMax, "%.3f", true, true, EditorUIConstants::kDefaultExposure)) {
                 MCERendererSetExposure(engineContext, exposure);
             }
             float gamma = MCERendererGetGamma(engineContext);
+            EditorUI::SetNextPropertyInfoTooltip("Display gamma.\nUnits: gamma value.\nPerformance: low.\nPersistence: Project.");
             if (EditorUI::PropertyFloat("Gamma", &gamma, EditorUIConstants::kGammaStep,
                                         EditorUIConstants::kGammaMin, EditorUIConstants::kGammaMax, "%.3f", true, true, EditorUIConstants::kDefaultGamma)) {
                 MCERendererSetGamma(engineContext, gamma);
             }
             EditorUI::EndPropertyTable();
         }
+        EditorUI::StandardSpacing();
     }
 
-    bool outlineOpen = EditorUI::BeginSection(context, "Selection Outline", "Renderer.Outline", true);
-    if (outlineOpen) {
+    if (SectionEnabled(sectionMask, RendererSectionOutline)) {
+        SectionTitle("Selection Outline");
         if (EditorUI::BeginPropertyTable("OutlineTable")) {
             bool outlineEnabled = MCERendererGetOutlineEnabled(engineContext) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Enable selected-entity outline.\nUnits: boolean.\nPerformance: low-to-medium.\nPersistence: Editor.");
             if (EditorUI::PropertyBool("Enable Outline", &outlineEnabled)) {
                 MCERendererSetOutlineEnabled(engineContext, outlineEnabled ? 1 : 0);
             }
             int thickness = static_cast<int>(MCERendererGetOutlineThickness(engineContext));
+            EditorUI::SetNextPropertyInfoTooltip("Outline thickness.\nUnits: pixels.\nPerformance: low.\nPersistence: Project.");
             if (EditorUI::PropertyInt("Thickness (px)", &thickness, 1, 4)) {
                 MCERendererSetOutlineThickness(engineContext, static_cast<uint32_t>(thickness));
             }
             float opacity = MCERendererGetOutlineOpacity(engineContext);
+            EditorUI::SetNextPropertyInfoTooltip("Outline opacity.\nUnits: 0..1.\nPerformance: low.\nPersistence: Project.");
             if (EditorUI::PropertyFloat("Opacity", &opacity, EditorUIConstants::kOutlineOpacityStep,
                                         EditorUIConstants::kOutlineOpacityMin, EditorUIConstants::kOutlineOpacityMax, "%.2f", true, true, EditorUIConstants::kDefaultOutlineOpacity)) {
                 MCERendererSetOutlineOpacity(engineContext, opacity);
             }
-            float outlineColor[3];
-            MCERendererGetOutlineColor(engineContext, &outlineColor[0], &outlineColor[1], &outlineColor[2]);
-            if (EditorUI::PropertyColor3("Color", outlineColor, EditorUIConstants::kDefaultOutlineColor, true)) {
-                MCERendererSetOutlineColor(engineContext, outlineColor[0], outlineColor[1], outlineColor[2]);
-            }
             EditorUI::EndPropertyTable();
         }
+        EditorUI::StandardSpacing();
     }
 
-    bool shadowsOpen = EditorUI::BeginSection(context, "Shadows", "Renderer.Shadows", true);
-    if (shadowsOpen) {
-        if (EditorUI::BeginPropertyTable("ShadowsTable")) {
+    if (SectionEnabled(sectionMask, RendererSectionShadows)) {
+        SectionTitle("Lighting");
+        if (EditorUI::BeginPropertyTable("LightingShadowTable")) {
             bool shadowsEnabled = MCERendererGetShadowsEnabled(engineContext) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Master directional shadow switch.\nUnits: boolean.\nPerformance: medium-to-high GPU cost.\nPersistence: Project.");
             if (EditorUI::PropertyBool("Enable Shadows", &shadowsEnabled)) {
                 MCERendererSetShadowsEnabled(engineContext, shadowsEnabled ? 1 : 0);
             }
             if (shadowsEnabled) {
-            bool directionalEnabled = MCERendererGetDirectionalShadowsEnabled(engineContext) != 0;
-            if (EditorUI::PropertyBool("Directional Shadows", &directionalEnabled)) {
-                MCERendererSetDirectionalShadowsEnabled(engineContext, directionalEnabled ? 1 : 0);
+                bool directionalEnabled = MCERendererGetDirectionalShadowsEnabled(engineContext) != 0;
+                EditorUI::SetNextPropertyInfoTooltip("Directional light shadow maps.\nUnits: boolean.\nPerformance: medium-to-high GPU cost.\nPersistence: Project.");
+                if (EditorUI::PropertyBool("Directional Shadows", &directionalEnabled)) {
+                    MCERendererSetDirectionalShadowsEnabled(engineContext, directionalEnabled ? 1 : 0);
+                }
             }
+            EditorUI::EndPropertyTable();
+        }
+        EditorUI::StandardSpacing();
 
-            const char* resolutionItems[] = { "1024", "2048", "4096" };
-            uint32_t currentRes = MCERendererGetShadowMapResolution(engineContext);
-            int resIndex = currentRes == 1024 ? 0 : (currentRes == 4096 ? 2 : 1);
-            if (EditorUI::PropertyCombo("Resolution", &resIndex, resolutionItems, IM_ARRAYSIZE(resolutionItems))) {
-                uint32_t resolution = (resIndex == 0) ? 1024 : (resIndex == 2 ? 4096 : 2048);
-                MCERendererSetShadowMapResolution(engineContext, resolution);
-            }
+        SectionTitle("Shadows");
+        if (EditorUI::BeginPropertyTable("ShadowsTable")) {
+            bool shadowsEnabled = MCERendererGetShadowsEnabled(engineContext) != 0;
+            if (shadowsEnabled) {
+                const char* resolutionItems[] = { "1024", "2048", "4096" };
+                uint32_t currentRes = MCERendererGetShadowMapResolution(engineContext);
+                int resIndex = currentRes == 1024 ? 0 : (currentRes == 4096 ? 2 : 1);
+                EditorUI::SetNextPropertyInfoTooltip("Shadow map resolution.\nUnits: pixels.\nPerformance: higher values increase VRAM + GPU cost.\nPersistence: Project.");
+                if (EditorUI::PropertyCombo("Resolution", &resIndex, resolutionItems, IM_ARRAYSIZE(resolutionItems))) {
+                    uint32_t resolution = (resIndex == 0) ? 1024 : (resIndex == 2 ? 4096 : 2048);
+                    MCERendererSetShadowMapResolution(engineContext, resolution);
+                }
 
-            int cascades = static_cast<int>(MCERendererGetShadowCascadeCount(engineContext));
-            if (EditorUI::PropertyInt("Cascades", &cascades, 1, 4)) {
-                MCERendererSetShadowCascadeCount(engineContext, static_cast<uint32_t>(cascades));
-            }
-            float splitLambda = MCERendererGetShadowSplitLambda(engineContext);
-            if (EditorUI::PropertyFloat("Split Lambda", &splitLambda,
-                                        EditorUIConstants::kShadowSplitLambdaStep,
-                                        EditorUIConstants::kShadowSplitLambdaMin,
-                                        EditorUIConstants::kShadowSplitLambdaMax, "%.2f", true, true, 0.65f)) {
-                MCERendererSetShadowSplitLambda(engineContext, splitLambda);
-            }
+                int cascades = static_cast<int>(MCERendererGetShadowCascadeCount(engineContext));
+                EditorUI::SetNextPropertyInfoTooltip("Directional shadow cascade count.\nUnits: count.\nPerformance: each cascade adds render cost.\nPersistence: Project.");
+                if (EditorUI::PropertyInt("Cascades", &cascades, 1, 4)) {
+                    MCERendererSetShadowCascadeCount(engineContext, static_cast<uint32_t>(cascades));
+                }
+                float splitLambda = MCERendererGetShadowSplitLambda(engineContext);
+                if (EditorUI::PropertyFloat("Split Lambda", &splitLambda,
+                                            EditorUIConstants::kShadowSplitLambdaStep,
+                                            EditorUIConstants::kShadowSplitLambdaMin,
+                                            EditorUIConstants::kShadowSplitLambdaMax, "%.2f", true, true, 0.65f)) {
+                    MCERendererSetShadowSplitLambda(engineContext, splitLambda);
+                }
 
-            float depthBias = MCERendererGetShadowDepthBias(engineContext);
-            if (EditorUI::PropertyFloat("Depth Bias", &depthBias,
-                                        EditorUIConstants::kShadowDepthBiasStep,
-                                        EditorUIConstants::kShadowDepthBiasMin,
-                                        EditorUIConstants::kShadowDepthBiasMax, "%.5f", true, true, 0.0005f)) {
-                MCERendererSetShadowDepthBias(engineContext, depthBias);
-            }
-            float normalBias = MCERendererGetShadowNormalBias(engineContext);
-            if (EditorUI::PropertyFloat("Normal Bias", &normalBias,
-                                        EditorUIConstants::kShadowNormalBiasStep,
-                                        EditorUIConstants::kShadowNormalBiasMin,
-                                        EditorUIConstants::kShadowNormalBiasMax, "%.3f", true, true, 0.01f)) {
-                MCERendererSetShadowNormalBias(engineContext, normalBias);
-            }
-            const char* filterItems[] = { "Hard", "PCF", "PCSS (Experimental)" };
-            int filterMode = static_cast<int>(MCERendererGetShadowFilterMode(engineContext));
-            if (EditorUI::PropertyCombo("Filter Mode", &filterMode, filterItems, IM_ARRAYSIZE(filterItems))) {
-                MCERendererSetShadowFilterMode(engineContext, static_cast<uint32_t>(filterMode));
-            }
-            if (filterMode == 1) {
+                const char* pcfPresetItems[] = { "Low", "Medium", "High", "Ultra", "Custom" };
+                int pcfPreset = static_cast<int>(MCERendererGetShadowPCFQualityPreset(engineContext));
+                pcfPreset = pcfPreset < 0 || pcfPreset > 4 ? 2 : pcfPreset;
+                EditorUI::SetNextPropertyInfoTooltip("Per-cascade PCF tap preset.\nUnits: preset.\nPerformance: higher presets cost more near camera.\nPersistence: Project.");
+                if (EditorUI::PropertyCombo("PCF Preset", &pcfPreset, pcfPresetItems, IM_ARRAYSIZE(pcfPresetItems))) {
+                    MCERendererSetShadowPCFQualityPreset(engineContext, static_cast<uint32_t>(pcfPreset));
+                }
+
+                int taps0 = static_cast<int>(MCERendererGetShadowPCFTapsCascade0(engineContext));
+                int taps1 = static_cast<int>(MCERendererGetShadowPCFTapsCascade1(engineContext));
+                int taps2 = static_cast<int>(MCERendererGetShadowPCFTapsCascade2(engineContext));
+                int taps3 = static_cast<int>(MCERendererGetShadowPCFTapsCascade3(engineContext));
+                if (EditorUI::PropertyInt("Cascade 0 Taps", &taps0, EditorUIConstants::kShadowPCFTapsMin, EditorUIConstants::kShadowPCFTapsMax)) {
+                    MCERendererSetShadowPCFTapsCascade0(engineContext, static_cast<uint32_t>(taps0));
+                }
+                if (EditorUI::PropertyInt("Cascade 1 Taps", &taps1, EditorUIConstants::kShadowPCFTapsMin, EditorUIConstants::kShadowPCFTapsMax)) {
+                    MCERendererSetShadowPCFTapsCascade1(engineContext, static_cast<uint32_t>(taps1));
+                }
+                if (EditorUI::PropertyInt("Cascade 2 Taps", &taps2, EditorUIConstants::kShadowPCFTapsMin, EditorUIConstants::kShadowPCFTapsMax)) {
+                    MCERendererSetShadowPCFTapsCascade2(engineContext, static_cast<uint32_t>(taps2));
+                }
+                if (EditorUI::PropertyInt("Cascade 3 Taps", &taps3, EditorUIConstants::kShadowPCFTapsMin, EditorUIConstants::kShadowPCFTapsMax)) {
+                    MCERendererSetShadowPCFTapsCascade3(engineContext, static_cast<uint32_t>(taps3));
+                }
+
+                float depthBias = MCERendererGetShadowDepthBias(engineContext);
+                if (EditorUI::PropertyFloat("Depth Bias", &depthBias,
+                                            EditorUIConstants::kShadowDepthBiasStep,
+                                            EditorUIConstants::kShadowDepthBiasMin,
+                                            EditorUIConstants::kShadowDepthBiasMax, "%.5f", true, true, 0.0005f)) {
+                    MCERendererSetShadowDepthBias(engineContext, depthBias);
+                }
+                float normalBias = MCERendererGetShadowNormalBias(engineContext);
+                if (EditorUI::PropertyFloat("Normal Bias", &normalBias,
+                                            EditorUIConstants::kShadowNormalBiasStep,
+                                            EditorUIConstants::kShadowNormalBiasMin,
+                                            EditorUIConstants::kShadowNormalBiasMax, "%.3f", true, true, 0.01f)) {
+                    MCERendererSetShadowNormalBias(engineContext, normalBias);
+                }
                 float pcfRadius = MCERendererGetShadowPCFRadius(engineContext);
                 if (EditorUI::PropertyFloat("PCF Radius", &pcfRadius,
                                             EditorUIConstants::kShadowPCFRadiusStep,
@@ -233,69 +256,28 @@ static void DrawRendererSettingsBody(void *context, const char *childId) {
                                             EditorUIConstants::kShadowPCFRadiusMax, "%.2f", true, true, 1.5f)) {
                     MCERendererSetShadowPCFRadius(engineContext, pcfRadius);
                 }
-            } else if (filterMode == 2) {
-                float lightSize = MCERendererGetShadowPCSSLightWorldSize(engineContext);
-                if (EditorUI::PropertyFloat("Light Size", &lightSize,
-                                            EditorUIConstants::kShadowPCSSLightSizeStep,
-                                            EditorUIConstants::kShadowPCSSLightSizeMin,
-                                            EditorUIConstants::kShadowPCSSLightSizeMax, "%.2f", true, true, 1.0f)) {
-                    MCERendererSetShadowPCSSLightWorldSize(engineContext, lightSize);
+                float maxDistance = MCERendererGetShadowMaxDistance(engineContext);
+                if (EditorUI::PropertyFloat("Max Distance", &maxDistance,
+                                            EditorUIConstants::kShadowMaxDistanceStep,
+                                            EditorUIConstants::kShadowMaxDistanceMin,
+                                            EditorUIConstants::kShadowMaxDistanceMax, "%.1f", true, true, 100.0f)) {
+                    MCERendererSetShadowMaxDistance(engineContext, maxDistance);
                 }
-                float minRadius = MCERendererGetShadowPCSSMinRadius(engineContext);
-                if (EditorUI::PropertyFloat("Min Radius (px)", &minRadius,
-                                            EditorUIConstants::kShadowPCSSMinRadiusStep,
-                                            EditorUIConstants::kShadowPCSSMinRadiusMin,
-                                            EditorUIConstants::kShadowPCSSMinRadiusMax, "%.2f", true, true, 1.0f)) {
-                    MCERendererSetShadowPCSSMinRadius(engineContext, minRadius);
+                float fadeOut = MCERendererGetShadowFadeOutDistance(engineContext);
+                if (EditorUI::PropertyFloat("Fade Out", &fadeOut,
+                                            EditorUIConstants::kShadowFadeOutStep,
+                                            EditorUIConstants::kShadowFadeOutMin,
+                                            EditorUIConstants::kShadowFadeOutMax, "%.1f", true, true, 10.0f)) {
+                    MCERendererSetShadowFadeOutDistance(engineContext, fadeOut);
                 }
-                float maxRadius = MCERendererGetShadowPCSSMaxRadius(engineContext);
-                if (EditorUI::PropertyFloat("Max Radius (px)", &maxRadius,
-                                            EditorUIConstants::kShadowPCSSMaxRadiusStep,
-                                            EditorUIConstants::kShadowPCSSMaxRadiusMin,
-                                            EditorUIConstants::kShadowPCSSMaxRadiusMax, "%.2f", true, true, 8.0f)) {
-                    MCERendererSetShadowPCSSMaxRadius(engineContext, maxRadius);
-                }
-                float blockerRadius = MCERendererGetShadowPCSSBlockerRadius(engineContext);
-                if (EditorUI::PropertyFloat("Blocker Radius (px)", &blockerRadius,
-                                            EditorUIConstants::kShadowPCSSBlockerRadiusStep,
-                                            EditorUIConstants::kShadowPCSSBlockerRadiusMin,
-                                            EditorUIConstants::kShadowPCSSBlockerRadiusMax, "%.2f", true, true, 4.0f)) {
-                    MCERendererSetShadowPCSSBlockerRadius(engineContext, blockerRadius);
-                }
-                int blockerSamples = static_cast<int>(MCERendererGetShadowPCSSBlockerSamples(engineContext));
-                if (EditorUI::PropertyInt("Blocker Samples", &blockerSamples, 1, 32)) {
-                    MCERendererSetShadowPCSSBlockerSamples(engineContext, static_cast<uint32_t>(blockerSamples));
-                }
-                int filterSamples = static_cast<int>(MCERendererGetShadowPCSSFilterSamples(engineContext));
-                if (EditorUI::PropertyInt("Filter Samples", &filterSamples, 1, 32)) {
-                    MCERendererSetShadowPCSSFilterSamples(engineContext, static_cast<uint32_t>(filterSamples));
-                }
-                bool noiseEnabled = MCERendererGetShadowPCSSNoiseEnabled(engineContext) != 0;
-                if (EditorUI::PropertyBool("Rotate Kernel", &noiseEnabled)) {
-                    MCERendererSetShadowPCSSNoiseEnabled(engineContext, noiseEnabled ? 1 : 0);
-                }
-            }
-            float maxDistance = MCERendererGetShadowMaxDistance(engineContext);
-            if (EditorUI::PropertyFloat("Max Distance", &maxDistance,
-                                        EditorUIConstants::kShadowMaxDistanceStep,
-                                        EditorUIConstants::kShadowMaxDistanceMin,
-                                        EditorUIConstants::kShadowMaxDistanceMax, "%.1f", true, true, 100.0f)) {
-                MCERendererSetShadowMaxDistance(engineContext, maxDistance);
-            }
-            float fadeOut = MCERendererGetShadowFadeOutDistance(engineContext);
-            if (EditorUI::PropertyFloat("Fade Out", &fadeOut,
-                                        EditorUIConstants::kShadowFadeOutStep,
-                                        EditorUIConstants::kShadowFadeOutMin,
-                                        EditorUIConstants::kShadowFadeOutMax, "%.1f", true, true, 10.0f)) {
-                MCERendererSetShadowFadeOutDistance(engineContext, fadeOut);
-            }
             }
             EditorUI::EndPropertyTable();
         }
+        EditorUI::StandardSpacing();
     }
 
-    bool gridOpen = EditorUI::BeginSection(context, "Viewport Grid", "Renderer.Grid", true);
-    if (gridOpen) {
+    if (SectionEnabled(sectionMask, RendererSectionGrid)) {
+        SectionTitle("Viewport Grid");
         if (EditorUI::BeginPropertyTable("GridTable")) {
             bool gridEnabled = MCERendererGetGridEnabled(engineContext) != 0;
             if (EditorUI::PropertyBool("Enable Grid", &gridEnabled)) {
@@ -318,18 +300,21 @@ static void DrawRendererSettingsBody(void *context, const char *childId) {
             }
             EditorUI::EndPropertyTable();
         }
+        EditorUI::StandardSpacing();
     }
 
-    bool iblOpen = EditorUI::BeginSection(context, "IBL", "Renderer.IBL", true);
-    if (iblOpen) {
+    if (SectionEnabled(sectionMask, RendererSectionLighting)) {
+        SectionTitle("IBL");
         bool rebuildIBL = false;
         if (EditorUI::BeginPropertyTable("IBLTable")) {
             bool iblEnabled = MCERendererGetIBLEnabled(engineContext) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Enable image-based lighting.\nUnits: boolean.\nPerformance: medium GPU cost.\nPersistence: Project.");
             if (EditorUI::PropertyBool("Enable IBL", &iblEnabled)) {
                 MCERendererSetIBLEnabled(engineContext, iblEnabled ? 1 : 0);
             }
             if (iblEnabled) {
             float iblIntensity = MCERendererGetIBLIntensity(engineContext);
+            EditorUI::SetNextPropertyInfoTooltip("IBL contribution strength.\nUnits: scalar.\nPerformance: low.\nPersistence: Project.");
             if (EditorUI::PropertyFloat("IBL Intensity", &iblIntensity, EditorUIConstants::kIBLIntensityStep,
                                         EditorUIConstants::kIBLIntensityMin, EditorUIConstants::kIBLIntensityMax, "%.3f", true, true, EditorUIConstants::kDefaultIBLIntensity)) {
                 MCERendererSetIBLIntensity(engineContext, iblIntensity);
@@ -337,6 +322,7 @@ static void DrawRendererSettingsBody(void *context, const char *childId) {
             const char* iblItems[] = { "Low", "Medium", "High", "Ultra", "Custom" };
             int iblPreset = static_cast<int>(MCERendererGetIBLQualityPreset(engineContext));
             if (iblPreset < 0 || iblPreset > 4) { iblPreset = 4; }
+            EditorUI::SetNextPropertyInfoTooltip("IBL generation quality preset.\nUnits: preset.\nPerformance: higher presets increase build time and cost.\nPersistence: Project.");
             if (EditorUI::PropertyCombo("IBL Quality", &iblPreset, iblItems, IM_ARRAYSIZE(iblItems))) {
                 MCERendererSetIBLQualityPreset(engineContext, static_cast<uint32_t>(iblPreset));
                 rebuildIBL = true;
@@ -370,10 +356,11 @@ static void DrawRendererSettingsBody(void *context, const char *childId) {
         if (rebuildIBL) {
             MCEEditorRequestActiveSkyRebuild(context);
         }
+        EditorUI::StandardSpacing();
     }
 
-    bool performanceOpen = EditorUI::BeginSection(context, "Performance", "Renderer.Performance", true);
-    if (performanceOpen) {
+    if (SectionEnabled(sectionMask, RendererSectionPerformance)) {
+        SectionTitle("Performance");
         if (EditorUI::BeginPropertyTable("PerformanceTable")) {
             bool disableSpecAA = MCERendererGetDisableSpecularAA(engineContext) != 0;
             if (EditorUI::PropertyBool("Disable Specular AA", &disableSpecAA)) {
@@ -393,10 +380,11 @@ static void DrawRendererSettingsBody(void *context, const char *childId) {
             }
             EditorUI::EndPropertyTable();
         }
+        EditorUI::StandardSpacing();
     }
 
-    bool debugOpen = EditorUI::BeginSection(context, "Shading Debug", "Renderer.Debug", true);
-    if (debugOpen) {
+    if (SectionEnabled(sectionMask, RendererSectionDebug)) {
+        SectionTitle("Shading Debug");
         if (EditorUI::BeginPropertyTable("DebugTable")) {
             const char* debugItems[] = {
                 "Off",
@@ -422,6 +410,7 @@ static void DrawRendererSettingsBody(void *context, const char *childId) {
             }
             EditorUI::EndPropertyTable();
         }
+        EditorUI::StandardSpacing();
     }
 
         ImGui::EndChild();
@@ -433,11 +422,25 @@ void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
         EditorUI::EndPanel();
         return;
     }
-    DrawRendererSettingsBody(context, "RendererScroll");
+    DrawRendererSettingsBody(context, "RendererScroll", RendererSectionAll);
 
     EditorUI::EndPanel();
 }
 
 void ImGuiRendererSettingsDraw(void *context) {
-    DrawRendererSettingsBody(context, "RendererSettingsScroll");
+    DrawRendererSettingsBody(context, "RendererSettingsScroll", RendererSectionAll);
+}
+
+void ImGuiRendererSettingsCoreDraw(void *context) {
+    DrawRendererSettingsBody(context,
+                             "RendererSettingsCoreScroll",
+                             RendererSectionCore | RendererSectionPerformance | RendererSectionDebug);
+}
+
+void ImGuiRendererSettingsLightingDraw(void *context) {
+    DrawRendererSettingsBody(context, "RendererSettingsLightingScroll", RendererSectionLighting);
+}
+
+void ImGuiRendererSettingsShadowsDraw(void *context) {
+    DrawRendererSettingsBody(context, "RendererSettingsShadowsScroll", RendererSectionShadows);
 }

@@ -10,9 +10,21 @@
 #include <string>
 
 namespace EditorUI {
+    void InfoIconTooltip(const char *text, float maxWidth = 420.0f);
+    void SetNextPropertyInfoTooltip(const char *text);
     bool BeginPanel(const char *title, bool *isOpen = nullptr, ImGuiWindowFlags flags = 0);
     void EndPanel();
     bool ToolbarButton(const char *label, bool enabled = true);
+    bool IconButton(const char *id,
+                    const char *icon,
+                    const char *tooltip = nullptr,
+                    bool active = false,
+                    bool disabled = false);
+    void IconLabel(const char *icon, const char *text);
+    bool IconSelectable(const char *id,
+                        const char *icon,
+                        const char *text,
+                        bool selected = false);
     bool AssetField(const char *label,
                     const char *displayName,
                     char *handleBuffer,

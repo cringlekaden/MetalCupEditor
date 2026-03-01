@@ -13,6 +13,29 @@ struct EditorSettingsDocument: Codable {
     var lastSelectedEntityId: String
     var lastContentBrowserPath: String
     var layerNames: [String]
+    var viewportGizmoOperation: Int
+    var viewportGizmoSpaceMode: Int
+    var viewportSnapEnabled: Bool
+    var themeMode: Int
+    var themeAccentR: Float
+    var themeAccentG: Float
+    var themeAccentB: Float
+    var themeUIScale: Float
+    var themeRoundedUI: Bool
+    var themeCornerRounding: Float
+    var themeSpacingPreset: Int
+    var viewportShowWorldIcons: Bool
+    var viewportWorldIconBaseSize: Float
+    var viewportWorldIconDistanceScale: Float
+    var viewportWorldIconMinSize: Float
+    var viewportWorldIconMaxSize: Float
+    var viewportShowSelectedCameraFrustum: Bool
+    var viewportPreviewEnabled: Bool
+    var viewportPreviewSize: Float
+    var viewportPreviewPosition: Int
+    var editorDebugGridEnabled: Bool
+    var editorDebugOutlineEnabled: Bool
+    var editorDebugPhysicsEnabled: Bool
 
     init(schemaVersion: Int = 1,
          recentProjects: [String] = [],
@@ -20,7 +43,30 @@ struct EditorSettingsDocument: Codable {
          headerStates: [String: Bool] = [:],
          lastSelectedEntityId: String = "",
          lastContentBrowserPath: String = "",
-         layerNames: [String] = LayerCatalog.defaultNames()) {
+         layerNames: [String] = LayerCatalog.defaultNames(),
+         viewportGizmoOperation: Int = 1,
+         viewportGizmoSpaceMode: Int = 0,
+         viewportSnapEnabled: Bool = false,
+         themeMode: Int = 0,
+         themeAccentR: Float = 0.18,
+         themeAccentG: Float = 0.58,
+         themeAccentB: Float = 0.84,
+         themeUIScale: Float = 1.0,
+         themeRoundedUI: Bool = true,
+         themeCornerRounding: Float = 6.0,
+         themeSpacingPreset: Int = 1,
+         viewportShowWorldIcons: Bool = true,
+         viewportWorldIconBaseSize: Float = 18.0,
+         viewportWorldIconDistanceScale: Float = 0.75,
+         viewportWorldIconMinSize: Float = 11.0,
+         viewportWorldIconMaxSize: Float = 28.0,
+         viewportShowSelectedCameraFrustum: Bool = true,
+         viewportPreviewEnabled: Bool = true,
+         viewportPreviewSize: Float = 0.28,
+         viewportPreviewPosition: Int = 3,
+         editorDebugGridEnabled: Bool = true,
+         editorDebugOutlineEnabled: Bool = true,
+         editorDebugPhysicsEnabled: Bool = false) {
         self.schemaVersion = schemaVersion
         self.recentProjects = recentProjects
         self.panelVisibility = panelVisibility
@@ -28,6 +74,29 @@ struct EditorSettingsDocument: Codable {
         self.lastSelectedEntityId = lastSelectedEntityId
         self.lastContentBrowserPath = lastContentBrowserPath
         self.layerNames = LayerCatalog.normalizedNames(layerNames)
+        self.viewportGizmoOperation = viewportGizmoOperation
+        self.viewportGizmoSpaceMode = viewportGizmoSpaceMode
+        self.viewportSnapEnabled = viewportSnapEnabled
+        self.themeMode = themeMode
+        self.themeAccentR = themeAccentR
+        self.themeAccentG = themeAccentG
+        self.themeAccentB = themeAccentB
+        self.themeUIScale = themeUIScale
+        self.themeRoundedUI = themeRoundedUI
+        self.themeCornerRounding = themeCornerRounding
+        self.themeSpacingPreset = themeSpacingPreset
+        self.viewportShowWorldIcons = viewportShowWorldIcons
+        self.viewportWorldIconBaseSize = viewportWorldIconBaseSize
+        self.viewportWorldIconDistanceScale = viewportWorldIconDistanceScale
+        self.viewportWorldIconMinSize = viewportWorldIconMinSize
+        self.viewportWorldIconMaxSize = viewportWorldIconMaxSize
+        self.viewportShowSelectedCameraFrustum = viewportShowSelectedCameraFrustum
+        self.viewportPreviewEnabled = viewportPreviewEnabled
+        self.viewportPreviewSize = viewportPreviewSize
+        self.viewportPreviewPosition = viewportPreviewPosition
+        self.editorDebugGridEnabled = editorDebugGridEnabled
+        self.editorDebugOutlineEnabled = editorDebugOutlineEnabled
+        self.editorDebugPhysicsEnabled = editorDebugPhysicsEnabled
     }
 
     enum CodingKeys: String, CodingKey {
@@ -38,6 +107,29 @@ struct EditorSettingsDocument: Codable {
         case lastSelectedEntityId
         case lastContentBrowserPath
         case layerNames
+        case viewportGizmoOperation
+        case viewportGizmoSpaceMode
+        case viewportSnapEnabled
+        case themeMode
+        case themeAccentR
+        case themeAccentG
+        case themeAccentB
+        case themeUIScale
+        case themeRoundedUI
+        case themeCornerRounding
+        case themeSpacingPreset
+        case viewportShowWorldIcons
+        case viewportWorldIconBaseSize
+        case viewportWorldIconDistanceScale
+        case viewportWorldIconMinSize
+        case viewportWorldIconMaxSize
+        case viewportShowSelectedCameraFrustum
+        case viewportPreviewEnabled
+        case viewportPreviewSize
+        case viewportPreviewPosition
+        case editorDebugGridEnabled
+        case editorDebugOutlineEnabled
+        case editorDebugPhysicsEnabled
     }
 
     init(from decoder: Decoder) throws {
@@ -50,6 +142,29 @@ struct EditorSettingsDocument: Codable {
         lastContentBrowserPath = try container.decodeIfPresent(String.self, forKey: .lastContentBrowserPath) ?? ""
         let decodedNames = try container.decodeIfPresent([String].self, forKey: .layerNames) ?? LayerCatalog.defaultNames()
         layerNames = LayerCatalog.normalizedNames(decodedNames)
+        viewportGizmoOperation = try container.decodeIfPresent(Int.self, forKey: .viewportGizmoOperation) ?? 1
+        viewportGizmoSpaceMode = try container.decodeIfPresent(Int.self, forKey: .viewportGizmoSpaceMode) ?? 0
+        viewportSnapEnabled = try container.decodeIfPresent(Bool.self, forKey: .viewportSnapEnabled) ?? false
+        themeMode = try container.decodeIfPresent(Int.self, forKey: .themeMode) ?? 0
+        themeAccentR = try container.decodeIfPresent(Float.self, forKey: .themeAccentR) ?? 0.18
+        themeAccentG = try container.decodeIfPresent(Float.self, forKey: .themeAccentG) ?? 0.58
+        themeAccentB = try container.decodeIfPresent(Float.self, forKey: .themeAccentB) ?? 0.84
+        themeUIScale = try container.decodeIfPresent(Float.self, forKey: .themeUIScale) ?? 1.0
+        themeRoundedUI = try container.decodeIfPresent(Bool.self, forKey: .themeRoundedUI) ?? true
+        themeCornerRounding = try container.decodeIfPresent(Float.self, forKey: .themeCornerRounding) ?? 6.0
+        themeSpacingPreset = try container.decodeIfPresent(Int.self, forKey: .themeSpacingPreset) ?? 1
+        viewportShowWorldIcons = try container.decodeIfPresent(Bool.self, forKey: .viewportShowWorldIcons) ?? true
+        viewportWorldIconBaseSize = try container.decodeIfPresent(Float.self, forKey: .viewportWorldIconBaseSize) ?? 18.0
+        viewportWorldIconDistanceScale = try container.decodeIfPresent(Float.self, forKey: .viewportWorldIconDistanceScale) ?? 0.75
+        viewportWorldIconMinSize = try container.decodeIfPresent(Float.self, forKey: .viewportWorldIconMinSize) ?? 11.0
+        viewportWorldIconMaxSize = try container.decodeIfPresent(Float.self, forKey: .viewportWorldIconMaxSize) ?? 28.0
+        viewportShowSelectedCameraFrustum = try container.decodeIfPresent(Bool.self, forKey: .viewportShowSelectedCameraFrustum) ?? true
+        viewportPreviewEnabled = try container.decodeIfPresent(Bool.self, forKey: .viewportPreviewEnabled) ?? true
+        viewportPreviewSize = try container.decodeIfPresent(Float.self, forKey: .viewportPreviewSize) ?? 0.28
+        viewportPreviewPosition = try container.decodeIfPresent(Int.self, forKey: .viewportPreviewPosition) ?? 3
+        editorDebugGridEnabled = try container.decodeIfPresent(Bool.self, forKey: .editorDebugGridEnabled) ?? true
+        editorDebugOutlineEnabled = try container.decodeIfPresent(Bool.self, forKey: .editorDebugOutlineEnabled) ?? true
+        editorDebugPhysicsEnabled = try container.decodeIfPresent(Bool.self, forKey: .editorDebugPhysicsEnabled) ?? false
     }
 }
 
@@ -60,6 +175,29 @@ final class EditorSettingsStore {
     private(set) var lastSelectedEntityId: String = ""
     private(set) var lastContentBrowserPath: String = ""
     private(set) var layerNames: [String] = LayerCatalog.defaultNames()
+    private(set) var viewportGizmoOperation: Int = 1
+    private(set) var viewportGizmoSpaceMode: Int = 0
+    private(set) var viewportSnapEnabled: Bool = false
+    private(set) var themeMode: Int = 0
+    private(set) var themeAccentR: Float = 0.18
+    private(set) var themeAccentG: Float = 0.58
+    private(set) var themeAccentB: Float = 0.84
+    private(set) var themeUIScale: Float = 1.0
+    private(set) var themeRoundedUI: Bool = true
+    private(set) var themeCornerRounding: Float = 6.0
+    private(set) var themeSpacingPreset: Int = 1
+    private(set) var viewportShowWorldIcons: Bool = true
+    private(set) var viewportWorldIconBaseSize: Float = 18.0
+    private(set) var viewportWorldIconDistanceScale: Float = 0.75
+    private(set) var viewportWorldIconMinSize: Float = 11.0
+    private(set) var viewportWorldIconMaxSize: Float = 28.0
+    private(set) var viewportShowSelectedCameraFrustum: Bool = true
+    private(set) var viewportPreviewEnabled: Bool = true
+    private(set) var viewportPreviewSize: Float = 0.28
+    private(set) var viewportPreviewPosition: Int = 3
+    private(set) var editorDebugGridEnabled: Bool = true
+    private(set) var editorDebugOutlineEnabled: Bool = true
+    private(set) var editorDebugPhysicsEnabled: Bool = false
 
     init() {}
 
@@ -74,6 +212,29 @@ final class EditorSettingsStore {
             lastSelectedEntityId = document.lastSelectedEntityId
             lastContentBrowserPath = document.lastContentBrowserPath
             layerNames = document.layerNames
+            viewportGizmoOperation = document.viewportGizmoOperation
+            viewportGizmoSpaceMode = document.viewportGizmoSpaceMode
+            viewportSnapEnabled = document.viewportSnapEnabled
+            themeMode = document.themeMode
+            themeAccentR = document.themeAccentR
+            themeAccentG = document.themeAccentG
+            themeAccentB = document.themeAccentB
+            themeUIScale = document.themeUIScale
+            themeRoundedUI = document.themeRoundedUI
+            themeCornerRounding = document.themeCornerRounding
+            themeSpacingPreset = document.themeSpacingPreset
+            viewportShowWorldIcons = document.viewportShowWorldIcons
+            viewportWorldIconBaseSize = document.viewportWorldIconBaseSize
+            viewportWorldIconDistanceScale = document.viewportWorldIconDistanceScale
+            viewportWorldIconMinSize = document.viewportWorldIconMinSize
+            viewportWorldIconMaxSize = document.viewportWorldIconMaxSize
+            viewportShowSelectedCameraFrustum = document.viewportShowSelectedCameraFrustum
+            viewportPreviewEnabled = document.viewportPreviewEnabled
+            viewportPreviewSize = document.viewportPreviewSize
+            viewportPreviewPosition = document.viewportPreviewPosition
+            editorDebugGridEnabled = document.editorDebugGridEnabled
+            editorDebugOutlineEnabled = document.editorDebugOutlineEnabled
+            editorDebugPhysicsEnabled = document.editorDebugPhysicsEnabled
         }
     }
 
@@ -87,7 +248,30 @@ final class EditorSettingsStore {
             headerStates: headerStates,
             lastSelectedEntityId: lastSelectedEntityId,
             lastContentBrowserPath: lastContentBrowserPath,
-            layerNames: layerNames
+            layerNames: layerNames,
+            viewportGizmoOperation: viewportGizmoOperation,
+            viewportGizmoSpaceMode: viewportGizmoSpaceMode,
+            viewportSnapEnabled: viewportSnapEnabled,
+            themeMode: themeMode,
+            themeAccentR: themeAccentR,
+            themeAccentG: themeAccentG,
+            themeAccentB: themeAccentB,
+            themeUIScale: themeUIScale,
+            themeRoundedUI: themeRoundedUI,
+            themeCornerRounding: themeCornerRounding,
+            themeSpacingPreset: themeSpacingPreset,
+            viewportShowWorldIcons: viewportShowWorldIcons,
+            viewportWorldIconBaseSize: viewportWorldIconBaseSize,
+            viewportWorldIconDistanceScale: viewportWorldIconDistanceScale,
+            viewportWorldIconMinSize: viewportWorldIconMinSize,
+            viewportWorldIconMaxSize: viewportWorldIconMaxSize,
+            viewportShowSelectedCameraFrustum: viewportShowSelectedCameraFrustum,
+            viewportPreviewEnabled: viewportPreviewEnabled,
+            viewportPreviewSize: viewportPreviewSize,
+            viewportPreviewPosition: viewportPreviewPosition,
+            editorDebugGridEnabled: editorDebugGridEnabled,
+            editorDebugOutlineEnabled: editorDebugOutlineEnabled,
+            editorDebugPhysicsEnabled: editorDebugPhysicsEnabled
         )
         if let data = try? encoder.encode(document) {
             try? FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -145,6 +329,41 @@ final class EditorSettingsStore {
     func setLayerNames(_ names: [String]) {
         layerNames = LayerCatalog.normalizedNames(names)
     }
+
+    func setViewportGizmoOperation(_ value: Int) {
+        viewportGizmoOperation = value
+    }
+
+    func setViewportGizmoSpaceMode(_ value: Int) {
+        viewportGizmoSpaceMode = value
+    }
+
+    func setViewportSnapEnabled(_ value: Bool) {
+        viewportSnapEnabled = value
+    }
+
+    func setThemeMode(_ value: Int) { themeMode = value }
+    func setThemeAccent(r: Float, g: Float, b: Float) {
+        themeAccentR = r
+        themeAccentG = g
+        themeAccentB = b
+    }
+    func setThemeUIScale(_ value: Float) { themeUIScale = value }
+    func setThemeRoundedUI(_ value: Bool) { themeRoundedUI = value }
+    func setThemeCornerRounding(_ value: Float) { themeCornerRounding = value }
+    func setThemeSpacingPreset(_ value: Int) { themeSpacingPreset = value }
+    func setViewportShowWorldIcons(_ value: Bool) { viewportShowWorldIcons = value }
+    func setViewportWorldIconBaseSize(_ value: Float) { viewportWorldIconBaseSize = value }
+    func setViewportWorldIconDistanceScale(_ value: Float) { viewportWorldIconDistanceScale = value }
+    func setViewportWorldIconMinSize(_ value: Float) { viewportWorldIconMinSize = value }
+    func setViewportWorldIconMaxSize(_ value: Float) { viewportWorldIconMaxSize = value }
+    func setViewportShowSelectedCameraFrustum(_ value: Bool) { viewportShowSelectedCameraFrustum = value }
+    func setViewportPreviewEnabled(_ value: Bool) { viewportPreviewEnabled = value }
+    func setViewportPreviewSize(_ value: Float) { viewportPreviewSize = value }
+    func setViewportPreviewPosition(_ value: Int) { viewportPreviewPosition = value }
+    func setEditorDebugGridEnabled(_ value: Bool) { editorDebugGridEnabled = value }
+    func setEditorDebugOutlineEnabled(_ value: Bool) { editorDebugOutlineEnabled = value }
+    func setEditorDebugPhysicsEnabled(_ value: Bool) { editorDebugPhysicsEnabled = value }
 
     private func settingsURL() -> URL {
         return EditorFileSystem.editorSettingsURL()

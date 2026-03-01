@@ -38,6 +38,18 @@ void MCEPhysicsSetDefaultRestitution(MCE_CTX, float value);
 float MCEPhysicsGetDefaultAngularDamping(MCE_CTX);
 void MCEPhysicsSetDefaultAngularDamping(MCE_CTX, float value);
 
+float MCEPhysicsGetDefaultLinearDamping(MCE_CTX);
+void MCEPhysicsSetDefaultLinearDamping(MCE_CTX, float value);
+
+uint32_t MCEPhysicsGetMaxBodies(MCE_CTX);
+void MCEPhysicsSetMaxBodies(MCE_CTX, uint32_t value);
+
+uint32_t MCEPhysicsGetMaxBodyPairs(MCE_CTX);
+void MCEPhysicsSetMaxBodyPairs(MCE_CTX, uint32_t value);
+
+uint32_t MCEPhysicsGetMaxContactConstraints(MCE_CTX);
+void MCEPhysicsSetMaxContactConstraints(MCE_CTX, uint32_t value);
+
 uint32_t MCEPhysicsGetCCDEnabled(MCE_CTX);
 void MCEPhysicsSetCCDEnabled(MCE_CTX, uint32_t value);
 
