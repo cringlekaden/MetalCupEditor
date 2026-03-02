@@ -53,6 +53,7 @@ private enum EditorComponentType: Int32 {
     case rigidbody = 7
     case collider = 8
     case script = 9
+    case characterController = 10
 }
 
 private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
@@ -229,6 +230,9 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
         script: ecs.get(ScriptComponent.self, for: entity).map { component in
             ScriptComponentDTO(component: component)
         },
+        characterController: ecs.get(CharacterControllerComponent.self, for: entity).map { component in
+            CharacterControllerComponentDTO(component: component)
+        },
         sky: ecs.get(SkyComponent.self, for: entity).map { component in
             SkyComponentDTO(environmentMapHandle: component.environmentMapHandle)
         },
@@ -341,6 +345,12 @@ private func applyComponentsDocument(_ components: ComponentsDocument, to entity
     }
     if let camera = components.camera {
         ecs.add(camera.toComponent(), to: entity)
+    }
+    if let script = components.script {
+        ecs.add(script.toComponent(), to: entity)
+    }
+    if let characterController = components.characterController {
+        ecs.add(characterController.toComponent(), to: entity)
     }
     if let sky = components.sky {
         ecs.add(SkyComponent(environmentMapHandle: sky.environmentMapHandle), to: entity)
@@ -457,6 +467,76 @@ private func findEditorCamera(ecs: SceneECS) -> (Entity, TransformComponent, Cam
         result = (entity, transform, camera)
     }
     return result
+}
+
+private func scriptFieldDescriptors(context: MCEContext, script: ScriptComponent) -> [ScriptFieldDescriptor] {
+    guard let handle = script.scriptAssetHandle else { return [] }
+    return ScriptMetadataCache.shared.descriptors(scriptAssetHandle: handle,
+                                                  typeName: script.typeName,
+                                                  assetDatabase: context.engineContext.assetDatabase)
+}
+
+private func scriptFieldValues(script: ScriptComponent, descriptors: [ScriptFieldDescriptor]) -> [String: ScriptFieldValue] {
+    let decodedBlob = ScriptFieldBlobCodec.decodeFieldBlobV1(script.fieldData)
+    var merged = ScriptFieldBlobCodec.mergedValues(from: script.fieldData, schemaDescriptors: descriptors)
+    if script.serializedFields.isEmpty { return merged }
+    for descriptor in descriptors {
+        guard let value = script.serializedFields[descriptor.name] else { continue }
+        let coercedLegacy = ScriptFieldBlobCodec.coerce(value, to: descriptor.type) ?? descriptor.defaultValue
+        if decodedBlob[descriptor.name] == nil ||
+            shouldPreferLegacyReferenceValue(type: descriptor.type,
+                                             blobValue: merged[descriptor.name],
+                                             legacyValue: coercedLegacy) {
+            merged[descriptor.name] = coercedLegacy
+        }
+    }
+    return merged
+}
+
+private func scriptFieldMetadataDictionary(from descriptors: [ScriptFieldDescriptor]) -> [String: ScriptFieldMetadata] {
+    Dictionary(uniqueKeysWithValues: descriptors.map { ($0.name, $0.metadata) })
+}
+
+private extension ScriptFieldValue {
+    var entityUUIDValue: UUID? {
+        switch self {
+        case let .entity(value):
+            return value
+        case let .string(text):
+            return UUID(uuidString: text)
+        default:
+            return nil
+        }
+    }
+
+    var prefabHandleValue: AssetHandle? {
+        switch self {
+        case let .prefab(handle):
+            return handle
+        case let .string(text):
+            guard let uuid = UUID(uuidString: text) else { return nil }
+            return AssetHandle(rawValue: uuid)
+        default:
+            return nil
+        }
+    }
+}
+
+private func shouldPreferLegacyReferenceValue(type: ScriptFieldType,
+                                              blobValue: ScriptFieldValue?,
+                                              legacyValue: ScriptFieldValue) -> Bool {
+    switch type {
+    case .entity:
+        guard case .entity(nil)? = blobValue else { return false }
+        if case .entity(let uuid?) = legacyValue { return !uuid.uuidString.isEmpty }
+        return false
+    case .prefab:
+        guard case .prefab(nil)? = blobValue else { return false }
+        if case .prefab(let handle?) = legacyValue { return !handle.rawValue.uuidString.isEmpty }
+        return false
+    default:
+        return false
+    }
 }
 
 private func hasPrimaryRuntimeCamera(ecs: SceneECS) -> Bool {
@@ -1165,6 +1245,8 @@ public func MCEEditorEntityHasComponent(_ contextPtr: UnsafeRawPointer?,
         return ecs.has(ColliderComponent.self, entity) ? 1 : 0
     case .script:
         return ecs.has(ScriptComponent.self, entity) ? 1 : 0
+    case .characterController:
+        return ecs.has(CharacterControllerComponent.self, entity) ? 1 : 0
     }
 }
 
@@ -1214,6 +1296,8 @@ public func MCEEditorAddComponent(_ contextPtr: UnsafeRawPointer?,
         ecs.add(ColliderComponent(), to: entity)
     case .script:
         ecs.add(ScriptComponent(), to: entity)
+    case .characterController:
+        ecs.add(CharacterControllerComponent(), to: entity)
     }
     context.editorProjectManager.notifySceneMutation()
     return 1
@@ -1251,6 +1335,8 @@ public func MCEEditorRemoveComponent(_ contextPtr: UnsafeRawPointer?,
         ecs.remove(ColliderComponent.self, from: entity)
     case .script:
         ecs.remove(ScriptComponent.self, from: entity)
+    case .characterController:
+        ecs.remove(CharacterControllerComponent.self, from: entity)
     }
     context.editorProjectManager.notifySceneMutation()
     return 1
@@ -1293,20 +1379,50 @@ public func MCEEditorSetScript(_ contextPtr: UnsafeRawPointer?,
           let entity = entity(from: entityId, context: context) else { return 0 }
     var component = ecs.get(ScriptComponent.self, for: entity) ?? ScriptComponent()
     component.enabled = enabled != 0
+    component.typeName = typeName.map { String(cString: $0) } ?? component.typeName
     if let scriptHandle {
         let parsed = handleFromString(String(cString: scriptHandle))
         component.scriptAssetHandle = parsed
+        if let parsed {
+            if component.typeName.isEmpty,
+               let entryTypeName = context.engineContext.assetDatabase?.metadata(for: parsed)?.entryTypeName,
+               !entryTypeName.isEmpty {
+                component.typeName = entryTypeName
+            }
+            ScriptMetadataCache.shared.invalidate(handle: parsed)
+            let descriptors = ScriptMetadataCache.shared.descriptors(scriptAssetHandle: parsed,
+                                                                     typeName: component.typeName,
+                                                                     assetDatabase: context.engineContext.assetDatabase)
+            let mergedValues: [String: ScriptFieldValue]
+            if keepFieldData == 0 {
+                mergedValues = Dictionary(uniqueKeysWithValues: descriptors.map { ($0.name, $0.defaultValue) })
+            } else {
+                let existingValues = ScriptFieldBlobCodec.decodeFieldBlobV1(component.fieldData)
+                var values: [String: ScriptFieldValue] = [:]
+                values.reserveCapacity(descriptors.count)
+                for descriptor in descriptors {
+                    values[descriptor.name] = existingValues[descriptor.name] ?? descriptor.defaultValue
+                }
+                mergedValues = values
+            }
+            component.serializedFields = mergedValues
+            component.fieldMetadata = scriptFieldMetadataDictionary(from: descriptors)
+            component.fieldData = ScriptFieldBlobCodec.encodeFieldBlobV1(mergedValues, schemaDescriptors: descriptors)
+            component.fieldDataVersion = 1
+        }
     } else {
         component.scriptAssetHandle = nil
     }
-    component.typeName = typeName.map { String(cString: $0) } ?? ""
+    component.typeName = typeName.map { String(cString: $0) } ?? component.typeName
     component.runtimeState = component.enabled ? .unloaded : .disabled
     component.hasInstance = false
     component.instanceHandle = 0
     component.lastError = ""
-    if keepFieldData == 0 {
+    if keepFieldData == 0 && component.scriptAssetHandle == nil {
         component.fieldData = Data()
         component.fieldDataVersion = max(1, component.fieldDataVersion)
+        component.serializedFields = [:]
+        component.fieldMetadata = [:]
     }
     ecs.add(component, to: entity)
     context.editorProjectManager.notifySceneMutation()
@@ -1323,6 +1439,231 @@ public func MCEEditorClearScriptFieldData(_ contextPtr: UnsafeRawPointer?,
           var script = ecs.get(ScriptComponent.self, for: entity) else { return 0 }
     script.fieldData = Data()
     script.fieldDataVersion = max(1, script.fieldDataVersion)
+    script.serializedFields = [:]
+    script.fieldMetadata = [:]
+    ecs.add(script, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorResetScriptFieldsToDefaults")
+public func MCEEditorResetScriptFieldsToDefaults(_ contextPtr: UnsafeRawPointer?,
+                                                 _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var script = ecs.get(ScriptComponent.self, for: entity) else { return 0 }
+    let descriptors = scriptFieldDescriptors(context: context, script: script)
+    guard !descriptors.isEmpty else { return 0 }
+    let values = Dictionary(uniqueKeysWithValues: descriptors.map { ($0.name, $0.defaultValue) })
+    script.serializedFields = values
+    script.fieldMetadata = scriptFieldMetadataDictionary(from: descriptors)
+    script.fieldData = ScriptFieldBlobCodec.encodeFieldBlobV1(values, schemaDescriptors: descriptors)
+    script.fieldDataVersion = 1
+    ecs.add(script, to: entity)
+    context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorGetScriptFieldCount")
+public func MCEEditorGetScriptFieldCount(_ contextPtr: UnsafeRawPointer?,
+                                         _ entityId: UnsafePointer<CChar>?) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let script = ecs.get(ScriptComponent.self, for: entity) else { return 0 }
+    return Int32(scriptFieldDescriptors(context: context, script: script).count)
+}
+
+@_cdecl("MCEEditorGetScriptFieldAt")
+public func MCEEditorGetScriptFieldAt(_ contextPtr: UnsafeRawPointer?,
+                                      _ entityId: UnsafePointer<CChar>?,
+                                      _ index: Int32,
+                                      _ fieldName: UnsafeMutablePointer<CChar>?,
+                                      _ fieldNameSize: Int32,
+                                      _ fieldType: UnsafeMutablePointer<Int32>?,
+                                      _ intValue: UnsafeMutablePointer<Int32>?,
+                                      _ numberValue: UnsafeMutablePointer<Float>?,
+                                      _ boolValue: UnsafeMutablePointer<UInt32>?,
+                                      _ stringValue: UnsafeMutablePointer<CChar>?,
+                                      _ stringValueSize: Int32,
+                                      _ vecX: UnsafeMutablePointer<Float>?,
+                                      _ vecY: UnsafeMutablePointer<Float>?,
+                                      _ vecZ: UnsafeMutablePointer<Float>?,
+                                      _ entityValue: UnsafeMutablePointer<CChar>?,
+                                      _ entityValueSize: Int32,
+                                      _ prefabValue: UnsafeMutablePointer<CChar>?,
+                                      _ prefabValueSize: Int32,
+                                      _ hasMin: UnsafeMutablePointer<UInt32>?,
+                                      _ minValue: UnsafeMutablePointer<Float>?,
+                                      _ hasMax: UnsafeMutablePointer<UInt32>?,
+                                      _ maxValue: UnsafeMutablePointer<Float>?,
+                                      _ hasStep: UnsafeMutablePointer<UInt32>?,
+                                      _ stepValue: UnsafeMutablePointer<Float>?,
+                                      _ tooltip: UnsafeMutablePointer<CChar>?,
+                                      _ tooltipSize: Int32,
+                                      _ isMissingReference: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let script = ecs.get(ScriptComponent.self, for: entity) else { return 0 }
+    let descriptors = scriptFieldDescriptors(context: context, script: script)
+    let values = scriptFieldValues(script: script, descriptors: descriptors)
+    let idx = Int(index)
+    guard idx >= 0, idx < descriptors.count else { return 0 }
+    let descriptor = descriptors[idx]
+    let value = ScriptFieldBlobCodec.coerce(values[descriptor.name] ?? descriptor.defaultValue, to: descriptor.type) ?? descriptor.defaultValue
+    _ = writeCString(descriptor.name, to: fieldName, max: fieldNameSize)
+    hasMin?.pointee = descriptor.minValue != nil ? 1 : 0
+    minValue?.pointee = descriptor.minValue ?? 0
+    hasMax?.pointee = descriptor.maxValue != nil ? 1 : 0
+    maxValue?.pointee = descriptor.maxValue ?? 0
+    hasStep?.pointee = descriptor.step != nil ? 1 : 0
+    stepValue?.pointee = descriptor.step ?? 0.1
+    _ = writeCString(descriptor.tooltip, to: tooltip, max: tooltipSize)
+    isMissingReference?.pointee = 0
+
+    switch descriptor.type {
+    case .bool, .boolean:
+        fieldType?.pointee = 0
+        if case let .bool(flag) = value {
+            boolValue?.pointee = flag ? 1 : 0
+        } else {
+            boolValue?.pointee = 0
+        }
+    case .int:
+        fieldType?.pointee = 1
+        if case let .int(number) = value {
+            intValue?.pointee = number
+        } else {
+            intValue?.pointee = 0
+        }
+    case .float, .number:
+        fieldType?.pointee = 2
+        if case let .float(number) = value {
+            numberValue?.pointee = number
+        } else {
+            numberValue?.pointee = 0
+        }
+    case .vec2:
+        fieldType?.pointee = 3
+        if case let .vec2(vec) = value {
+            vecX?.pointee = vec.x
+            vecY?.pointee = vec.y
+        } else {
+            vecX?.pointee = 0
+            vecY?.pointee = 0
+        }
+        vecZ?.pointee = 0
+    case .vec3:
+        fieldType?.pointee = 4
+        if case let .vec3(vec) = value {
+            vecX?.pointee = vec.x
+            vecY?.pointee = vec.y
+            vecZ?.pointee = vec.z
+        } else {
+            vecX?.pointee = 0
+            vecY?.pointee = 0
+            vecZ?.pointee = 0
+        }
+    case .color3:
+        fieldType?.pointee = 5
+        if case let .color3(color) = value {
+            vecX?.pointee = color.x
+            vecY?.pointee = color.y
+            vecZ?.pointee = color.z
+        } else {
+            vecX?.pointee = 1
+            vecY?.pointee = 1
+            vecZ?.pointee = 1
+        }
+    case .string:
+        fieldType?.pointee = 6
+        if case let .string(text) = value {
+            _ = writeCString(text, to: stringValue, max: stringValueSize)
+        } else {
+            _ = writeCString("", to: stringValue, max: stringValueSize)
+        }
+    case .entity:
+        fieldType?.pointee = 7
+        let entityUUID = (value.entityUUIDValue)
+        let raw = entityUUID?.uuidString ?? ""
+        _ = writeCString(raw, to: entityValue, max: entityValueSize)
+        if let entityUUID, ecs.entity(with: entityUUID) == nil {
+            isMissingReference?.pointee = 1
+        }
+    case .prefab:
+        fieldType?.pointee = 8
+        let handle = value.prefabHandleValue
+        let raw = handle?.rawValue.uuidString ?? ""
+        _ = writeCString(raw, to: prefabValue, max: prefabValueSize)
+        if let handle, context.engineContext.assetDatabase?.metadata(for: handle) == nil {
+            isMissingReference?.pointee = 1
+        }
+    }
+    return 1
+}
+
+@_cdecl("MCEEditorSetScriptField")
+public func MCEEditorSetScriptField(_ contextPtr: UnsafeRawPointer?,
+                                    _ entityId: UnsafePointer<CChar>?,
+                                    _ fieldName: UnsafePointer<CChar>?,
+                                    _ fieldType: Int32,
+                                    _ intValue: Int32,
+                                    _ numberValue: Float,
+                                    _ boolValue: UInt32,
+                                    _ stringValue: UnsafePointer<CChar>?,
+                                    _ vecX: Float,
+                                    _ vecY: Float,
+                                    _ vecZ: Float,
+                                    _ entityValue: UnsafePointer<CChar>?,
+                                    _ prefabValue: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let fieldName else { return 0 }
+    var script = ecs.get(ScriptComponent.self, for: entity) ?? ScriptComponent()
+    let descriptors = scriptFieldDescriptors(context: context, script: script)
+    guard !descriptors.isEmpty else { return 0 }
+    var values = scriptFieldValues(script: script, descriptors: descriptors)
+    let key = String(cString: fieldName)
+    guard descriptors.contains(where: { $0.name == key }) else { return 0 }
+    switch fieldType {
+    case 0:
+        values[key] = .bool(boolValue != 0)
+    case 1:
+        values[key] = .int(intValue)
+    case 2:
+        values[key] = .float(numberValue)
+    case 3:
+        values[key] = .vec2(SIMD2<Float>(vecX, vecY))
+    case 4:
+        values[key] = .vec3(SIMD3<Float>(vecX, vecY, vecZ))
+    case 5:
+        values[key] = .color3(SIMD3<Float>(vecX, vecY, vecZ))
+    case 6:
+        values[key] = .string(stringValue.map { String(cString: $0) } ?? "")
+    case 7:
+        if let entityValue, let uuid = UUID(uuidString: String(cString: entityValue)) {
+            values[key] = .entity(uuid)
+        } else {
+            values[key] = .entity(nil)
+        }
+    case 8:
+        if let prefabValue, let uuid = UUID(uuidString: String(cString: prefabValue)) {
+            values[key] = .prefab(AssetHandle(rawValue: uuid))
+        } else {
+            values[key] = .prefab(nil)
+        }
+    default:
+        return 0
+    }
+    script.serializedFields = values
+    script.fieldMetadata = scriptFieldMetadataDictionary(from: descriptors)
+    script.fieldData = ScriptFieldBlobCodec.encodeFieldBlobV1(values, schemaDescriptors: descriptors)
+    script.fieldDataVersion = 1
     ecs.add(script, to: entity)
     context.editorProjectManager.notifySceneMutation()
     return 1
@@ -1356,6 +1697,55 @@ public func MCEEditorReloadScriptInstance(_ contextPtr: UnsafeRawPointer?,
         return 0
     }
     return runtime.reloadScriptInstance(entityId: uuid) ? 1 : 0
+}
+
+@_cdecl("MCEEditorGetCharacterController")
+public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
+                                            _ entityId: UnsafePointer<CChar>?,
+                                            _ enabled: UnsafeMutablePointer<UInt32>?,
+                                            _ height: UnsafeMutablePointer<Float>?,
+                                            _ radius: UnsafeMutablePointer<Float>?,
+                                            _ stepOffset: UnsafeMutablePointer<Float>?,
+                                            _ slopeLimit: UnsafeMutablePointer<Float>?,
+                                            _ moveSpeed: UnsafeMutablePointer<Float>?,
+                                            _ jumpForce: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let controller = ecs.get(CharacterControllerComponent.self, for: entity) else { return 0 }
+    enabled?.pointee = controller.isEnabled ? 1 : 0
+    height?.pointee = controller.height
+    radius?.pointee = controller.radius
+    stepOffset?.pointee = controller.stepOffset
+    slopeLimit?.pointee = controller.slopeLimit
+    moveSpeed?.pointee = controller.moveSpeed
+    jumpForce?.pointee = controller.jumpForce
+    return 1
+}
+
+@_cdecl("MCEEditorSetCharacterController")
+public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
+                                            _ entityId: UnsafePointer<CChar>?,
+                                            _ enabled: UInt32,
+                                            _ height: Float,
+                                            _ radius: Float,
+                                            _ stepOffset: Float,
+                                            _ slopeLimit: Float,
+                                            _ moveSpeed: Float,
+                                            _ jumpForce: Float) {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    let controller = CharacterControllerComponent(isEnabled: enabled != 0,
+                                                  height: height,
+                                                  radius: radius,
+                                                  stepOffset: stepOffset,
+                                                  slopeLimit: slopeLimit,
+                                                  moveSpeed: moveSpeed,
+                                                  jumpForce: jumpForce)
+    ecs.add(controller, to: entity)
+    context.editorProjectManager.notifySceneMutation()
 }
 
 @_cdecl("MCEEditorGetRigidbody")
@@ -1721,14 +2111,14 @@ public func MCEEditorSetTransform(_ contextPtr: UnsafeRawPointer?,
                                   _ sx: Float, _ sy: Float, _ sz: Float) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
-          let ecs = editorECS(context),
+          let scene = context.editorSceneController.activeScene(),
           let entity = entity(from: entityId, context: context) else { return }
     let transform = TransformComponent(
         position: SIMD3<Float>(px, py, pz),
         rotation: TransformMath.quaternionFromEulerXYZ(SIMD3<Float>(rx, ry, rz)),
         scale: SIMD3<Float>(sx, sy, sz)
     )
-    ecs.add(transform, to: entity)
+    _ = scene.setLocalTransform(transform, for: entity, source: .editor)
     context.editorProjectManager.notifySceneMutation()
 }
 
@@ -1740,14 +2130,14 @@ public func MCEEditorSetTransformNoLog(_ contextPtr: UnsafeRawPointer?,
                                        _ sx: Float, _ sy: Float, _ sz: Float) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
-          let ecs = editorECS(context),
+          let scene = context.editorSceneController.activeScene(),
           let entity = entity(from: entityId, context: context) else { return }
     let transform = TransformComponent(
         position: SIMD3<Float>(px, py, pz),
         rotation: TransformMath.quaternionFromEulerXYZ(SIMD3<Float>(rx, ry, rz)),
         scale: SIMD3<Float>(sx, sy, sz)
     )
-    ecs.add(transform, to: entity)
+    _ = scene.setLocalTransform(transform, for: entity, source: .editor)
     context.editorProjectManager.notifySceneMutation()
 }
 

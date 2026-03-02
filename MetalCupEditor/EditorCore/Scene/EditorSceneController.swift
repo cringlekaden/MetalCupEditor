@@ -310,7 +310,7 @@ final class EditorSceneController {
                                           accumulator: &simulateAccumulator)
             if steps > 0 {
                 for _ in 0..<steps {
-                    scene.physicsSystem?.fixedUpdate(scene: scene, fixedDeltaTime: fixedDeltaTime)
+                    _ = scene.runFixedStep(mode: [], fixedDeltaOverride: fixedDeltaTime)
                 }
             }
         }

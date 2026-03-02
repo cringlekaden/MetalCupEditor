@@ -17,6 +17,8 @@
 #include <cctype>
 #include <cstdlib>
 #include <cmath>
+#include <cfloat>
+#include <climits>
 
 extern "C" uint32_t MCEEditorEntityHasComponent(MCE_CTX,  const char *entityId, int32_t componentType);
 extern "C" uint32_t MCEEditorAddComponent(MCE_CTX,  const char *entityId, int32_t componentType);
@@ -184,11 +186,55 @@ extern "C" uint32_t MCEEditorSetScript(MCE_CTX,  const char *entityId,
                                        const char *typeName,
                                        uint32_t keepFieldData);
 extern "C" uint32_t MCEEditorClearScriptFieldData(MCE_CTX,  const char *entityId);
+extern "C" uint32_t MCEEditorResetScriptFieldsToDefaults(MCE_CTX, const char *entityId);
 extern "C" uint32_t MCEEditorGetScriptRuntimeStatus(MCE_CTX,  const char *entityId,
                                                     int32_t *runtimeStateOut,
                                                     uint32_t *hasInstanceOut,
                                                     char *errorBuffer, int32_t errorBufferSize);
 extern "C" uint32_t MCEEditorReloadScriptInstance(MCE_CTX,  const char *entityId);
+extern "C" int32_t MCEEditorGetScriptFieldCount(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorGetScriptFieldAt(MCE_CTX, const char *entityId, int32_t index,
+                                              char *fieldName, int32_t fieldNameSize,
+                                              int32_t *fieldType,
+                                              int32_t *intValue,
+                                              float *numberValue,
+                                              uint32_t *boolValue,
+                                              char *stringValue, int32_t stringValueSize,
+                                              float *vecX, float *vecY, float *vecZ,
+                                              char *entityValue, int32_t entityValueSize,
+                                              char *prefabValue, int32_t prefabValueSize,
+                                              uint32_t *hasMin, float *minValue,
+                                              uint32_t *hasMax, float *maxValue,
+                                              uint32_t *hasStep, float *stepValue,
+                                              char *tooltip, int32_t tooltipSize,
+                                              uint32_t *isMissingReference);
+extern "C" uint32_t MCEEditorSetScriptField(MCE_CTX, const char *entityId, const char *fieldName,
+                                            int32_t fieldType,
+                                            int32_t intValue,
+                                            float numberValue,
+                                            uint32_t boolValue,
+                                            const char *stringValue,
+                                            float vecX, float vecY, float vecZ,
+                                            const char *entityValue,
+                                            const char *prefabValue);
+extern "C" int32_t MCEEditorGetEntityCount(MCE_CTX);
+extern "C" int32_t MCEEditorGetEntityIdAt(MCE_CTX, int32_t index, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEEditorGetCharacterController(MCE_CTX, const char *entityId,
+                                                     uint32_t *enabled,
+                                                     float *height,
+                                                     float *radius,
+                                                     float *stepOffset,
+                                                     float *slopeLimit,
+                                                     float *moveSpeed,
+                                                     float *jumpForce);
+extern "C" void MCEEditorSetCharacterController(MCE_CTX, const char *entityId,
+                                                uint32_t enabled,
+                                                float height,
+                                                float radius,
+                                                float stepOffset,
+                                                float slopeLimit,
+                                                float moveSpeed,
+                                                float jumpForce);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsSimulating(MCE_CTX);
 extern "C" uint32_t MCEEditorGetMaterialAsset(MCE_CTX, 
@@ -261,7 +307,8 @@ enum ComponentType : int32_t {
     ComponentCamera = 6,
     ComponentRigidbody = 7,
     ComponentCollider = 8,
-    ComponentScript = 9
+    ComponentScript = 9,
+    ComponentCharacterController = 10
 };
 
 namespace {
@@ -609,6 +656,34 @@ namespace {
                 continue;
             }
             if (type != 6) { continue; }
+            if (handleBuffer[0] == 0) { continue; }
+            AssetOption option;
+            option.handle = handleBuffer;
+            option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            options.push_back(option);
+        }
+        std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
+            return a.name < b.name;
+        });
+    }
+
+    void LoadPrefabOptions(void *context, std::vector<AssetOption> &options) {
+        options.clear();
+        const int32_t count = MCEEditorGetAssetCount(context);
+        options.reserve(count);
+        for (int32_t i = 0; i < count; ++i) {
+            char handleBuffer[64] = {0};
+            int32_t type = 0;
+            char pathBuffer[512] = {0};
+            char nameBuffer[128] = {0};
+            if (MCEEditorGetAssetAt(context, i,
+                                    handleBuffer, sizeof(handleBuffer),
+                                    &type,
+                                    pathBuffer, sizeof(pathBuffer),
+                                    nameBuffer, sizeof(nameBuffer)) == 0) {
+                continue;
+            }
+            if (type != 5) { continue; }
             if (handleBuffer[0] == 0) { continue; }
             AssetOption option;
             option.handle = handleBuffer;
@@ -1747,11 +1822,285 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                         ImGui::PopStyleColor();
                     }
                 }
+                const int32_t scriptFieldCount = MCEEditorGetScriptFieldCount(context, selectedEntityId);
+                if (scriptFieldCount > 0) {
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Exposed Fields");
+                    if (EditorUI::BeginPropertyTable("ScriptFieldProps")) {
+                        static char entityPickerField[128] = {0};
+                        static char entityPickerFilter[128] = {0};
+                        static bool openEntityPicker = false;
+                        static char prefabPickerField[128] = {0};
+                        static char prefabPickerFilter[128] = {0};
+                        static bool openPrefabPicker = false;
+
+                        for (int32_t fieldIndex = 0; fieldIndex < scriptFieldCount; ++fieldIndex) {
+                            char fieldName[128] = {0};
+                            int32_t fieldType = 0;
+                            int32_t intValue = 0;
+                            float numberValue = 0.0f;
+                            uint32_t boolValue = 0;
+                            char stringValue[512] = {0};
+                            float vecX = 0.0f, vecY = 0.0f, vecZ = 0.0f;
+                            char entityValue[64] = {0};
+                            char prefabValue[64] = {0};
+                            uint32_t hasMin = 0, hasMax = 0, hasStep = 0, isMissingReference = 0;
+                            float minValue = 0.0f, maxValue = 0.0f, stepValue = 0.1f;
+                            char tooltip[512] = {0};
+                            if (MCEEditorGetScriptFieldAt(context,
+                                                          selectedEntityId,
+                                                          fieldIndex,
+                                                          fieldName, sizeof(fieldName),
+                                                          &fieldType,
+                                                          &intValue,
+                                                          &numberValue,
+                                                          &boolValue,
+                                                          stringValue, sizeof(stringValue),
+                                                          &vecX, &vecY, &vecZ,
+                                                          entityValue, sizeof(entityValue),
+                                                          prefabValue, sizeof(prefabValue),
+                                                          &hasMin, &minValue,
+                                                          &hasMax, &maxValue,
+                                                          &hasStep, &stepValue,
+                                                          tooltip, sizeof(tooltip),
+                                                          &isMissingReference) == 0) {
+                                continue;
+                            }
+
+                            bool fieldDirty = false;
+                            if (tooltip[0] != 0) {
+                                EditorUI::SetNextPropertyInfoTooltip(tooltip);
+                            }
+                            EditorUI::PropertyLabel(fieldName);
+                            ImGui::PushID(fieldName);
+                            switch (fieldType) {
+                                case 0: {
+                                    bool check = boolValue != 0;
+                                    fieldDirty = ImGui::Checkbox("##ScriptFieldBool", &check);
+                                    boolValue = check ? 1u : 0u;
+                                    break;
+                                }
+                                case 1:
+                                    fieldDirty = ImGui::DragInt("##ScriptFieldInt", &intValue, hasStep ? stepValue : 1.0f,
+                                                                hasMin ? static_cast<int>(minValue) : INT32_MIN,
+                                                                hasMax ? static_cast<int>(maxValue) : INT32_MAX);
+                                    break;
+                                case 2:
+                                    fieldDirty = ImGui::DragFloat("##ScriptFieldFloat", &numberValue, hasStep ? stepValue : 0.1f,
+                                                                  hasMin ? minValue : -FLT_MAX,
+                                                                  hasMax ? maxValue : FLT_MAX);
+                                    break;
+                                case 3: {
+                                    float vec[2] = {vecX, vecY};
+                                    fieldDirty = ImGui::DragFloat2("##ScriptFieldVec2", vec, hasStep ? stepValue : 0.05f);
+                                    vecX = vec[0];
+                                    vecY = vec[1];
+                                    break;
+                                }
+                                case 4: {
+                                    float vec[3] = {vecX, vecY, vecZ};
+                                    fieldDirty = ImGui::DragFloat3("##ScriptFieldVec3", vec, hasStep ? stepValue : 0.05f);
+                                    vecX = vec[0];
+                                    vecY = vec[1];
+                                    vecZ = vec[2];
+                                    break;
+                                }
+                                case 5: {
+                                    float color[3] = {vecX, vecY, vecZ};
+                                    fieldDirty = ImGui::ColorEdit3("##ScriptFieldColor3", color, ImGuiColorEditFlags_NoInputs);
+                                    vecX = color[0];
+                                    vecY = color[1];
+                                    vecZ = color[2];
+                                    break;
+                                }
+                                case 6:
+                                    fieldDirty = ImGui::InputText("##ScriptFieldString", stringValue, sizeof(stringValue));
+                                    break;
+                                case 7: {
+                                    char entityName[128] = {0};
+                                    const bool hasEntity = entityValue[0] != 0;
+                                    const bool entityExists = hasEntity && MCEEditorEntityExists(context, entityValue) != 0;
+                                    if (hasEntity && entityExists) {
+                                        if (MCEEditorGetEntityName(context, entityValue, entityName, sizeof(entityName)) <= 0) {
+                                            strncpy(entityName, entityValue, sizeof(entityName) - 1);
+                                        }
+                                    } else if (hasEntity) {
+                                        strncpy(entityName, "Missing Entity", sizeof(entityName) - 1);
+                                    } else {
+                                        strncpy(entityName, "None", sizeof(entityName) - 1);
+                                    }
+                                    ImGui::Button(entityName, ImVec2(ImGui::GetContentRegionAvail().x - 110.0f, 0));
+                                    if (ImGui::BeginDragDropTarget()) {
+                                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_SCENE_ENTITY_IDS")) {
+                                            const char *csv = static_cast<const char *>(payload->Data);
+                                            char local[64] = {0};
+                                            size_t i = 0;
+                                            while (csv[i] != 0 && csv[i] != ',' && i < sizeof(local) - 1) {
+                                                local[i] = csv[i];
+                                                ++i;
+                                            }
+                                            local[i] = 0;
+                                            strncpy(entityValue, local, sizeof(entityValue) - 1);
+                                            fieldDirty = true;
+                                        }
+                                        ImGui::EndDragDropTarget();
+                                    }
+                                    ImGui::SameLine();
+                                    if (ImGui::Button("Pick")) {
+                                        strncpy(entityPickerField, fieldName, sizeof(entityPickerField) - 1);
+                                        entityPickerFilter[0] = 0;
+                                        openEntityPicker = true;
+                                    }
+                                    ImGui::SameLine();
+                                    if (ImGui::Button("X")) {
+                                        entityValue[0] = 0;
+                                        fieldDirty = true;
+                                    }
+                                    if (isMissingReference != 0) {
+                                        ImGui::TextDisabled("Missing");
+                                    }
+                                    break;
+                                }
+                                case 8: {
+                                    char prefabName[128] = {0};
+                                    if (prefabValue[0] != 0) {
+                                        GetAssetName(context, prefabValue, prefabName, sizeof(prefabName));
+                                    } else {
+                                        strncpy(prefabName, "None", sizeof(prefabName) - 1);
+                                    }
+                                    ImGui::Button(prefabName, ImVec2(ImGui::GetContentRegionAvail().x - 110.0f, 0));
+                                    if (ImGui::BeginDragDropTarget()) {
+                                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_PREFAB")) {
+                                            const char *payloadText = static_cast<const char *>(payload->Data);
+                                            strncpy(prefabValue, payloadText, sizeof(prefabValue) - 1);
+                                            fieldDirty = true;
+                                        }
+                                        ImGui::EndDragDropTarget();
+                                    }
+                                    ImGui::SameLine();
+                                    if (ImGui::Button("Pick")) {
+                                        strncpy(prefabPickerField, fieldName, sizeof(prefabPickerField) - 1);
+                                        prefabPickerFilter[0] = 0;
+                                        openPrefabPicker = true;
+                                    }
+                                    ImGui::SameLine();
+                                    if (ImGui::Button("X")) {
+                                        prefabValue[0] = 0;
+                                        fieldDirty = true;
+                                    }
+                                    if (isMissingReference != 0) {
+                                        ImGui::TextDisabled("Missing");
+                                    }
+                                    break;
+                                }
+                                default:
+                                    ImGui::TextDisabled("Unsupported");
+                                    break;
+                            }
+                            ImGui::PopID();
+                            if (fieldDirty) {
+                                MCEEditorSetScriptField(context,
+                                                        selectedEntityId,
+                                                        fieldName,
+                                                        fieldType,
+                                                        intValue,
+                                                        numberValue,
+                                                        boolValue,
+                                                        stringValue,
+                                                        vecX, vecY, vecZ,
+                                                        entityValue,
+                                                        prefabValue);
+                            }
+                        }
+                        EditorUI::EndPropertyTable();
+
+                        if (openEntityPicker) {
+                            ImGui::OpenPopup("ScriptEntityPicker");
+                            openEntityPicker = false;
+                        }
+                        if (ImGui::BeginPopupModal("ScriptEntityPicker", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                            ImGui::InputTextWithHint("##ScriptEntityFieldFilter", "Search entities...", entityPickerFilter, sizeof(entityPickerFilter));
+                            ImGui::Separator();
+                            const std::string filterText = EditorUI::ToLower(std::string(entityPickerFilter));
+                            const int32_t entityCount = MCEEditorGetEntityCount(context);
+                            for (int32_t i = 0; i < entityCount; ++i) {
+                                char idBuffer[64] = {0};
+                                char nameBuffer[256] = {0};
+                                if (MCEEditorGetEntityIdAt(context, i, idBuffer, sizeof(idBuffer)) <= 0) { continue; }
+                                MCEEditorGetEntityName(context, idBuffer, nameBuffer, sizeof(nameBuffer));
+                                std::string display = nameBuffer[0] != 0 ? nameBuffer : idBuffer;
+                                if (!filterText.empty() && EditorUI::ToLower(display).find(filterText) == std::string::npos) {
+                                    continue;
+                                }
+                                std::string selectableLabel = display + "##" + std::string(idBuffer);
+                                if (ImGui::Selectable(selectableLabel.c_str())) {
+                                    MCEEditorSetScriptField(context,
+                                                            selectedEntityId,
+                                                            entityPickerField,
+                                                            7,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            "",
+                                                            0, 0, 0,
+                                                            idBuffer,
+                                                            "");
+                                    ImGui::CloseCurrentPopup();
+                                }
+                            }
+                            if (ImGui::Button("Close")) {
+                                ImGui::CloseCurrentPopup();
+                            }
+                            ImGui::EndPopup();
+                        }
+
+                        if (openPrefabPicker) {
+                            ImGui::OpenPopup("ScriptPrefabPicker");
+                            openPrefabPicker = false;
+                        }
+                        if (ImGui::BeginPopupModal("ScriptPrefabPicker", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                            ImGui::InputTextWithHint("##ScriptPrefabFieldFilter", "Search prefabs...", prefabPickerFilter, sizeof(prefabPickerFilter));
+                            ImGui::Separator();
+                            std::vector<AssetOption> options;
+                            LoadPrefabOptions(context, options);
+                            const std::string filterText = EditorUI::ToLower(std::string(prefabPickerFilter));
+                            for (const auto &option : options) {
+                                if (!filterText.empty() && EditorUI::ToLower(option.name).find(filterText) == std::string::npos) {
+                                    continue;
+                                }
+                                if (ImGui::Selectable(option.name.c_str())) {
+                                    MCEEditorSetScriptField(context,
+                                                            selectedEntityId,
+                                                            prefabPickerField,
+                                                            8,
+                                                            0,
+                                                            0,
+                                                            0,
+                                                            "",
+                                                            0, 0, 0,
+                                                            "",
+                                                            option.handle.c_str());
+                                    ImGui::CloseCurrentPopup();
+                                }
+                            }
+                            if (ImGui::Button("Close")) {
+                                ImGui::CloseCurrentPopup();
+                            }
+                            ImGui::EndPopup();
+                        }
+                    }
+                } else {
+                    ImGui::TextDisabled("This script has no exposed fields. Add <Type>.Fields = {...} to expose parameters.");
+                }
                 if (ImGui::Button("Clear Field Blob")) {
                     MCEEditorClearScriptFieldData(context, selectedEntityId);
                 }
                 ImGui::SameLine();
-                ImGui::TextDisabled("Fields (runtime)");
+                if (ImGui::Button("Reset to Defaults")) {
+                    MCEEditorResetScriptFieldsToDefaults(context, selectedEntityId);
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("Fields");
                 if (isPlaying) {
                     ImGui::SameLine();
                     if (ImGui::Button("Reload Script")) {
@@ -1768,6 +2117,62 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                        scriptHandle,
                                        typeName,
                                        1);
+                }
+            }
+        }
+    }
+
+    const bool hasCharacterController = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentCharacterController) != 0;
+    if (hasCharacterController) {
+        bool controllerOpen = EditorUI::BeginSectionWithContext(context,
+            "Character Controller",
+            "Inspector.CharacterController",
+            "CharacterControllerContext",
+            [&]() {
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentCharacterController);
+                }
+            },
+            true);
+        if (controllerOpen) {
+            uint32_t enabled = 1;
+            float height = 1.8f;
+            float radius = 0.35f;
+            float stepOffset = 0.25f;
+            float slopeLimit = 45.0f;
+            float moveSpeed = 4.0f;
+            float jumpForce = 5.5f;
+            if (MCEEditorGetCharacterController(context,
+                                                selectedEntityId,
+                                                &enabled,
+                                                &height,
+                                                &radius,
+                                                &stepOffset,
+                                                &slopeLimit,
+                                                &moveSpeed,
+                                                &jumpForce) != 0) {
+                bool dirty = false;
+                bool enabledBool = enabled != 0;
+                if (EditorUI::BeginPropertyTable("CharacterControllerProps")) {
+                    dirty |= EditorUI::PropertyBool("Enabled", &enabledBool);
+                    dirty |= EditorUI::PropertyFloat("Height", &height, 0.01f, 0.1f, 10.0f, "%.2f", true);
+                    dirty |= EditorUI::PropertyFloat("Radius", &radius, 0.01f, 0.05f, 5.0f, "%.2f", true);
+                    dirty |= EditorUI::PropertyFloat("Step Offset", &stepOffset, 0.01f, 0.0f, 2.0f, "%.2f", true);
+                    dirty |= EditorUI::PropertyFloat("Slope Limit", &slopeLimit, 1.0f, 1.0f, 89.0f, "%.1f", true);
+                    dirty |= EditorUI::PropertyFloat("Move Speed", &moveSpeed, 0.05f, 0.0f, 100.0f, "%.2f", true);
+                    dirty |= EditorUI::PropertyFloat("Jump Force", &jumpForce, 0.05f, 0.0f, 100.0f, "%.2f", true);
+                    EditorUI::EndPropertyTable();
+                }
+                if (dirty) {
+                    MCEEditorSetCharacterController(context,
+                                                    selectedEntityId,
+                                                    enabledBool ? 1u : 0u,
+                                                    height,
+                                                    radius,
+                                                    stepOffset,
+                                                    slopeLimit,
+                                                    moveSpeed,
+                                                    jumpForce);
                 }
             }
         }
@@ -2692,6 +3097,11 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentScript) == 0) {
             if (ImGui::MenuItem("Script")) {
                 MCEEditorAddComponent(context, selectedEntityId, ComponentScript);
+            }
+        }
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentCharacterController) == 0) {
+            if (ImGui::MenuItem("Character Controller")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentCharacterController);
             }
         }
         if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentLight) == 0) {
