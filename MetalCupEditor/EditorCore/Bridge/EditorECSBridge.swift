@@ -1481,10 +1481,6 @@ public func MCEEditorAddComponent(_ contextPtr: UnsafeRawPointer?,
     case .characterController:
         let controller = CharacterControllerComponent()
         ecs.add(controller, to: entity)
-        _ = ensureCharacterControllerDependencies(context: context,
-                                                  ecs: ecs,
-                                                  entity: entity,
-                                                  controller: controller)
     }
     context.editorProjectManager.notifySceneMutation()
     return 1
@@ -1892,6 +1888,7 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                             _ enabled: UnsafeMutablePointer<UInt32>?,
                                             _ height: UnsafeMutablePointer<Float>?,
                                             _ radius: UnsafeMutablePointer<Float>?,
+                                            _ stepOffset: UnsafeMutablePointer<Float>?,
                                             _ moveSpeed: UnsafeMutablePointer<Float>?,
                                             _ sprintMultiplier: UnsafeMutablePointer<Float>?,
                                             _ jumpSpeed: UnsafeMutablePointer<Float>?,
@@ -1914,6 +1911,7 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
     enabled?.pointee = controller.isEnabled ? 1 : 0
     height?.pointee = controller.height
     radius?.pointee = controller.radius
+    stepOffset?.pointee = controller.stepOffset
     moveSpeed?.pointee = controller.moveSpeed
     sprintMultiplier?.pointee = controller.sprintMultiplier
     jumpSpeed?.pointee = controller.jumpSpeed
@@ -1938,6 +1936,7 @@ public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                             _ enabled: UInt32,
                                             _ height: Float,
                                             _ radius: Float,
+                                            _ stepOffset: Float,
                                             _ moveSpeed: Float,
                                             _ sprintMultiplier: Float,
                                             _ jumpSpeed: Float,
@@ -1958,7 +1957,7 @@ public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
     let controller = CharacterControllerComponent(isEnabled: enabled != 0,
                                                   height: height,
                                                   radius: radius,
-                                                  stepOffset: previous?.stepOffset ?? 0.25,
+                                                  stepOffset: stepOffset,
                                                   slopeLimit: previous?.slopeLimit ?? maxSlope,
                                                   moveSpeed: moveSpeed,
                                                   sprintMultiplier: sprintMultiplier,
@@ -1979,10 +1978,6 @@ public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                                   pitchRadians: previous?.pitchRadians ?? 0.0,
                                                   lookInitialized: previous?.lookInitialized ?? false)
     ecs.add(controller, to: entity)
-    _ = ensureCharacterControllerDependencies(context: context,
-                                              ecs: ecs,
-                                              entity: entity,
-                                              controller: controller)
     context.editorProjectManager.notifySceneMutation()
 }
 

@@ -31,6 +31,7 @@ final class EditorSceneController {
     private var simulateAccumulator: Float = 0.0
     private let maxFixedSteps: Int = 16
     private var cachedScriptRuntime: ScriptRuntime?
+    private var prePlayPhysicsSettings: PhysicsSettings?
     private var lastFrameTime: FrameTime?
     private var timeBaseTotal: Float = 0.0
     private var timeBaseUnscaled: Float = 0.0
@@ -110,14 +111,27 @@ final class EditorSceneController {
                 engineContext: engineContext
             )
         }
+        if let engineContext {
+            prePlayPhysicsSettings = engineContext.physicsSettings
+            if !engineContext.physicsSettings.deterministic {
+                var playPhysicsSettings = engineContext.physicsSettings
+                // The editor drives fixed-step from the render/main loop. Keep physics single-threaded
+                // during play to avoid barrier waits from UI-interactive thread -> worker threads.
+                playPhysicsSettings.deterministic = true
+                engineContext.physicsSettings = playPhysicsSettings
+            }
+        }
         if let physicsSettings = engineContext?.physicsSettings {
             runtimeScene?.startPhysics(settings: physicsSettings)
         }
+        runtimeScene?.resetRuntimeInputState()
+        engineContext?.renderer?.inputAccumulator?.resetForRuntimeStart(clearKeys: false, clearMouseButtons: false)
         if let engineContext {
             cachedScriptRuntime = engineContext.scriptRuntime
             engineContext.scriptRuntime = LuaScriptRuntime(engineContext: engineContext)
         }
         runtimeScene?.notifyScriptSceneStart()
+        runtimePrepareForPlayStart(lockCursor: true)
         resetTimingBase()
         fixedAccumulator = 0.0
         isPlaying = true
@@ -146,6 +160,10 @@ final class EditorSceneController {
         }
         editorSnapshot = nil
         runtimeScene = nil
+        if let engineContext, let prePlayPhysicsSettings {
+            engineContext.physicsSettings = prePlayPhysicsSettings
+        }
+        prePlayPhysicsSettings = nil
         isPlaying = false
         isPaused = false
         resetTimingBase()

@@ -233,6 +233,20 @@ final class ImGuiLayer: Layer {
     }
 
     private func shouldCaptureEvent(_ event: Event) -> Bool {
+        if context.editorSceneController.isPlaying {
+            let cursorLocked = runtimeIsCursorLocked()
+            // During play with locked cursor, route input directly to runtime controls
+            // even if the viewport is not focused yet (first-frame play/start case).
+            if cursorLocked {
+                switch event {
+                case is MouseMovedEvent, is MouseButtonPressedEvent, is MouseButtonReleasedEvent, is MouseScrolledEvent,
+                     is KeyPressedEvent, is KeyReleasedEvent:
+                    return false
+                default:
+                    break
+                }
+            }
+        }
         let wantsMouse = imguiBridge.wantsCaptureMouse()
         let wantsKeyboard = imguiBridge.wantsCaptureKeyboard()
         let viewportHovered = imguiBridge.viewportIsHovered()
