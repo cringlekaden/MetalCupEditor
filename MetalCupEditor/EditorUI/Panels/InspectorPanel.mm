@@ -219,22 +219,57 @@ extern "C" uint32_t MCEEditorSetScriptField(MCE_CTX, const char *entityId, const
                                             const char *prefabValue);
 extern "C" int32_t MCEEditorGetEntityCount(MCE_CTX);
 extern "C" int32_t MCEEditorGetEntityIdAt(MCE_CTX, int32_t index, char *buffer, int32_t bufferSize);
+extern "C" int32_t MCEEditorGetChildEntityCount(MCE_CTX, const char *parentId);
+extern "C" int32_t MCEEditorGetChildEntityIdAt(MCE_CTX, const char *parentId, int32_t index, char *buffer, int32_t bufferSize);
+extern "C" int32_t MCEEditorGetParentEntityId(MCE_CTX, const char *childId, char *buffer, int32_t bufferSize);
+extern "C" int32_t MCEEditorCreateEntity(MCE_CTX, const char *name, char *outId, int32_t outIdSize);
+extern "C" uint32_t MCEEditorSetParent(MCE_CTX, const char *childId, const char *parentId, uint32_t keepWorldTransform);
 extern "C" uint32_t MCEEditorGetCharacterController(MCE_CTX, const char *entityId,
                                                      uint32_t *enabled,
                                                      float *height,
                                                      float *radius,
-                                                     float *stepOffset,
-                                                     float *slopeLimit,
                                                      float *moveSpeed,
-                                                     float *jumpForce);
+                                                     float *sprintMultiplier,
+                                                     float *jumpSpeed,
+                                                     uint32_t *useGravityOverride,
+                                                     float *gravity,
+                                                     float *groundProbeDistance,
+                                                     float *maxSlope,
+                                                     float *groundSnapDistance,
+                                                     float *lookSensitivity,
+                                                     float *minPitchDegrees,
+                                                     float *maxPitchDegrees,
+                                                     uint32_t *debugDraw,
+                                                     uint32_t *grounded,
+                                                     float *speed,
+                                                     float *velocityY);
 extern "C" void MCEEditorSetCharacterController(MCE_CTX, const char *entityId,
                                                 uint32_t enabled,
                                                 float height,
                                                 float radius,
-                                                float stepOffset,
-                                                float slopeLimit,
                                                 float moveSpeed,
-                                                float jumpForce);
+                                                float sprintMultiplier,
+                                                float jumpSpeed,
+                                                uint32_t useGravityOverride,
+                                                float gravity,
+                                                float groundProbeDistance,
+                                                float maxSlope,
+                                                float groundSnapDistance,
+                                                float lookSensitivity,
+                                                float minPitchDegrees,
+                                                float maxPitchDegrees,
+                                                uint32_t debugDraw);
+extern "C" uint32_t MCEEditorGetCharacterControllerEntityRefs(MCE_CTX, const char *entityId,
+                                                               char *visualEntityIdOut, int32_t visualEntityIdSize,
+                                                               char *cameraPivotEntityIdOut, int32_t cameraPivotEntityIdSize);
+extern "C" uint32_t MCEEditorSetCharacterControllerEntityRefs(MCE_CTX, const char *entityId,
+                                                               const char *visualEntityId,
+                                                               const char *cameraPivotEntityId);
+extern "C" uint32_t MCEEditorCharacterControllerEnsureDependencies(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorCharacterControllerSetRigidbodyKinematic(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorCharacterControllerConvertColliderToCapsule(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorCharacterControllerAddCapsuleCollider(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorCharacterControllerCreateRecommendedHierarchy(MCE_CTX, const char *entityId, uint32_t createCamera);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsSimulating(MCE_CTX);
 extern "C" uint32_t MCEEditorGetMaterialAsset(MCE_CTX, 
@@ -1771,14 +1806,13 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             uint32_t enabled = 1;
             char scriptHandle[64] = {0};
             char typeName[256] = {0};
-            uint32_t fieldDataSize = 0;
             uint32_t fieldDataVersion = 1;
             if (MCEEditorGetScript(context,
                                    selectedEntityId,
                                    &enabled,
                                    scriptHandle, sizeof(scriptHandle),
                                    typeName, sizeof(typeName),
-                                   &fieldDataSize,
+                                   nullptr,
                                    &fieldDataVersion) != 0) {
                 bool dirty = false;
                 bool enabledBool = enabled != 0;
@@ -1787,12 +1821,6 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     if (DrawScriptHandleRow(context, state, "Script Asset", scriptHandle, sizeof(scriptHandle), "MCE_ASSET_SCRIPT", selectedEntityId)) {
                         dirty = true;
                     }
-                    EditorUI::PropertyLabel("Type Name");
-                    if (ImGui::InputText("##ScriptTypeName", typeName, sizeof(typeName))) {
-                        dirty = true;
-                    }
-                    EditorUI::PropertyLabel("Field Data");
-                    ImGui::Text("%u bytes (v%u)", fieldDataSize, fieldDataVersion);
                     int32_t runtimeState = 0;
                     uint32_t hasInstance = 0;
                     char runtimeError[2048] = {0};
@@ -1814,6 +1842,15 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     EditorUI::PropertyLabel("Status");
                     ImGui::Text("%s%s", statusLabel, hasInstance != 0 ? " (Instance Active)" : "");
                     EditorUI::EndPropertyTable();
+                    if (ImGui::CollapsingHeader("Advanced##Script")) {
+                        if (EditorUI::BeginPropertyTable("ScriptAdvancedProps")) {
+                            EditorUI::PropertyLabel("Type Name");
+                            ImGui::InputText("##ScriptTypeName", typeName, sizeof(typeName), ImGuiInputTextFlags_ReadOnly);
+                            EditorUI::PropertyLabel("Field Data Version");
+                            ImGui::Text("v%u", fieldDataVersion);
+                            EditorUI::EndPropertyTable();
+                        }
+                    }
                     if (runtimeError[0] != 0) {
                         ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(0.95f, 0.45f, 0.45f, 1.0f));
                         ImGui::PushTextWrapPos(0.0f);
@@ -2138,30 +2175,396 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             uint32_t enabled = 1;
             float height = 1.8f;
             float radius = 0.35f;
-            float stepOffset = 0.25f;
-            float slopeLimit = 45.0f;
             float moveSpeed = 4.0f;
-            float jumpForce = 5.5f;
+            float sprintMultiplier = 1.5f;
+            float jumpSpeed = 5.5f;
+            uint32_t useGravityOverride = 0;
+            float gravity = -9.81f;
+            float groundProbeDistance = 0.25f;
+            float maxSlope = 45.0f;
+            float groundSnapDistance = 0.10f;
+            float lookSensitivity = 0.01f;
+            float minPitchDegrees = -80.0f;
+            float maxPitchDegrees = 80.0f;
+            uint32_t debugDraw = 0;
+            uint32_t grounded = 0;
+            float currentSpeed = 0.0f;
+            float velocityY = 0.0f;
+            char visualEntityId[64] = {0};
+            char cameraPivotEntityId[64] = {0};
+            const bool hasRigidbodyForController = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentRigidbody) != 0;
+            const bool hasColliderForController = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentCollider) != 0;
+
+            int32_t rbMotionType = 2;
+            bool hasRigidbodyData = false;
+            if (hasRigidbodyForController) {
+                uint32_t rbEnabled = 1;
+                float mass = 1.0f;
+                float friction = 0.6f;
+                float restitution = 0.0f;
+                float linearDamping = 0.02f;
+                float angularDamping = 0.2f;
+                float gravityFactor = 1.0f;
+                uint32_t allowSleeping = 1;
+                uint32_t ccdEnabled = 0;
+                int32_t collisionLayer = 0;
+                hasRigidbodyData = MCEEditorGetRigidbody(context, selectedEntityId,
+                                                         &rbEnabled, &rbMotionType, &mass, &friction, &restitution,
+                                                         &linearDamping, &angularDamping, &gravityFactor,
+                                                         &allowSleeping, &ccdEnabled, &collisionLayer) != 0;
+            }
+
+            bool hasSolidCapsule = false;
+            if (hasColliderForController) {
+                const int32_t shapeCount = MCEEditorGetColliderShapeCount(context, selectedEntityId);
+                for (int32_t shapeIndex = 0; shapeIndex < shapeCount; ++shapeIndex) {
+                    uint32_t shapeEnabled = 1;
+                    int32_t shapeType = 0;
+                    float boxX = 0.5f, boxY = 0.5f, boxZ = 0.5f;
+                    float sphereRadius = 0.5f;
+                    float capsuleHalfHeight = 0.5f;
+                    float capsuleRadius = 0.5f;
+                    float offsetX = 0, offsetY = 0, offsetZ = 0;
+                    float rotX = 0, rotY = 0, rotZ = 0;
+                    uint32_t isTrigger = 0;
+                    uint32_t hasLayerOverride = 0;
+                    int32_t layerOverride = 0;
+                    if (MCEEditorGetColliderShape(context, selectedEntityId, shapeIndex,
+                                                  &shapeEnabled, &shapeType,
+                                                  &boxX, &boxY, &boxZ,
+                                                  &sphereRadius, &capsuleHalfHeight, &capsuleRadius,
+                                                  &offsetX, &offsetY, &offsetZ,
+                                                  &rotX, &rotY, &rotZ,
+                                                  &isTrigger, &hasLayerOverride, &layerOverride) == 0) {
+                        continue;
+                    }
+                    if (shapeEnabled != 0 && isTrigger == 0 && shapeType == 2) {
+                        hasSolidCapsule = true;
+                    }
+                }
+            }
+
             if (MCEEditorGetCharacterController(context,
                                                 selectedEntityId,
                                                 &enabled,
                                                 &height,
                                                 &radius,
-                                                &stepOffset,
-                                                &slopeLimit,
                                                 &moveSpeed,
-                                                &jumpForce) != 0) {
+                                                &sprintMultiplier,
+                                                &jumpSpeed,
+                                                &useGravityOverride,
+                                                &gravity,
+                                                &groundProbeDistance,
+                                                &maxSlope,
+                                                &groundSnapDistance,
+                                                &lookSensitivity,
+                                                &minPitchDegrees,
+                                                &maxPitchDegrees,
+                                                &debugDraw,
+                                                &grounded,
+                                                &currentSpeed,
+                                                &velocityY) != 0) {
+                MCEEditorGetCharacterControllerEntityRefs(context,
+                                                          selectedEntityId,
+                                                          visualEntityId,
+                                                          static_cast<int32_t>(sizeof(visualEntityId)),
+                                                          cameraPivotEntityId,
+                                                          static_cast<int32_t>(sizeof(cameraPivotEntityId)));
+                if (!hasRigidbodyForController) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.2f, 1.0f), "Missing Rigidbody.");
+                    if (ImGui::Button("Add Rigidbody (Kinematic)")) {
+                        MCEEditorCharacterControllerSetRigidbodyKinematic(context, selectedEntityId);
+                    }
+                } else if (hasRigidbodyData && rbMotionType != 2) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.2f, 1.0f), "Rigidbody should be Kinematic.");
+                    if (ImGui::Button("Set Rigidbody to Kinematic (Recommended)")) {
+                        MCEEditorCharacterControllerSetRigidbodyKinematic(context, selectedEntityId);
+                    }
+                }
+
+                if (!hasColliderForController) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.2f, 1.0f), "Missing Collider.");
+                    if (ImGui::Button("Add Capsule Collider")) {
+                        MCEEditorCharacterControllerAddCapsuleCollider(context, selectedEntityId);
+                    }
+                } else if (!hasSolidCapsule) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.2f, 1.0f), "Recommended: solid Capsule collider.");
+                    if (ImGui::Button("Convert Collider to Capsule")) {
+                        MCEEditorCharacterControllerConvertColliderToCapsule(context, selectedEntityId);
+                    }
+                }
+
+                if (!hasRigidbodyForController && !hasColliderForController) {
+                    if (ImGui::Button("Add Required Components")) {
+                        MCEEditorCharacterControllerEnsureDependencies(context, selectedEntityId);
+                    }
+                }
+
+                if (!isPlaying) {
+                    if (ImGui::Button("Create Recommended Hierarchy")) {
+                        MCEEditorCharacterControllerCreateRecommendedHierarchy(context, selectedEntityId, 1);
+                    }
+                    ImGui::SameLine();
+                    ImGui::TextDisabled("(?)");
+                    if (ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+                        ImGui::SetTooltip("Creates/binds children: Visual, CameraPivot, and Camera. Edit mode only.");
+                    }
+                }
+
+                auto parentMatches = [&](const char *childId, const char *expectedParentId) -> bool {
+                    if (childId == nullptr || childId[0] == 0 || expectedParentId == nullptr || expectedParentId[0] == 0) {
+                        return false;
+                    }
+                    char parentBuffer[64] = {0};
+                    if (MCEEditorGetParentEntityId(context, childId, parentBuffer, static_cast<int32_t>(sizeof(parentBuffer))) <= 0) {
+                        return false;
+                    }
+                    return strcmp(parentBuffer, expectedParentId) == 0;
+                };
+
+                auto pivotHasCameraChild = [&]() -> bool {
+                    if (cameraPivotEntityId[0] == 0 || MCEEditorEntityExists(context, cameraPivotEntityId) == 0) {
+                        return false;
+                    }
+                    const int32_t childCount = MCEEditorGetChildEntityCount(context, cameraPivotEntityId);
+                    for (int32_t childIndex = 0; childIndex < childCount; ++childIndex) {
+                        char childId[64] = {0};
+                        if (MCEEditorGetChildEntityIdAt(context,
+                                                        cameraPivotEntityId,
+                                                        childIndex,
+                                                        childId,
+                                                        static_cast<int32_t>(sizeof(childId))) <= 0) {
+                            continue;
+                        }
+                        if (MCEEditorEntityHasComponent(context, childId, ComponentCamera) != 0) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                const bool visualAssigned = visualEntityId[0] != 0 && MCEEditorEntityExists(context, visualEntityId) != 0;
+                const bool pivotAssigned = cameraPivotEntityId[0] != 0 && MCEEditorEntityExists(context, cameraPivotEntityId) != 0;
+                const bool visualIsChildOfRoot = parentMatches(visualEntityId, selectedEntityId);
+                const bool pivotIsChildOfRoot = parentMatches(cameraPivotEntityId, selectedEntityId);
+                const bool cameraUnderPivot = pivotHasCameraChild();
+
+                ImGui::Spacing();
+                ImGui::BeginChild("CharacterControllerSetupSummary", ImVec2(0.0f, 116.0f), true);
+                ImGui::Text("Character Controller Setup");
+                ImGui::Separator();
+                ImGui::Text("Rigidbody: %s", hasRigidbodyForController ? (rbMotionType == 2 ? "Kinematic" : "Present (Not Kinematic)") : "Missing");
+                ImGui::Text("Collider: %s", hasColliderForController ? (hasSolidCapsule ? "Capsule" : "Present (Not Capsule)") : "Missing");
+                ImGui::Text("Visual Child: %s", visualAssigned ? "Assigned" : "Unassigned");
+                ImGui::Text("Camera Pivot: %s", pivotAssigned ? "Assigned" : "Unassigned");
+                ImGui::Text("Grounded: %s", isPlaying ? (grounded != 0 ? "Yes" : "No") : "Edit mode");
+                ImGui::Text("Current Speed: %.2f m/s", currentSpeed);
+                ImGui::EndChild();
+
+                if (visualAssigned && !visualIsChildOfRoot) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.2f, 1.0f), "Warning: Visual entity should be a direct child of this root.");
+                }
+                if (pivotAssigned && !pivotIsChildOfRoot) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.2f, 1.0f), "Warning: CameraPivot should be a direct child of this root.");
+                }
+                if (pivotAssigned && !cameraUnderPivot) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.2f, 1.0f), "Warning: CameraPivot has no camera child.");
+                }
+
                 bool dirty = false;
+                bool refsDirty = false;
                 bool enabledBool = enabled != 0;
+                bool gravityOverrideEnabled = useGravityOverride != 0;
+                bool debugDrawEnabled = debugDraw != 0;
                 if (EditorUI::BeginPropertyTable("CharacterControllerProps")) {
+                    EditorUI::SetNextPropertyInfoTooltip("Enable/disable controller runtime.\nUnits: bool.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyBool("Enabled", &enabledBool);
-                    dirty |= EditorUI::PropertyFloat("Height", &height, 0.01f, 0.1f, 10.0f, "%.2f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Character full height.\nUnits: meters.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Height", &height, 0.01f, 0.2f, 10.0f, "%.2f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Character capsule radius.\nUnits: meters.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyFloat("Radius", &radius, 0.01f, 0.05f, 5.0f, "%.2f", true);
-                    dirty |= EditorUI::PropertyFloat("Step Offset", &stepOffset, 0.01f, 0.0f, 2.0f, "%.2f", true);
-                    dirty |= EditorUI::PropertyFloat("Slope Limit", &slopeLimit, 1.0f, 1.0f, 89.0f, "%.1f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Move speed.\nUnits: m/s.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyFloat("Move Speed", &moveSpeed, 0.05f, 0.0f, 100.0f, "%.2f", true);
-                    dirty |= EditorUI::PropertyFloat("Jump Force", &jumpForce, 0.05f, 0.0f, 100.0f, "%.2f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Sprint speed multiplier.\nUnits: scalar.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Sprint Multiplier", &sprintMultiplier, 0.05f, 1.0f, 8.0f, "%.2f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Jump takeoff speed.\nUnits: m/s.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Jump Speed", &jumpSpeed, 0.05f, 0.0f, 100.0f, "%.2f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Enable per-controller gravity override.\nUnits: bool.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyBool("Override Gravity", &gravityOverrideEnabled);
+                    if (gravityOverrideEnabled) {
+                        EditorUI::SetNextPropertyInfoTooltip("Controller gravity value.\nUnits: m/s^2.\nPersistence: Scene.");
+                        dirty |= EditorUI::PropertyFloat("Gravity", &gravity, 0.05f, -100.0f, 0.0f, "%.2f", true);
+                    }
+                    EditorUI::SetNextPropertyInfoTooltip("Ground check probe distance.\nUnits: meters.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Ground Probe Distance", &groundProbeDistance, 0.01f, 0.02f, 1.0f, "%.2f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Ground snap distance while grounded.\nUnits: meters.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Ground Snap Distance", &groundSnapDistance, 0.01f, 0.0f, 2.0f, "%.2f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Max walkable slope.\nUnits: degrees.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Max Slope", &maxSlope, 1.0f, 1.0f, 89.0f, "%.1f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Look sensitivity in radians per input unit.\nUnits: rad/unit.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Look Sensitivity", &lookSensitivity, 0.0001f, 0.0f, 1.0f, "%.4f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Minimum camera pitch.\nUnits: degrees.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Min Pitch", &minPitchDegrees, 0.5f, -89.0f, 0.0f, "%.1f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Maximum camera pitch.\nUnits: degrees.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyFloat("Max Pitch", &maxPitchDegrees, 0.5f, 0.0f, 89.0f, "%.1f", true);
+                    EditorUI::SetNextPropertyInfoTooltip("Draw controller probe/sweep debug lines.\nUnits: boolean.\nPersistence: Scene.");
+                    dirty |= EditorUI::PropertyBool("Debug Draw", &debugDrawEnabled);
+
+                    static char ccVisualFilter[128] = {0};
+                    static char ccCameraFilter[128] = {0};
+                    static bool openVisualPicker = false;
+                    static bool openCameraPicker = false;
+
+                    auto drawEntityRefRow = [&](const char *label, char *valueBuffer, bool isVisualPicker) {
+                        EditorUI::PropertyLabel(label);
+                        char displayName[128] = {0};
+                        if (valueBuffer[0] != 0 && MCEEditorEntityExists(context, valueBuffer) != 0) {
+                            if (MCEEditorGetEntityName(context, valueBuffer, displayName, sizeof(displayName)) == 0) {
+                                strncpy(displayName, valueBuffer, sizeof(displayName) - 1);
+                            }
+                        } else if (valueBuffer[0] != 0) {
+                            strncpy(displayName, "Missing Entity", sizeof(displayName) - 1);
+                        } else {
+                            strncpy(displayName, "None", sizeof(displayName) - 1);
+                        }
+                        ImGui::PushID(label);
+                        ImGui::Button(displayName, ImVec2(ImGui::GetContentRegionAvail().x - 120.0f, 0));
+                        if (ImGui::BeginDragDropTarget()) {
+                            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_SCENE_ENTITY_IDS")) {
+                                const char *csv = static_cast<const char *>(payload->Data);
+                                char local[64] = {0};
+                                size_t i = 0;
+                                while (csv[i] != 0 && csv[i] != ',' && i < sizeof(local) - 1) {
+                                    local[i] = csv[i];
+                                    ++i;
+                                }
+                                local[i] = 0;
+                                strncpy(valueBuffer, local, 63);
+                                refsDirty = true;
+                            }
+                            ImGui::EndDragDropTarget();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Pick")) {
+                            if (isVisualPicker) {
+                                openVisualPicker = true;
+                                ccVisualFilter[0] = 0;
+                            } else {
+                                openCameraPicker = true;
+                                ccCameraFilter[0] = 0;
+                            }
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("X")) {
+                            valueBuffer[0] = 0;
+                            refsDirty = true;
+                        }
+                        ImGui::PopID();
+                    };
+                    drawEntityRefRow("Visual Entity", visualEntityId, true);
+                    drawEntityRefRow("Camera Pivot", cameraPivotEntityId, false);
+
+                    if (openVisualPicker) {
+                        ImGui::OpenPopup("CCVisualEntityPicker");
+                        openVisualPicker = false;
+                    }
+                    if (ImGui::BeginPopupModal("CCVisualEntityPicker", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                        ImGui::InputTextWithHint("##CCVisualFilter", "Search mesh entities...", ccVisualFilter, sizeof(ccVisualFilter));
+                        ImGui::Separator();
+                        const std::string filterText = EditorUI::ToLower(std::string(ccVisualFilter));
+                        const int32_t entityCount = MCEEditorGetEntityCount(context);
+                        for (int32_t i = 0; i < entityCount; ++i) {
+                            char idBuffer[64] = {0};
+                            char nameBuffer[256] = {0};
+                            if (MCEEditorGetEntityIdAt(context, i, idBuffer, sizeof(idBuffer)) <= 0) { continue; }
+                            if (MCEEditorEntityHasComponent(context, idBuffer, ComponentMeshRenderer) == 0) { continue; }
+                            MCEEditorGetEntityName(context, idBuffer, nameBuffer, sizeof(nameBuffer));
+                            std::string display = nameBuffer[0] != 0 ? nameBuffer : idBuffer;
+                            if (!filterText.empty() && EditorUI::ToLower(display).find(filterText) == std::string::npos) {
+                                continue;
+                            }
+                            std::string selectableLabel = display + "##cc_visual_" + std::string(idBuffer);
+                            if (ImGui::Selectable(selectableLabel.c_str())) {
+                                strncpy(visualEntityId, idBuffer, sizeof(visualEntityId) - 1);
+                                refsDirty = true;
+                                ImGui::CloseCurrentPopup();
+                            }
+                        }
+                        if (ImGui::Button("Clear")) {
+                            visualEntityId[0] = 0;
+                            refsDirty = true;
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Close")) {
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::EndPopup();
+                    }
+
+                    if (openCameraPicker) {
+                        ImGui::OpenPopup("CCCameraPivotPicker");
+                        openCameraPicker = false;
+                    }
+                    if (ImGui::BeginPopupModal("CCCameraPivotPicker", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+                        ImGui::InputTextWithHint("##CCCameraFilter", "Search camera entities...", ccCameraFilter, sizeof(ccCameraFilter));
+                        ImGui::Separator();
+                        const std::string filterText = EditorUI::ToLower(std::string(ccCameraFilter));
+                        const int32_t entityCount = MCEEditorGetEntityCount(context);
+                        for (int32_t i = 0; i < entityCount; ++i) {
+                            char idBuffer[64] = {0};
+                            char nameBuffer[256] = {0};
+                            if (MCEEditorGetEntityIdAt(context, i, idBuffer, sizeof(idBuffer)) <= 0) { continue; }
+                            if (MCEEditorEntityHasComponent(context, idBuffer, ComponentCamera) == 0) { continue; }
+                            int32_t projectionType = 0;
+                            float fovDegrees = 0.0f;
+                            float orthoSize = 0.0f;
+                            float nearPlane = 0.0f;
+                            float farPlane = 0.0f;
+                            uint32_t isPrimary = 0;
+                            uint32_t isEditor = 0;
+                            if (MCEEditorGetCamera(context,
+                                                   idBuffer,
+                                                   &projectionType,
+                                                   &fovDegrees,
+                                                   &orthoSize,
+                                                   &nearPlane,
+                                                   &farPlane,
+                                                   &isPrimary,
+                                                   &isEditor) == 0 || isEditor != 0) {
+                                continue;
+                            }
+                            MCEEditorGetEntityName(context, idBuffer, nameBuffer, sizeof(nameBuffer));
+                            std::string display = nameBuffer[0] != 0 ? nameBuffer : idBuffer;
+                            if (!filterText.empty() && EditorUI::ToLower(display).find(filterText) == std::string::npos) {
+                                continue;
+                            }
+                            std::string selectableLabel = display + "##cc_camera_" + std::string(idBuffer);
+                            if (ImGui::Selectable(selectableLabel.c_str())) {
+                                strncpy(cameraPivotEntityId, idBuffer, sizeof(cameraPivotEntityId) - 1);
+                                refsDirty = true;
+                                ImGui::CloseCurrentPopup();
+                            }
+                        }
+                        if (ImGui::Button("Clear")) {
+                            cameraPivotEntityId[0] = 0;
+                            refsDirty = true;
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::SameLine();
+                        if (ImGui::Button("Close")) {
+                            ImGui::CloseCurrentPopup();
+                        }
+                        ImGui::EndPopup();
+                    }
                     EditorUI::EndPropertyTable();
+                }
+                if (isPlaying) {
+                    ImGui::Separator();
+                    ImGui::TextDisabled("Runtime");
+                    ImGui::Text("Grounded: %s", grounded != 0 ? "Yes" : "No");
+                    ImGui::Text("Speed: %.3f", currentSpeed);
+                    ImGui::Text("Velocity Y: %.3f", velocityY);
                 }
                 if (dirty) {
                     MCEEditorSetCharacterController(context,
@@ -2169,10 +2572,24 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                     enabledBool ? 1u : 0u,
                                                     height,
                                                     radius,
-                                                    stepOffset,
-                                                    slopeLimit,
                                                     moveSpeed,
-                                                    jumpForce);
+                                                    sprintMultiplier,
+                                                    jumpSpeed,
+                                                    gravityOverrideEnabled ? 1u : 0u,
+                                                    gravity,
+                                                    groundProbeDistance,
+                                                    maxSlope,
+                                                    groundSnapDistance,
+                                                    lookSensitivity,
+                                                    minPitchDegrees,
+                                                    maxPitchDegrees,
+                                                    debugDrawEnabled ? 1u : 0u);
+                }
+                if (refsDirty) {
+                    MCEEditorSetCharacterControllerEntityRefs(context,
+                                                              selectedEntityId,
+                                                              visualEntityId[0] != 0 ? visualEntityId : nullptr,
+                                                              cameraPivotEntityId[0] != 0 ? cameraPivotEntityId : nullptr);
                 }
             }
         }

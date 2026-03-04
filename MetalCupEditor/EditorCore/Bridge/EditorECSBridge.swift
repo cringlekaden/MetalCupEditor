@@ -150,6 +150,188 @@ private func resolvePrefabInstance(_ context: MCEContext,
     return (scene, entity, link)
 }
 
+private func controllerCapsuleShape(radius: Float, height: Float) -> ColliderShape {
+    let safeRadius = max(0.05, radius)
+    let standingHalfHeight = max(safeRadius, height * 0.5)
+    let capsuleHalfHeight = max(0.05, standingHalfHeight - safeRadius)
+    return ColliderShape(isEnabled: true,
+                         shapeType: .capsule,
+                         boxHalfExtents: SIMD3<Float>(repeating: 0.5),
+                         sphereRadius: safeRadius,
+                         capsuleHalfHeight: capsuleHalfHeight,
+                         capsuleRadius: safeRadius,
+                         offset: .zero,
+                         rotationOffset: .zero,
+                         isTrigger: false,
+                         collisionLayerOverride: nil,
+                         physicsMaterial: nil)
+}
+
+private func controllerCapsuleShape(from controller: CharacterControllerComponent) -> ColliderShape {
+    controllerCapsuleShape(radius: controller.radius, height: controller.height)
+}
+
+private func preferredCharacterCollisionLayer(context: MCEContext) -> Int32 {
+    let names = context.engineContext.physicsSettings.collisionLayerNames
+    if let index = names.firstIndex(where: { $0.lowercased() == "player" }) {
+        return Int32(index)
+    }
+    if let index = names.firstIndex(where: { $0.lowercased().contains("player") }) {
+        return Int32(index)
+    }
+    return 0
+}
+
+private func autoSizedControllerDimensions(context: MCEContext,
+                                           ecs: SceneECS,
+                                           entity: Entity,
+                                           fallback: CharacterControllerComponent) -> (radius: Float, height: Float) {
+    guard let renderer = ecs.get(MeshRendererComponent.self, for: entity),
+          let meshHandle = renderer.meshHandle,
+          let mesh = context.engineContext.assets.mesh(handle: meshHandle) else {
+        return (max(0.05, fallback.radius), max(0.2, fallback.height))
+    }
+    // Use mesh bounding sphere to derive a practical capsule when explicit authored size is missing.
+    let boundsRadius = max(0.001, mesh.editorBoundsRadius)
+    let radius = min(1.5, max(0.2, boundsRadius * 0.35))
+    let height = min(4.0, max(radius * 2.2, boundsRadius * 1.8))
+    return (radius, height)
+}
+
+@discardableResult
+private func ensureCharacterControllerRigidbody(context: MCEContext,
+                                                ecs: SceneECS,
+                                                entity: Entity) -> Bool {
+    let collisionLayer = preferredCharacterCollisionLayer(context: context)
+    if var rigidbody = ecs.get(RigidbodyComponent.self, for: entity) {
+        var didMutate = false
+        if rigidbody.motionType != .kinematic {
+            rigidbody.motionType = .kinematic
+            didMutate = true
+        }
+        if rigidbody.gravityFactor != 0.0 {
+            rigidbody.gravityFactor = 0.0
+            didMutate = true
+        }
+        if rigidbody.allowSleeping {
+            rigidbody.allowSleeping = false
+            didMutate = true
+        }
+        if rigidbody.collisionLayer != collisionLayer {
+            rigidbody.collisionLayer = collisionLayer
+            didMutate = true
+        }
+        if didMutate {
+            ecs.add(rigidbody, to: entity)
+        }
+        return didMutate
+    }
+
+    let defaults = context.engineContext.physicsSettings
+    let rigidbody = RigidbodyComponent(isEnabled: true,
+                                       motionType: .kinematic,
+                                       mass: 1.0,
+                                       friction: defaults.defaultFriction,
+                                       restitution: defaults.defaultRestitution,
+                                       linearDamping: defaults.defaultLinearDamping,
+                                       angularDamping: defaults.defaultAngularDamping,
+                                       gravityFactor: 0.0,
+                                       allowSleeping: false,
+                                       ccdEnabled: false,
+                                       collisionLayer: collisionLayer,
+                                       bodyId: nil)
+    ecs.add(rigidbody, to: entity)
+    return true
+}
+
+@discardableResult
+private func ensureCharacterControllerCapsuleCollider(context: MCEContext,
+                                                      ecs: SceneECS,
+                                                      entity: Entity,
+                                                      controller: CharacterControllerComponent,
+                                                      autoSizeFromMesh: Bool) -> Bool {
+    let chosenDimensions: (radius: Float, height: Float) = autoSizeFromMesh
+        ? autoSizedControllerDimensions(context: context, ecs: ecs, entity: entity, fallback: controller)
+        : (radius: max(0.05, controller.radius), height: max(0.2, controller.height))
+    let desiredShape = controllerCapsuleShape(radius: chosenDimensions.radius, height: chosenDimensions.height)
+
+    if var collider = ecs.get(ColliderComponent.self, for: entity) {
+        let hasSolidCapsule = collider.allShapes().contains {
+            $0.isEnabled && !$0.isTrigger && $0.shapeType == .capsule
+        }
+        if hasSolidCapsule {
+            return false
+        }
+        let preservedTriggers = collider.allShapes().filter { $0.isTrigger && $0.isEnabled }
+        var shapes: [ColliderShape] = [desiredShape]
+        shapes.append(contentsOf: preservedTriggers)
+        collider.setShapes(shapes)
+        ecs.add(collider, to: entity)
+    } else {
+        var collider = ColliderComponent()
+        collider.setShapes([desiredShape])
+        ecs.add(collider, to: entity)
+    }
+
+    var updatedController = controller
+    updatedController.radius = chosenDimensions.radius
+    updatedController.height = chosenDimensions.height
+    ecs.add(updatedController, to: entity)
+    return true
+}
+
+private func ensureCharacterControllerDependencies(context: MCEContext,
+                                                   ecs: SceneECS,
+                                                   entity: Entity,
+                                                   controller: CharacterControllerComponent) -> Bool {
+    let rbChanged = ensureCharacterControllerRigidbody(context: context, ecs: ecs, entity: entity)
+    let colliderChanged: Bool
+    if ecs.get(ColliderComponent.self, for: entity) == nil {
+        colliderChanged = ensureCharacterControllerCapsuleCollider(context: context,
+                                                                   ecs: ecs,
+                                                                   entity: entity,
+                                                                   controller: controller,
+                                                                   autoSizeFromMesh: false)
+    } else {
+        colliderChanged = false
+    }
+    let didMutate = rbChanged || colliderChanged
+    if didMutate {
+        context.engineContext.log.logInfo("Added Rigidbody + Capsule Collider for CharacterController.", category: .scene)
+    }
+    return didMutate
+}
+
+private func convertCharacterControllerColliderToCapsule(ecs: SceneECS,
+                                                         entity: Entity,
+                                                         controller: CharacterControllerComponent) -> Bool {
+    guard var collider = ecs.get(ColliderComponent.self, for: entity) else { return false }
+    let primary = controllerCapsuleShape(from: controller)
+    let preservedTriggers = collider.allShapes().filter { $0.isTrigger && $0.isEnabled }
+    var finalShapes: [ColliderShape] = [primary]
+    finalShapes.append(contentsOf: preservedTriggers)
+    collider.setShapes(finalShapes)
+    ecs.add(collider, to: entity)
+    return true
+}
+
+private func firstDirectChild(named name: String, parent: Entity, ecs: SceneECS) -> Entity? {
+    ecs.getChildren(parent).first { child in
+        (ecs.get(NameComponent.self, for: child)?.name ?? "") == name
+    }
+}
+
+private func ensureNamedChild(named name: String,
+                              parent: Entity,
+                              ecs: SceneECS) -> (child: Entity, created: Bool) {
+    if let existing = firstDirectChild(named: name, parent: parent, ecs: ecs) {
+        return (existing, false)
+    }
+    let child = ecs.createEntity(name: name)
+    _ = ecs.setParent(child, parent, keepWorldTransform: false)
+    return (child, true)
+}
+
 private func componentsDocument(for entity: Entity, ecs: SceneECS) -> ComponentsDocument {
     return ComponentsDocument(
         name: ecs.get(NameComponent.self, for: entity).map { NameComponentDTO(name: $0.name) },
@@ -1297,7 +1479,12 @@ public func MCEEditorAddComponent(_ contextPtr: UnsafeRawPointer?,
     case .script:
         ecs.add(ScriptComponent(), to: entity)
     case .characterController:
-        ecs.add(CharacterControllerComponent(), to: entity)
+        let controller = CharacterControllerComponent()
+        ecs.add(controller, to: entity)
+        _ = ensureCharacterControllerDependencies(context: context,
+                                                  ecs: ecs,
+                                                  entity: entity,
+                                                  controller: controller)
     }
     context.editorProjectManager.notifySceneMutation()
     return 1
@@ -1705,10 +1892,21 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                             _ enabled: UnsafeMutablePointer<UInt32>?,
                                             _ height: UnsafeMutablePointer<Float>?,
                                             _ radius: UnsafeMutablePointer<Float>?,
-                                            _ stepOffset: UnsafeMutablePointer<Float>?,
-                                            _ slopeLimit: UnsafeMutablePointer<Float>?,
                                             _ moveSpeed: UnsafeMutablePointer<Float>?,
-                                            _ jumpForce: UnsafeMutablePointer<Float>?) -> UInt32 {
+                                            _ sprintMultiplier: UnsafeMutablePointer<Float>?,
+                                            _ jumpSpeed: UnsafeMutablePointer<Float>?,
+                                            _ useGravityOverride: UnsafeMutablePointer<UInt32>?,
+                                            _ gravity: UnsafeMutablePointer<Float>?,
+                                            _ groundProbeDistance: UnsafeMutablePointer<Float>?,
+                                            _ maxSlope: UnsafeMutablePointer<Float>?,
+                                            _ groundSnapDistance: UnsafeMutablePointer<Float>?,
+                                            _ lookSensitivity: UnsafeMutablePointer<Float>?,
+                                            _ minPitchDegrees: UnsafeMutablePointer<Float>?,
+                                            _ maxPitchDegrees: UnsafeMutablePointer<Float>?,
+                                            _ debugDraw: UnsafeMutablePointer<UInt32>?,
+                                            _ grounded: UnsafeMutablePointer<UInt32>?,
+                                            _ speed: UnsafeMutablePointer<Float>?,
+                                            _ velocityY: UnsafeMutablePointer<Float>?) -> UInt32 {
     guard let context = resolveContext(contextPtr),
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
@@ -1716,10 +1914,21 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
     enabled?.pointee = controller.isEnabled ? 1 : 0
     height?.pointee = controller.height
     radius?.pointee = controller.radius
-    stepOffset?.pointee = controller.stepOffset
-    slopeLimit?.pointee = controller.slopeLimit
     moveSpeed?.pointee = controller.moveSpeed
-    jumpForce?.pointee = controller.jumpForce
+    sprintMultiplier?.pointee = controller.sprintMultiplier
+    jumpSpeed?.pointee = controller.jumpSpeed
+    useGravityOverride?.pointee = controller.useGravityOverride ? 1 : 0
+    gravity?.pointee = controller.gravity
+    groundProbeDistance?.pointee = controller.groundProbeDistance
+    maxSlope?.pointee = controller.maxSlope
+    groundSnapDistance?.pointee = controller.groundSnapDistance
+    lookSensitivity?.pointee = controller.lookSensitivity
+    minPitchDegrees?.pointee = controller.minPitchDegrees
+    maxPitchDegrees?.pointee = controller.maxPitchDegrees
+    debugDraw?.pointee = controller.debugDraw ? 1 : 0
+    grounded?.pointee = controller.isGrounded ? 1 : 0
+    speed?.pointee = simd_length(controller.velocity)
+    velocityY?.pointee = controller.velocity.y
     return 1
 }
 
@@ -1729,23 +1938,229 @@ public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                             _ enabled: UInt32,
                                             _ height: Float,
                                             _ radius: Float,
-                                            _ stepOffset: Float,
-                                            _ slopeLimit: Float,
                                             _ moveSpeed: Float,
-                                            _ jumpForce: Float) {
+                                            _ sprintMultiplier: Float,
+                                            _ jumpSpeed: Float,
+                                            _ useGravityOverride: UInt32,
+                                            _ gravity: Float,
+                                            _ groundProbeDistance: Float,
+                                            _ maxSlope: Float,
+                                            _ groundSnapDistance: Float,
+                                            _ lookSensitivity: Float,
+                                            _ minPitchDegrees: Float,
+                                            _ maxPitchDegrees: Float,
+                                            _ debugDraw: UInt32) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return }
+    let previous = ecs.get(CharacterControllerComponent.self, for: entity)
     let controller = CharacterControllerComponent(isEnabled: enabled != 0,
                                                   height: height,
                                                   radius: radius,
-                                                  stepOffset: stepOffset,
-                                                  slopeLimit: slopeLimit,
+                                                  stepOffset: previous?.stepOffset ?? 0.25,
+                                                  slopeLimit: previous?.slopeLimit ?? maxSlope,
                                                   moveSpeed: moveSpeed,
-                                                  jumpForce: jumpForce)
+                                                  sprintMultiplier: sprintMultiplier,
+                                                  jumpSpeed: jumpSpeed,
+                                                  useGravityOverride: useGravityOverride != 0,
+                                                  gravity: gravity,
+                                                  groundProbeDistance: groundProbeDistance,
+                                                  maxSlope: maxSlope,
+                                                  groundSnapDistance: groundSnapDistance,
+                                                  lookSensitivity: lookSensitivity,
+                                                  minPitchDegrees: minPitchDegrees,
+                                                  maxPitchDegrees: maxPitchDegrees,
+                                                  pushStrength: previous?.pushStrength ?? 10.0,
+                                                  visualEntityId: previous?.visualEntityId,
+                                                  cameraPivotEntityId: previous?.cameraPivotEntityId,
+                                                  debugDraw: debugDraw != 0,
+                                                  yawRadians: previous?.yawRadians ?? 0.0,
+                                                  pitchRadians: previous?.pitchRadians ?? 0.0,
+                                                  lookInitialized: previous?.lookInitialized ?? false)
+    ecs.add(controller, to: entity)
+    _ = ensureCharacterControllerDependencies(context: context,
+                                              ecs: ecs,
+                                              entity: entity,
+                                              controller: controller)
+    context.editorProjectManager.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetCharacterControllerEntityRefs")
+public func MCEEditorGetCharacterControllerEntityRefs(_ contextPtr: UnsafeRawPointer?,
+                                                      _ entityId: UnsafePointer<CChar>?,
+                                                      _ visualEntityIdOut: UnsafeMutablePointer<CChar>?,
+                                                      _ visualEntityIdSize: Int32,
+                                                      _ cameraPivotEntityIdOut: UnsafeMutablePointer<CChar>?,
+                                                      _ cameraPivotEntityIdSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let controller = ecs.get(CharacterControllerComponent.self, for: entity) else { return 0 }
+    if let visual = controller.visualEntityId {
+        _ = writeCString(visual.uuidString, to: visualEntityIdOut, max: visualEntityIdSize)
+    } else {
+        _ = writeCString("", to: visualEntityIdOut, max: visualEntityIdSize)
+    }
+    if let pivot = controller.cameraPivotEntityId {
+        _ = writeCString(pivot.uuidString, to: cameraPivotEntityIdOut, max: cameraPivotEntityIdSize)
+    } else {
+        _ = writeCString("", to: cameraPivotEntityIdOut, max: cameraPivotEntityIdSize)
+    }
+    return 1
+}
+
+@_cdecl("MCEEditorSetCharacterControllerEntityRefs")
+public func MCEEditorSetCharacterControllerEntityRefs(_ contextPtr: UnsafeRawPointer?,
+                                                      _ entityId: UnsafePointer<CChar>?,
+                                                      _ visualEntityId: UnsafePointer<CChar>?,
+                                                      _ cameraPivotEntityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var controller = ecs.get(CharacterControllerComponent.self, for: entity) else { return 0 }
+    if let visualEntityId, visualEntityId.pointee != 0 {
+        controller.visualEntityId = UUID(uuidString: String(cString: visualEntityId))
+    } else {
+        controller.visualEntityId = nil
+    }
+    if let cameraPivotEntityId, cameraPivotEntityId.pointee != 0 {
+        controller.cameraPivotEntityId = UUID(uuidString: String(cString: cameraPivotEntityId))
+    } else {
+        controller.cameraPivotEntityId = nil
+    }
     ecs.add(controller, to: entity)
     context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorCharacterControllerEnsureDependencies")
+public func MCEEditorCharacterControllerEnsureDependencies(_ contextPtr: UnsafeRawPointer?,
+                                                           _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let controller = ecs.get(CharacterControllerComponent.self, for: entity) else { return 0 }
+    let changed = ensureCharacterControllerDependencies(context: context, ecs: ecs, entity: entity, controller: controller)
+    if changed {
+        context.editorProjectManager.notifySceneMutation()
+    }
+    return changed ? 1 : 0
+}
+
+@_cdecl("MCEEditorCharacterControllerSetRigidbodyKinematic")
+public func MCEEditorCharacterControllerSetRigidbodyKinematic(_ contextPtr: UnsafeRawPointer?,
+                                                              _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return 0 }
+    guard ensureCharacterControllerRigidbody(context: context, ecs: ecs, entity: entity) else { return 0 }
+    context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorCharacterControllerConvertColliderToCapsule")
+public func MCEEditorCharacterControllerConvertColliderToCapsule(_ contextPtr: UnsafeRawPointer?,
+                                                                 _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let controller = ecs.get(CharacterControllerComponent.self, for: entity) else { return 0 }
+    guard convertCharacterControllerColliderToCapsule(ecs: ecs, entity: entity, controller: controller) else { return 0 }
+    context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorCharacterControllerAddCapsuleCollider")
+public func MCEEditorCharacterControllerAddCapsuleCollider(_ contextPtr: UnsafeRawPointer?,
+                                                           _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let controller = ecs.get(CharacterControllerComponent.self, for: entity) else { return 0 }
+    let changed = ensureCharacterControllerCapsuleCollider(context: context,
+                                                           ecs: ecs,
+                                                           entity: entity,
+                                                           controller: controller,
+                                                           autoSizeFromMesh: true)
+    guard changed else { return 0 }
+    context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorCharacterControllerCreateRecommendedHierarchy")
+public func MCEEditorCharacterControllerCreateRecommendedHierarchy(_ contextPtr: UnsafeRawPointer?,
+                                                                   _ entityId: UnsafePointer<CChar>?,
+                                                                   _ createCamera: UInt32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let root = entity(from: entityId, context: context),
+          var controller = ecs.get(CharacterControllerComponent.self, for: root) else { return 0 }
+
+    var didMutate = false
+
+    let visualRefEntity = controller.visualEntityId.flatMap { ecs.entity(with: $0) }
+    let visualEntity: Entity
+    if let visualRefEntity {
+        visualEntity = visualRefEntity
+    } else {
+        let resolved = ensureNamedChild(named: "Visual", parent: root, ecs: ecs)
+        visualEntity = resolved.child
+        didMutate = didMutate || resolved.created
+        controller.visualEntityId = visualEntity.id
+        didMutate = true
+    }
+    if controller.visualEntityId != visualEntity.id {
+        controller.visualEntityId = visualEntity.id
+        didMutate = true
+    }
+
+    let pivotRefEntity = controller.cameraPivotEntityId.flatMap { ecs.entity(with: $0) }
+    let pivotEntity: Entity
+    if let pivotRefEntity {
+        pivotEntity = pivotRefEntity
+    } else {
+        let resolved = ensureNamedChild(named: "CameraPivot", parent: root, ecs: ecs)
+        pivotEntity = resolved.child
+        didMutate = didMutate || resolved.created
+        controller.cameraPivotEntityId = pivotEntity.id
+        didMutate = true
+    }
+    if controller.cameraPivotEntityId != pivotEntity.id {
+        controller.cameraPivotEntityId = pivotEntity.id
+        didMutate = true
+    }
+
+    if createCamera != 0 {
+        let existingCameraChild = ecs.getChildren(pivotEntity).first { child in
+            ecs.get(CameraComponent.self, for: child) != nil
+        }
+        if existingCameraChild == nil {
+            let camera = ensureNamedChild(named: "Camera", parent: pivotEntity, ecs: ecs)
+            didMutate = didMutate || camera.created
+            if ecs.get(TransformComponent.self, for: camera.child) == nil {
+                ecs.add(TransformComponent(), to: camera.child)
+                didMutate = true
+            }
+            if ecs.get(CameraComponent.self, for: camera.child) == nil {
+                ecs.add(CameraComponent(isPrimary: false, isEditor: false), to: camera.child)
+                didMutate = true
+            }
+        }
+    }
+
+    if didMutate {
+        ecs.add(controller, to: root)
+        context.editorProjectManager.notifySceneMutation()
+    }
+    return didMutate ? 1 : 0
 }
 
 @_cdecl("MCEEditorGetRigidbody")

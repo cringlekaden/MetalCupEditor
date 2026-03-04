@@ -128,6 +128,7 @@ final class EditorSceneController {
     func stop() {
         if playState == .editing || playState == .stoppingPlay { return }
         playState = .stoppingPlay
+        runtimeForceCursorNormal()
         runtimeScene?.notifyScriptSceneStop()
         runtimeScene?.stopPhysics()
         if let engineContext {

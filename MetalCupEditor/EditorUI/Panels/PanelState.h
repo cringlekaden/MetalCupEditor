@@ -90,6 +90,10 @@ namespace MCEPanelState {
         std::unordered_map<std::string, bool> expandedByEntityId;
         std::vector<std::string> visibleEntityIds;
         std::string rangeAnchorEntityId;
+        std::string pendingClickEntityId;
+        bool pendingClickShift = false;
+        bool pendingClickToggle = false;
+        bool pendingClickShouldSelect = false;
     };
 
     struct MaterialEditorState {

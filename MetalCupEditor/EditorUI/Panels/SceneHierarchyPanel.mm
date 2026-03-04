@@ -336,12 +336,43 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
 
         const bool clicked = ImGui::IsItemClicked(ImGuiMouseButton_Left);
         if (clicked) {
+            state.pendingClickEntityId = id;
+            state.pendingClickShift = ImGui::GetIO().KeyShift;
+            state.pendingClickToggle = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
+            state.pendingClickShouldSelect = true;
+        }
+
+        if (hasChildren && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+            expanded = !expanded;
+            state.expandedByEntityId[id] = expanded;
+        }
+        if (hasChildren && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+            const float triangleMaxX = triangleMin.x + 10.0f;
+            if (ImGui::GetIO().MousePos.x >= triangleMin.x && ImGui::GetIO().MousePos.x <= triangleMaxX) {
+                expanded = !expanded;
+                state.expandedByEntityId[id] = expanded;
+            }
+        }
+
+        if (ImGui::BeginDragDropSource()) {
+            if (state.pendingClickEntityId == id) {
+                state.pendingClickShouldSelect = false;
+            }
+            auto payloadSelection = HasId(selection, id) ? TopLevelSelection(context, selection) : std::vector<std::string>{id};
+            const std::string csv = JoinCSV(payloadSelection);
+            ImGui::SetDragDropPayload("MCE_SCENE_ENTITY_IDS", csv.c_str(), csv.size() + 1);
+            ImGui::TextUnformatted(nameBuffer);
+            ImGui::EndDragDropSource();
+        }
+
+        const bool releaseThisItem = hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left);
+        if (releaseThisItem && state.pendingClickEntityId == id && state.pendingClickShouldSelect) {
             auto clickedIt = std::find(state.visibleEntityIds.begin(), state.visibleEntityIds.end(), id);
             const int clickedVisibleIndex = clickedIt == state.visibleEntityIds.end()
                 ? -1
                 : static_cast<int>(clickedIt - state.visibleEntityIds.begin());
-            const bool shift = ImGui::GetIO().KeyShift;
-            const bool toggle = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
+            const bool shift = state.pendingClickShift;
+            const bool toggle = state.pendingClickToggle;
             const std::string anchorId = !state.rangeAnchorEntityId.empty()
                 ? state.rangeAnchorEntityId
                 : primary;
@@ -383,26 +414,6 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
                 primary = id;
                 state.rangeAnchorEntityId = id;
             }
-        }
-
-        if (hasChildren && hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-            expanded = !expanded;
-            state.expandedByEntityId[id] = expanded;
-        }
-        if (hasChildren && hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-            const float triangleMaxX = triangleMin.x + 10.0f;
-            if (ImGui::GetIO().MousePos.x >= triangleMin.x && ImGui::GetIO().MousePos.x <= triangleMaxX) {
-                expanded = !expanded;
-                state.expandedByEntityId[id] = expanded;
-            }
-        }
-
-        if (ImGui::BeginDragDropSource()) {
-            auto payloadSelection = HasId(selection, id) ? TopLevelSelection(context, selection) : std::vector<std::string>{id};
-            const std::string csv = JoinCSV(payloadSelection);
-            ImGui::SetDragDropPayload("MCE_SCENE_ENTITY_IDS", csv.c_str(), csv.size() + 1);
-            ImGui::TextUnformatted(nameBuffer);
-            ImGui::EndDragDropSource();
         }
 
         if (ImGui::BeginDragDropTarget()) {
@@ -512,6 +523,12 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
         if (MCEEditorGetRootEntityIdAt(context, i, idBuffer, sizeof(idBuffer)) > 0) {
             drawNode(std::string(idBuffer), 0);
         }
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        state.pendingClickEntityId.clear();
+        state.pendingClickShift = false;
+        state.pendingClickToggle = false;
+        state.pendingClickShouldSelect = false;
     }
 
     if (!runtimeLocked && (!pendingParentTarget.empty() || !pendingReorderTarget.empty())) {
