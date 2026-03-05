@@ -1,6 +1,6 @@
-// UIWidgets.mm
-// Defines reusable ImGui widgets and layout helpers for the editor.
-// Created by Kaden Cringle.
+/// UIWidgets.mm
+/// Defines reusable ImGui widgets and layout helpers for the editor.
+/// Created by Kaden Cringle.
 
 #import "UIWidgets.h"
 #import "../EditorIcons.h"

@@ -1,6 +1,6 @@
-// EditorIcons.h
-// Centralized Font Awesome 7 icon definitions and UTF-8 helpers.
-// Uses Font Awesome Free 7 (Solid + Regular) codepoints.
+/// EditorIcons.h
+/// Centralized Font Awesome 7 icon definitions and UTF-8 helpers.
+/// Uses Font Awesome Free 7 (Solid + Regular) codepoints.
 
 #pragma once
 

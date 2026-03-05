@@ -1,6 +1,6 @@
-// RendererPanel.mm
-// Defines the ImGui Renderer panel rendering and interaction logic.
-// Created by Kaden Cringle.
+/// RendererPanel.mm
+/// Defines the ImGui Renderer panel rendering and interaction logic.
+/// Created by Kaden Cringle.
 
 #import "RendererPanel.h"
 
@@ -416,31 +416,29 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
         ImGui::EndChild();
 }
 
-void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
-    if (!isOpen || !*isOpen) { return; }
-    if (!EditorUI::BeginPanel("Renderer", isOpen)) {
-        EditorUI::EndPanel();
-        return;
+void ImGuiRendererSettingsCategoryDraw(void *context, ImGuiRendererSettingsCategory category) {
+    switch (category) {
+    case ImGuiRendererSettingsCategoryCore:
+        DrawRendererSettingsBody(context,
+                                 "RendererSettingsCoreScroll",
+                                 RendererSectionCore | RendererSectionPerformance | RendererSectionDebug);
+        break;
+    case ImGuiRendererSettingsCategoryLighting:
+        DrawRendererSettingsBody(context, "RendererSettingsLightingScroll", RendererSectionLighting);
+        break;
+    case ImGuiRendererSettingsCategoryShadows:
+        DrawRendererSettingsBody(context, "RendererSettingsShadowsScroll", RendererSectionShadows);
+        break;
     }
-    DrawRendererSettingsBody(context, "RendererScroll", RendererSectionAll);
+}
 
-    EditorUI::EndPanel();
+void ImGuiRendererPanelDraw(void *context, bool *isOpen) {
+    (void)context;
+    (void)isOpen;
+    IM_ASSERT(false && "ImGuiRendererPanelDraw is deprecated. Use ImGuiRendererSettingsCategoryDraw from Settings modal.");
 }
 
 void ImGuiRendererSettingsDraw(void *context) {
-    DrawRendererSettingsBody(context, "RendererSettingsScroll", RendererSectionAll);
-}
-
-void ImGuiRendererSettingsCoreDraw(void *context) {
-    DrawRendererSettingsBody(context,
-                             "RendererSettingsCoreScroll",
-                             RendererSectionCore | RendererSectionPerformance | RendererSectionDebug);
-}
-
-void ImGuiRendererSettingsLightingDraw(void *context) {
-    DrawRendererSettingsBody(context, "RendererSettingsLightingScroll", RendererSectionLighting);
-}
-
-void ImGuiRendererSettingsShadowsDraw(void *context) {
-    DrawRendererSettingsBody(context, "RendererSettingsShadowsScroll", RendererSectionShadows);
+    (void)context;
+    IM_ASSERT(false && "ImGuiRendererSettingsDraw is deprecated. Use ImGuiRendererSettingsCategoryDraw from Settings modal.");
 }

@@ -1,6 +1,6 @@
-// SceneHierarchyPanel.h
-// Defines the ImGui SceneHierarchy panel rendering and interaction logic.
-// Created by Kaden Cringle.
+/// SceneHierarchyPanel.h
+/// Defines the ImGui SceneHierarchy panel rendering and interaction logic.
+/// Created by Kaden Cringle.
 
 #pragma once
 #include <stddef.h>

@@ -1,3 +1,7 @@
+/// PanelState.h
+/// Defines and tracks the ImGui Panel states.
+/// Created by Kaden Cringle.
+
 #pragma once
 
 #include "../../EditorCore/Bridge/MCEBridgeMacros.h"

@@ -1,6 +1,6 @@
-// InspectorPanel.mm
-// Defines the ImGui Inspector panel rendering and interaction logic.
-// Created by Kaden Cringle.
+/// InspectorPanel.mm
+/// Defines the ImGui Inspector panel rendering and interaction logic.
+/// Created by Kaden Cringle.
 
 #import "InspectorPanel.h"
 
@@ -2189,13 +2189,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             float lookSensitivity = 0.01f;
             float minPitchDegrees = -80.0f;
             float maxPitchDegrees = 80.0f;
-            uint32_t debugDraw = 0;
             uint32_t grounded = 0;
-            float currentSpeed = 0.0f;
-            float velocityY = 0.0f;
-            uint64_t groundBodyId = 0;
-            float fixedDeltaTime = 1.0f / 60.0f;
-            float interpolationAlpha = 0.0f;
             char visualEntityId[64] = {0};
             char cameraPivotEntityId[64] = {0};
 
@@ -2216,23 +2210,23 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                 &lookSensitivity,
                                                 &minPitchDegrees,
                                                 &maxPitchDegrees,
-                                                &debugDraw,
+                                                nullptr,
                                                 &grounded,
-                                                &currentSpeed,
-                                                &velocityY,
-                                                &groundBodyId,
-                                                &fixedDeltaTime,
-                                                &interpolationAlpha) != 0) {
+                                                nullptr,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr) != 0) {
                 MCEEditorGetCharacterControllerEntityRefs(context,
                                                           selectedEntityId,
                                                           visualEntityId,
                                                           static_cast<int32_t>(sizeof(visualEntityId)),
                                                           cameraPivotEntityId,
                                                           static_cast<int32_t>(sizeof(cameraPivotEntityId)));
-                ImGui::TextDisabled("Uses Jolt CharacterVirtual (no Rigidbody/Collider required).");
+                ImGui::TextDisabled("Uses Jolt CharacterVirtual.");
                 ImGui::TextDisabled("Mode: Play only");
                 if (hasRigidbody) {
-                    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.2f, 1.0f), "Warning: Rigidbody is unsupported for CharacterVirtual and ignored at runtime.");
+                    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.2f, 1.0f), "Rigidbody is optional; CharacterVirtual owns movement.");
                     if (!isPlaying && ImGui::Button("Remove Rigidbody")) {
                         MCEEditorCharacterControllerRemoveRigidbody(context, selectedEntityId);
                     }
@@ -2289,16 +2283,19 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 const bool characterActive = isPlaying && enabled != 0;
 
                 ImGui::Spacing();
-                ImGui::BeginChild("CharacterControllerSetupSummary", ImVec2(0.0f, 112.0f), true);
-                ImGui::Text("Status");
+                ImGui::BeginChild("CharacterControllerSetupChecklist", ImVec2(0.0f, 138.0f), true);
+                ImGui::Text("Setup Checklist");
                 ImGui::Separator();
-                ImGui::Text("CharacterVirtual: %s", characterActive ? "Active" : "Inactive");
+                ImGui::BulletText("Required: Character Controller component on root entity");
+                ImGui::BulletText("Required: Camera Pivot reference if scripts drive look");
+                ImGui::BulletText("Optional: Visual child reference for model subtree interpolation");
+                ImGui::BulletText("Optional: Rigidbody (collision layer source only)");
+                ImGui::Separator();
+                ImGui::Text("CharacterVirtual: %s", characterActive ? "Active (Play)" : "Inactive");
                 ImGui::Text("Grounded: %s", isPlaying ? (grounded != 0 ? "true" : "false") : "Play only");
-                ImGui::Text("Script Assigned: %s", hasScript ? "Yes" : "No");
-                ImGui::Text("Camera Under Pivot: %s", cameraUnderPivot ? "Yes" : "No");
                 ImGui::Text("Camera Pivot: %s", pivotAssigned ? "Assigned" : "Missing");
-                ImGui::Text("Visual Child: %s", visualAssigned ? "Assigned" : "Optional");
-                ImGui::Text("Mode: Play only");
+                ImGui::Text("Visual Child: %s", visualAssigned ? "Assigned" : "Not set");
+                ImGui::Text("Camera child under pivot: %s", cameraUnderPivot ? "Yes" : "No");
                 ImGui::EndChild();
 
                 if (!visualAssigned) {
@@ -2321,7 +2318,6 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 bool refsDirty = false;
                 bool enabledBool = enabled != 0;
                 bool gravityOverrideEnabled = useGravityOverride != 0;
-                bool debugDrawEnabled = debugDraw != 0;
                 static char ccVisualFilter[128] = {0};
                 static char ccCameraFilter[128] = {0};
                 static bool openVisualPicker = false;
@@ -2434,13 +2430,6 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     EditorUI::EndPropertyTable();
                 }
 
-                ImGui::Spacing();
-                ImGui::TextDisabled("Debug");
-                if (EditorUI::BeginPropertyTable("CharacterControllerDebugProps")) {
-                    dirty |= EditorUI::PropertyBool("Debug Draw", &debugDrawEnabled);
-                    EditorUI::EndPropertyTable();
-                }
-
                 if (openVisualPicker) {
                     ImGui::OpenPopup("CCVisualEntityPicker");
                     openVisualPicker = false;
@@ -2515,16 +2504,6 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     }
                     ImGui::EndPopup();
                 }
-                if (isPlaying) {
-                    ImGui::Separator();
-                    ImGui::TextDisabled("Runtime");
-                    ImGui::Text("Grounded: %s", grounded != 0 ? "Yes" : "No");
-                    ImGui::Text("Ground Body: %llu", static_cast<unsigned long long>(groundBodyId));
-                    ImGui::Text("Speed: %.3f", currentSpeed);
-                    ImGui::Text("Velocity Y: %.3f", velocityY);
-                    ImGui::Text("Fixed dt: %.4f", fixedDeltaTime);
-                    ImGui::Text("Interpolation alpha: %.3f", interpolationAlpha);
-                }
                 if (dirty) {
                     MCEEditorSetCharacterController(context,
                                                     selectedEntityId,
@@ -2543,7 +2522,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                     lookSensitivity,
                                                     minPitchDegrees,
                                                     maxPitchDegrees,
-                                                    debugDrawEnabled ? 1u : 0u);
+                                                    0);
                 }
                 if (refsDirty) {
                     MCEEditorSetCharacterControllerEntityRefs(context,

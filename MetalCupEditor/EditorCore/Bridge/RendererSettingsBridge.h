@@ -1,6 +1,6 @@
-// RendererSettingsBridge.h
-// Defines the renderer settings bridge for the editor UI.
-// Created by Kaden Cringle.
+/// RendererSettingsBridge.h
+/// Defines the renderer settings bridge for the editor UI.
+/// Created by Kaden Cringle
 
 #pragma once
 

@@ -1,6 +1,6 @@
-// ViewportPanel.h
-// Defines the ImGui Viewport panel rendering and interaction logic.
-// Created by Kaden Cringle.
+/// ViewportPanel.h
+/// Defines the ImGui Viewport panel rendering and interaction logic.
+/// Created by Kaden Cringle.
 
 #pragma once
 

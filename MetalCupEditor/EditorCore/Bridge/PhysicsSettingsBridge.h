@@ -1,6 +1,6 @@
-// PhysicsSettingsBridge.h
-// Defines the physics settings bridge for the editor UI.
-// Created by Codex.
+/// PhysicsSettingsBridge.h
+/// Defines the physics settings bridge for the editor UI.
+/// Created by Kaden Cringle
 
 #pragma once
 

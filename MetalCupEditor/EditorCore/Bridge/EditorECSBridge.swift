@@ -1916,7 +1916,7 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
     lookSensitivity?.pointee = controller.lookSensitivity
     minPitchDegrees?.pointee = controller.minPitchDegrees
     maxPitchDegrees?.pointee = controller.maxPitchDegrees
-    debugDraw?.pointee = controller.debugDraw ? 1 : 0
+    debugDraw?.pointee = scene.isCharacterDebugDrawEnabled(entityId: entity.id) ? 1 : 0
     grounded?.pointee = controller.isGrounded ? 1 : 0
     speed?.pointee = simd_length(controller.velocity)
     velocityY?.pointee = controller.velocity.y
@@ -1925,6 +1925,49 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
     fixedDeltaTime?.pointee = diagnostics.fixedDeltaTime
     interpolationAlpha?.pointee = diagnostics.interpolationAlpha
     return 1
+}
+
+@_cdecl("MCEEditorGetPhysicsScriptEventQueueTelemetry")
+public func MCEEditorGetPhysicsScriptEventQueueTelemetry(_ contextPtr: UnsafeRawPointer?,
+                                                         _ droppedCollisionEvents: UnsafeMutablePointer<UInt32>?,
+                                                         _ droppedTriggerEvents: UnsafeMutablePointer<UInt32>?,
+                                                         _ droppedStayEvents: UnsafeMutablePointer<UInt32>?,
+                                                         _ totalDroppedCollisionEvents: UnsafeMutablePointer<UInt32>?,
+                                                         _ totalDroppedTriggerEvents: UnsafeMutablePointer<UInt32>?,
+                                                         _ totalDroppedStayEvents: UnsafeMutablePointer<UInt32>?,
+                                                         _ triggerQueueCap: UnsafeMutablePointer<UInt32>?,
+                                                         _ collisionQueueCap: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let scene = context.editorSceneController.activeScene() else { return 0 }
+    let telemetry = scene.physicsScriptEventQueueTelemetry()
+    droppedCollisionEvents?.pointee = UInt32(max(0, telemetry.droppedCollisionEvents))
+    droppedTriggerEvents?.pointee = UInt32(max(0, telemetry.droppedTriggerEvents))
+    droppedStayEvents?.pointee = UInt32(max(0, telemetry.droppedStayEvents))
+    totalDroppedCollisionEvents?.pointee = UInt32(max(0, telemetry.totalDroppedCollisionEvents))
+    totalDroppedTriggerEvents?.pointee = UInt32(max(0, telemetry.totalDroppedTriggerEvents))
+    totalDroppedStayEvents?.pointee = UInt32(max(0, telemetry.totalDroppedStayEvents))
+    if let physicsSystem = scene.physicsSystem {
+        let limits = physicsSystem.scriptEventQueueConfig()
+        triggerQueueCap?.pointee = UInt32(max(0, limits.maxTriggerEventsPerFrame))
+        collisionQueueCap?.pointee = UInt32(max(0, limits.maxCollisionEventsPerFrame))
+    } else {
+        triggerQueueCap?.pointee = 0
+        collisionQueueCap?.pointee = 0
+    }
+    return 1
+}
+
+@_cdecl("MCEEditorSetPhysicsScriptEventQueueLimits")
+public func MCEEditorSetPhysicsScriptEventQueueLimits(_ contextPtr: UnsafeRawPointer?,
+                                                      _ triggerQueueCap: UInt32,
+                                                      _ collisionQueueCap: UInt32) {
+    guard let context = resolveContext(contextPtr),
+          let scene = context.editorSceneController.activeScene(),
+          let physicsSystem = scene.physicsSystem else { return }
+    physicsSystem.setScriptEventQueueLimits(
+        .init(maxTriggerEventsPerFrame: max(1, Int(triggerQueueCap)),
+              maxCollisionEventsPerFrame: max(1, Int(collisionQueueCap)))
+    )
 }
 
 @_cdecl("MCEEditorSetCharacterController")
@@ -1948,6 +1991,7 @@ public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                             _ debugDraw: UInt32) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          let scene = context.editorSceneController.activeScene(),
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return }
     let previous = ecs.get(CharacterControllerComponent.self, for: entity)
@@ -1969,11 +2013,11 @@ public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                                   visualEntityId: previous?.visualEntityId,
                                                   cameraPivotEntityId: previous?.cameraPivotEntityId,
                                                   interpolateSubtree: previous?.interpolateSubtree ?? true,
-                                                  debugDraw: debugDraw != 0,
                                                   yawRadians: previous?.yawRadians ?? 0.0,
                                                   pitchRadians: previous?.pitchRadians ?? 0.0,
                                                   lookInitialized: previous?.lookInitialized ?? false)
     ecs.add(controller, to: entity)
+    scene.setCharacterDebugDrawEnabled(entityId: entity.id, isEnabled: debugDraw != 0)
     context.editorProjectManager.notifySceneMutation()
 }
 
@@ -2538,7 +2582,7 @@ public func MCEEditorSetTransform(_ contextPtr: UnsafeRawPointer?,
         rotation: TransformMath.quaternionFromEulerXYZ(SIMD3<Float>(rx, ry, rz)),
         scale: SIMD3<Float>(sx, sy, sz)
     )
-    _ = scene.setLocalTransform(transform, for: entity, source: .editor)
+    _ = scene.transformAuthority.setLocalTransform(entity: entity, transform: transform, source: .editor)
     context.editorProjectManager.notifySceneMutation()
 }
 
@@ -2557,7 +2601,7 @@ public func MCEEditorSetTransformNoLog(_ contextPtr: UnsafeRawPointer?,
         rotation: TransformMath.quaternionFromEulerXYZ(SIMD3<Float>(rx, ry, rz)),
         scale: SIMD3<Float>(sx, sy, sz)
     )
-    _ = scene.setLocalTransform(transform, for: entity, source: .editor)
+    _ = scene.transformAuthority.setLocalTransform(entity: entity, transform: transform, source: .editor)
     context.editorProjectManager.notifySceneMutation()
 }
 
@@ -2621,7 +2665,7 @@ public func MCEEditorSetTransformFromMatrix(_ contextPtr: UnsafeRawPointer?,
                                             _ matrix: UnsafePointer<Float>?) -> UInt32 {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
-          let ecs = editorECS(context),
+          let scene = context.editorSceneController.activeScene(),
           let entity = entity(from: entityId, context: context),
           let matrix else { return 0 }
 
@@ -2636,24 +2680,16 @@ public func MCEEditorSetTransformFromMatrix(_ contextPtr: UnsafeRawPointer?,
     }
 
     let worldMatrix = readColumnMajorMatrix(from: matrix)
-    let localMatrix: matrix_float4x4
-    if let parent = ecs.getParent(entity) {
-        localMatrix = simd_inverse(ecs.worldMatrix(for: parent)) * worldMatrix
-    } else {
-        localMatrix = worldMatrix
-    }
-    let decomposed = TransformMath.decomposeMatrix(localMatrix)
-    guard isFinite(decomposed.position),
-          isFinite(decomposed.rotation),
-          isFinite(decomposed.scale) else {
+    let worldTransform = TransformMath.decomposeMatrix(worldMatrix)
+    guard isFinite(worldTransform.position),
+          isFinite(worldTransform.rotation),
+          isFinite(worldTransform.scale) else {
         return 0
     }
-    let transform = TransformComponent(
-        position: decomposed.position,
-        rotation: decomposed.rotation,
-        scale: decomposed.scale
-    )
-    ecs.add(transform, to: entity)
+    let transform = TransformComponent(position: worldTransform.position,
+                                       rotation: worldTransform.rotation,
+                                       scale: worldTransform.scale)
+    _ = scene.transformAuthority.setWorldTransform(entity: entity, transform: transform, source: .editor)
     context.editorProjectManager.notifySceneMutation()
     return 1
 }
@@ -2870,6 +2906,7 @@ public func MCEEditorSetLight(_ contextPtr: UnsafeRawPointer?,
                               _ castsShadows: UInt32) {
     guard let context = resolveContext(contextPtr),
           !context.editorSceneController.isPlaying,
+          let scene = context.editorSceneController.activeScene(),
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return }
     var light = ecs.get(LightComponent.self, for: entity) ?? LightComponent()
@@ -2889,7 +2926,7 @@ public func MCEEditorSetLight(_ contextPtr: UnsafeRawPointer?,
         let requestedDirection = SIMD3<Float>(dirX, dirY, dirZ)
         if simd_length_squared(requestedDirection) > 0.000001 {
             transform.rotation = TransformMath.rotationForDirectionalLight(direction: simd_normalize(requestedDirection))
-            ecs.add(transform, to: entity)
+            _ = scene.transformAuthority.setLocalTransform(entity: entity, transform: transform, source: .editor)
         }
     }
     light.castsShadows = castsShadows != 0

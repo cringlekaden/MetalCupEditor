@@ -1,6 +1,6 @@
-// UIConstants.h
-// Defines shared constants for ImGui-based editor UI.
-// Created by Kaden Cringle.
+/// UIConstants.h
+/// Defines shared constants for ImGui-based editor UI.
+/// Created by Kaden Cringle.
 
 #pragma once
 

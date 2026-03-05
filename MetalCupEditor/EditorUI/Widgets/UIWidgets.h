@@ -1,6 +1,6 @@
-// UIWidgets.h
-// Defines reusable ImGui widgets and layout helpers for the editor.
-// Created by Kaden Cringle.
+/// UIWidgets.h
+/// Defines reusable ImGui widgets and layout helpers for the editor.
+/// Created by Kaden Cringle.
 
 #pragma once
 

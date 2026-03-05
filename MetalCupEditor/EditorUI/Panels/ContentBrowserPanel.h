@@ -1,6 +1,6 @@
-// ContentBrowserPanel.h
-// Defines the ImGui ContentBrowser panel rendering and interaction logic.
-// Created by Kaden Cringle.
+/// ContentBrowserPanel.h
+/// Defines the ImGui ContentBrowser panel rendering and interaction logic.
+/// Created by Kaden Cringle.
 
 #pragma once
 

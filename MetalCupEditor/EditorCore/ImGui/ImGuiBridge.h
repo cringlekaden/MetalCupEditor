@@ -1,6 +1,6 @@
-// ImGuiBridge.h
-// Defines the ImGui bridge interface for editor rendering and input.
-// Created by Kaden Cringle.
+/// ImGuiBridge.h
+/// Defines the ImGui bridge interface for editor rendering and input.
+/// Created by Kaden Cringle.
 
 #import <Foundation/Foundation.h>
 #import <MetalKit/MetalKit.h>

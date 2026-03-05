@@ -1,6 +1,6 @@
-// ImGuiBridge.mm
-// Defines the ImGui bridge interface for editor rendering and input.
-// Created by Kaden Cringle.
+/// ImGuiBridge.mm
+/// Defines the ImGui bridge interface for editor rendering and input.
+/// Created by Kaden Cringle.
 
 #import "ImGuiBridge.h"
 
@@ -37,8 +37,6 @@ static std::string ResolveEditorIconFontPath(const char *fileName) {
     NSString *fileNameString = [NSString stringWithUTF8String:fileName];
     NSString *basename = [fileNameString stringByDeletingPathExtension];
     NSString *extension = [fileNameString pathExtension];
-    NSURL *bundleURL = [NSBundle mainBundle].bundleURL;
-
     NSArray<NSString *> *candidates = @[
         // Folder reference copied to bundle root as "MetalCupEditor"
         [[NSBundle mainBundle] pathForResource:basename ofType:extension inDirectory:@"MetalCupEditor/Icons"] ?: @"",
@@ -48,147 +46,14 @@ static std::string ResolveEditorIconFontPath(const char *fileName) {
         [[NSBundle mainBundle] pathForResource:basename ofType:extension] ?: @""
     ];
 
-    NSLog(@"[ImGuiBridge] Font lookup: %@ (bundle=%@)", fileNameString, bundleURL.path);
     for (NSString *candidate in candidates) {
         if (candidate.length == 0) { continue; }
         BOOL exists = [fileManager fileExistsAtPath:candidate];
-        unsigned long long sizeBytes = 0;
-        if (exists) {
-            NSDictionary<NSFileAttributeKey, id> *attributes = [fileManager attributesOfItemAtPath:candidate error:nil];
-            NSNumber *sizeNumber = attributes[NSFileSize];
-            sizeBytes = sizeNumber != nil ? sizeNumber.unsignedLongLongValue : 0;
-        }
-        NSLog(@"[ImGuiBridge]  - candidate=%@ exists=%@ size=%llu", candidate, exists ? @"yes" : @"no", sizeBytes);
         if (exists) {
             return std::string(candidate.UTF8String);
         }
     }
     return {};
-}
-
-static void LogFontAtlasSummary(ImGuiIO &io) {
-    NSLog(@"[ImGuiBridge] ImGui font atlas count=%d", io.Fonts->Fonts.Size);
-    for (int i = 0; i < io.Fonts->Fonts.Size; ++i) {
-        ImFont *font = io.Fonts->Fonts[i];
-        bool merged = false;
-        int sourceCount = font->Sources.Size;
-        for (int s = 0; s < sourceCount; ++s) {
-            ImFontConfig *cfg = font->Sources[s];
-            if (cfg && cfg->MergeMode) {
-                merged = true;
-            }
-        }
-        NSLog(@"[ImGuiBridge]  - font[%d] size=%.2f sources=%d merged=%@",
-              i,
-              font->LegacySize,
-              sourceCount,
-              merged ? @"yes" : @"no");
-    }
-}
-
-static void ValidateEditorIconGlyphs(ImFont *font) {
-    if (!font) { return; }
-    static bool validated = false;
-    if (validated) { return; }
-    validated = true;
-
-    const float bakedSize = font->LegacySize > 0.0f ? font->LegacySize : 14.0f;
-    ImFontBaked *baked = font->GetFontBaked(bakedSize);
-    if (!baked) {
-        NSLog(@"[ImGuiBridge] Icon glyph validation skipped: no baked font available.");
-        return;
-    }
-
-    const EditorIcons::Id sampleIds[] = {
-        EditorIcons::Id::Play,
-        EditorIcons::Id::Pause,
-        EditorIcons::Id::Stop,
-        EditorIcons::Id::Plus,
-        EditorIcons::Id::Folder
-    };
-
-    std::vector<std::string> missing;
-    for (EditorIcons::Id id : sampleIds) {
-        const ImWchar codepoint = EditorIcons::Codepoint(id);
-        ImFontGlyph *glyph = baked->FindGlyphNoFallback(codepoint);
-        char codepointLabel[16] = {0};
-        snprintf(codepointLabel, sizeof(codepointLabel), "U+%04X", static_cast<unsigned int>(codepoint));
-        if (glyph != nullptr) {
-            NSLog(@"[ImGuiBridge] Glyph OK: %s (%s)", EditorIcons::Name(id), codepointLabel);
-        } else {
-            missing.push_back(std::string(EditorIcons::Name(id)) + " (" + codepointLabel + ")");
-        }
-    }
-    if (!missing.empty()) {
-        std::string message = "Missing Font Awesome glyphs:";
-        for (const std::string &entry : missing) {
-            message += "\n - " + entry;
-        }
-        NSLog(@"[ImGuiBridge] %s", message.c_str());
-    }
-}
-
-static NSString *ResolveEditorIconMetadataPath() {
-    NSArray<NSString *> *candidates = @[
-        [[NSBundle mainBundle] pathForResource:@"icons" ofType:@"json" inDirectory:@"MetalCupEditor/Icons/metadata"] ?: @"",
-        [[NSBundle mainBundle] pathForResource:@"icons" ofType:@"json" inDirectory:@"Icons/metadata"] ?: @"",
-        [[NSBundle mainBundle] pathForResource:@"icons" ofType:@"json"] ?: @""
-    ];
-    for (NSString *candidate in candidates) {
-        if (candidate.length == 0) { continue; }
-        if ([[NSFileManager defaultManager] fileExistsAtPath:candidate]) {
-            return candidate;
-        }
-    }
-    return nil;
-}
-
-static void ValidateEditorIconsAgainstMetadata() {
-    static bool validated = false;
-    if (validated) { return; }
-    validated = true;
-
-    NSString *metadataPath = ResolveEditorIconMetadataPath();
-    if (!metadataPath) {
-        NSLog(@"[ImGuiBridge] Font Awesome metadata not found (Icons/metadata/icons.json).");
-        return;
-    }
-
-    NSData *data = [NSData dataWithContentsOfFile:metadataPath];
-    if (!data) { return; }
-    NSError *error = nil;
-    id root = [NSJSONSerialization JSONObjectWithData:data options:0 error:&error];
-    if (error || ![root isKindOfClass:[NSDictionary class]]) {
-        NSLog(@"[ImGuiBridge] Failed to parse Font Awesome metadata: %@", error.localizedDescription);
-        return;
-    }
-
-    NSDictionary *icons = (NSDictionary *)root;
-    std::vector<std::string> mismatches;
-    for (const EditorIcons::Definition &definition : EditorIcons::kDefinitions) {
-        if (!definition.metadataKey || definition.metadataKey[0] == 0) { continue; }
-        NSDictionary *entry = icons[[NSString stringWithUTF8String:definition.metadataKey]];
-        if (![entry isKindOfClass:[NSDictionary class]]) { continue; }
-        NSString *unicodeHex = entry[@"unicode"];
-        if (![unicodeHex isKindOfClass:[NSString class]]) { continue; }
-        unsigned int metadataCodepoint = 0;
-        NSScanner *scanner = [NSScanner scannerWithString:unicodeHex];
-        [scanner scanHexInt:&metadataCodepoint];
-        if (metadataCodepoint != static_cast<unsigned int>(definition.codepoint)) {
-            char currentCodepoint[16] = {0};
-            char fileCodepoint[16] = {0};
-            snprintf(currentCodepoint, sizeof(currentCodepoint), "U+%04X", static_cast<unsigned int>(definition.codepoint));
-            snprintf(fileCodepoint, sizeof(fileCodepoint), "U+%04X", metadataCodepoint);
-            mismatches.push_back(std::string(definition.name) + " metadata mismatch (" + currentCodepoint + " vs " + fileCodepoint + ")");
-        }
-    }
-    if (!mismatches.empty()) {
-        std::string message = "Font Awesome metadata mismatches:";
-        for (const std::string &entry : mismatches) {
-            message += "\n - " + entry;
-        }
-        NSLog(@"[ImGuiBridge] %s", message.c_str());
-    }
 }
 
 extern "C" void *MCEUIPanelStateCreate(void) {
@@ -974,15 +839,15 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
         }
     } else if (category == 4) {
         EditorUI::SectionHeader("Rendering");
-        ImGuiRendererSettingsCoreDraw(bridge->_context);
+        ImGuiRendererSettingsCategoryDraw(bridge->_context, ImGuiRendererSettingsCategoryCore);
     } else if (category == 5) {
         EditorUI::SectionHeader("Lighting & Sky / IBL");
-        ImGuiRendererSettingsLightingDraw(bridge->_context);
+        ImGuiRendererSettingsCategoryDraw(bridge->_context, ImGuiRendererSettingsCategoryLighting);
         ImGui::Spacing();
         ImGui::TextWrapped("Directional and spot light direction is transform-driven (local -Z forward).\nSky sun ray direction remains consistent with this convention.");
     } else if (category == 6) {
         EditorUI::SectionHeader("Shadows");
-        ImGuiRendererSettingsShadowsDraw(bridge->_context);
+        ImGuiRendererSettingsCategoryDraw(bridge->_context, ImGuiRendererSettingsCategoryShadows);
     } else if (category == 7) {
         EditorUI::SectionHeader("Physics");
         if (EditorUI::BeginPropertyTable("PhysicsSettingsTable")) {
@@ -1670,14 +1535,9 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
     if (!regularFontPath.empty()) {
         loadedAnyIconFont = io.Fonts->AddFontFromFileTTF(regularFontPath.c_str(), 13.0f, &iconConfig, iconRanges) != nullptr || loadedAnyIconFont;
     }
-    if (!loadedAnyIconFont) {
-        NSLog(@"[ImGuiBridge] Font Awesome fonts not found. Icons will render as fallback glyphs.");
-    }
+    (void)loadedAnyIconFont;
 
     io.Fonts->Build();
-    LogFontAtlasSummary(io);
-    ValidateEditorIconsAgainstMetadata();
-    ValidateEditorIconGlyphs(io.FontDefault);
 }
 
 - (void)newFrameWithView:(MTKView *)view deltaTime:(float)dt {

@@ -1,6 +1,6 @@
 /// MCEContext.swift
 /// Defines the editor context that owns engine/editor services.
-/// Created by refactor.
+/// Created by Kaden Cringle
 
 import Foundation
 import MetalCupEngine
