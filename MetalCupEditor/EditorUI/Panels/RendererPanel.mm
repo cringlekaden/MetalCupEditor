@@ -408,27 +408,58 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
                 "Geometric World Normal",
                 "Normal Mismatch",
                 "To-Camera Mismatch",
-                "Light Heatmap (Forward+)"
+                "Light Heatmap (Forward+)",
+                "Cluster Z Slice",
+                "Cluster Grid",
+                "Tile Light Count"
             };
             int debugMode = static_cast<int>(MCERendererGetShadingDebugMode(engineContext));
             if (EditorUI::PropertyCombo("Debug View", &debugMode, debugItems, IM_ARRAYSIZE(debugItems))) {
                 MCERendererSetShadingDebugMode(engineContext, static_cast<uint32_t>(debugMode));
-                if (debugMode == 16 && MCERendererGetForwardPlusEnabled(engineContext) == 0) {
+                if ((debugMode == 16 || debugMode == 17 || debugMode == 18 || debugMode == 19) && MCERendererGetForwardPlusEnabled(engineContext) == 0) {
                     MCERendererSetForwardPlusEnabled(engineContext, 1);
                 }
             }
             if (debugMode == 16) {
                 const uint32_t maxPerCluster = MCERendererGetForwardPlusMaxLightsPerCluster(engineContext);
                 if (MCERendererGetForwardPlusEnabled(engineContext) == 0) {
-                    ImGui::TextDisabled("Forward+ is disabled. Heatmap is using legacy approximation.");
+                    ImGui::TextDisabled("Forward+ is disabled. Heatmap is unavailable.");
                 }
-                const uint32_t q1 = maxPerCluster / 4u;
-                const uint32_t q2 = maxPerCluster / 2u;
-                const uint32_t q3 = (maxPerCluster * 3u) / 4u;
-                ImGui::TextDisabled("Legend: Blue 0..%u  Green %u..%u  Yellow %u..%u  Red %u+",
-                                    q1, q1, q2, q2, q3, q3);
-                ImGui::TextDisabled("Overflow is tinted magenta.");
+                const uint32_t b0 = 0u;
+                const uint32_t b1 = maxPerCluster / 4u;
+                const uint32_t b2 = maxPerCluster / 2u;
+                const uint32_t b3 = (maxPerCluster * 3u) / 4u;
+                const uint32_t nearOverflow = (maxPerCluster > 1u) ? (maxPerCluster - 2u) : maxPerCluster;
+                ImGui::TextDisabled("Legend (max %u): Black %u  Blue %u..%u  Green %u..%u",
+                                    maxPerCluster, b0, b0 + 1u, b1, b1 + 1u, b2);
+                ImGui::TextDisabled("Legend: Yellow %u..%u  Red %u..%u  Magenta overflow",
+                                    b2 + 1u, b3, b3 + 1u, nearOverflow);
+            } else if (debugMode == 17) {
+                ImGui::TextDisabled("Cluster Z Slice: colors map logarithmic depth slices (near to far).");
+            } else if (debugMode == 18) {
+                ImGui::TextDisabled("Cluster Grid: visualizes Forward+ tile boundaries in screen space.");
+            } else if (debugMode == 19) {
+                ImGui::TextDisabled("Tile Light Count: visualizes 2D tile bins before cluster Z culling.");
             }
+            const uint32_t tileOverflow = MCERendererGetForwardPlusTileOverflowCount(engineContext);
+            const uint32_t clusterOverflow = MCERendererGetForwardPlusClusterOverflowCount(engineContext);
+            const uint32_t tileIndices = MCERendererGetForwardPlusTileIndicesWritten(engineContext);
+            const uint32_t clusterIndices = MCERendererGetForwardPlusClusterIndicesWritten(engineContext);
+            const uint32_t totalTiles = MCERendererGetForwardPlusTotalTiles(engineContext);
+            const uint32_t totalClusters = MCERendererGetForwardPlusTotalClusters(engineContext);
+            const uint32_t missingDepthFrames = MCERendererGetForwardPlusMissingDepthFrames(engineContext);
+            const uint32_t cullingDepthSource = MCERendererGetForwardPlusCullingDepthSource(engineContext);
+            const char* cullingDepthSourceText = "None";
+            if (cullingDepthSource == 1u) {
+                cullingDepthSourceText = "Prepass";
+            } else if (cullingDepthSource == 2u) {
+                cullingDepthSourceText = "Fallback";
+            }
+            ImGui::TextDisabled("Forward+ Stats: Tiles %u  Clusters %u", totalTiles, totalClusters);
+            ImGui::TextDisabled("Culling Depth Source: %s", cullingDepthSourceText);
+            ImGui::TextDisabled("Missing Depth Frames: %u", missingDepthFrames);
+            ImGui::TextDisabled("Indices: Tile %u  Cluster %u", tileIndices, clusterIndices);
+            ImGui::TextDisabled("Overflow: Tile %u  Cluster %u", tileOverflow, clusterOverflow);
             EditorUI::EndPropertyTable();
         }
         EditorUI::StandardSpacing();
