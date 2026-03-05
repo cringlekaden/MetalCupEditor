@@ -1309,6 +1309,14 @@ static void DrawProfilingPanel(void *context, bool *isOpen) {
     ImGui::Text("Update:     %.2f ms", MCERendererGetUpdateMs(engineContext));
     ImGui::Text("  Scene Update: %.2f ms", MCERendererGetSceneUpdateMs(engineContext));
     ImGui::Text("  Fixed Update: %.2f ms", MCERendererGetFixedUpdateMs(engineContext));
+    ImGui::Text("  Late Update: %.2f ms", MCERendererGetLateUpdateMs(engineContext));
+    ImGui::Text("  Snapshot Extract: %.2f ms", MCERendererGetSnapshotExtractMs(engineContext));
+    ImGui::Text("  RenderGraph Encode: %.2f ms", MCERendererGetRenderGraphEncodeMs(engineContext));
+    ImGui::Text("    Script Fixed: %.2f ms", MCERendererGetScriptFixedMs(engineContext));
+    ImGui::Text("    Character Fixed: %.2f ms", MCERendererGetCharacterFixedMs(engineContext));
+    ImGui::Text("    Physics Step: %.2f ms", MCERendererGetPhysicsStepMs(engineContext));
+    ImGui::Text("    Physics Events: %.2f ms", MCERendererGetPhysicsEventsMs(engineContext));
+    ImGui::Text("    Script Physics Dispatch: %.2f ms", MCERendererGetScriptPhysicsDispatchMs(engineContext));
     ImGui::Text("Scene:      %.2f ms", MCERendererGetSceneMs(engineContext));
     ImGui::Text("Render:     %.2f ms", MCERendererGetRenderMs(engineContext));
     ImGui::Text("Render Batches: %.2f ms", MCERendererGetRenderBatchMs(engineContext));

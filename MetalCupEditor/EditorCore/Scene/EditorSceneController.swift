@@ -10,41 +10,34 @@ import MetalCupEngine
 final class EditorSceneController {
     private let prefabSystem: PrefabSystem
     private weak var engineContext: EngineContext?
+    private let playModeStateMachine: PlayModeStateMachine
+    private let runtimeSessionManager: RuntimeSessionManager
 
     init(prefabSystem: PrefabSystem, engineContext: EngineContext) {
         self.prefabSystem = prefabSystem
         self.engineContext = engineContext
+        self.runtimeSessionManager = RuntimeSessionManager(prefabSystem: prefabSystem, engineContext: engineContext)
+        self.playModeStateMachine = PlayModeStateMachine(onIllegalTransition: { [weak engineContext] message in
+            engineContext?.log.logWarning(message, category: .editor)
+        })
     }
 
     private(set) var editorScene: EngineScene?
-    private(set) var runtimeScene: EngineScene?
-    private(set) var isPlaying: Bool = false
-    private(set) var isPaused: Bool = false
-    private(set) var isSimulating: Bool = false
-    private var playState: PlayState = .editing
+    var runtimeScene: EngineScene? { runtimeSessionManager.runtimeScene }
+    var isPlaying: Bool { playModeStateMachine.isPlaying }
+    var isPaused: Bool { playModeStateMachine.isPaused }
+    var isSimulating: Bool { playModeStateMachine.isSimulating }
 
-    private var editorSnapshot: SceneDocument?
-    private var simulateSnapshot: SceneDocument?
     private var selectedEntityId: UUID?
     private var selectedEntityIds: [UUID] = []
     private var fixedAccumulator: Float = 0.0
     private var simulateAccumulator: Float = 0.0
     private let maxFixedSteps: Int = 16
     private let runtimeSafetyMaxSubsteps: Int = 5
-    private var cachedScriptRuntime: ScriptRuntime?
-    private var prePlayPhysicsSettings: PhysicsSettings?
     private var lastFrameTime: FrameTime?
     private var timeBaseTotal: Float = 0.0
     private var timeBaseUnscaled: Float = 0.0
     private var timeBaseFrameCount: UInt64 = 0
-
-    private enum PlayState {
-        case editing
-        case startingPlay
-        case playing
-        case paused
-        case stoppingPlay
-    }
 
     private enum FixedStepScheduleMode {
         case play
@@ -87,137 +80,52 @@ final class EditorSceneController {
     // MARK: - Play/Pause/Stop
 
     func play() {
-        if playState != .editing { return }
         if isSimulating {
             resetSimulation()
         }
         guard let editorScene else { return }
-        playState = .startingPlay
+        guard playModeStateMachine.send(.play) else { return }
         engineContext?.debugDraw.beginFrame()
-        let rendererSettings = engineContext?.rendererSettings ?? RendererSettings()
-        let physicsSettings = engineContext?.physicsSettings ?? PhysicsSettings()
-        editorSnapshot = editorScene.toDocument(
-            rendererSettingsOverride: RendererSettingsDTO(settings: rendererSettings),
-            physicsSettingsOverride: PhysicsSettingsDTO(settings: physicsSettings)
-        )
-        if let snapshot = editorSnapshot {
-            runtimeScene = SerializedScene(
-                document: snapshot,
-                prefabSystem: prefabSystem,
-                engineContext: engineContext
-            )
-        } else {
-            let empty = SceneDocument(id: UUID(), name: "Untitled", entities: [])
-            runtimeScene = SerializedScene(
-                document: empty,
-                prefabSystem: prefabSystem,
-                engineContext: engineContext
-            )
+        guard runtimeSessionManager.startPlay(from: editorScene) else {
+            playModeStateMachine.forceSetState(.edit)
+            return
         }
-        if let engineContext {
-            prePlayPhysicsSettings = engineContext.physicsSettings
-            if !engineContext.physicsSettings.deterministic {
-                var playPhysicsSettings = engineContext.physicsSettings
-                // The editor drives fixed-step from the render/main loop. Keep physics single-threaded
-                // during play to avoid barrier waits from UI-interactive thread -> worker threads.
-                playPhysicsSettings.deterministic = true
-                engineContext.physicsSettings = playPhysicsSettings
-            }
-        }
-        if let physicsSettings = engineContext?.physicsSettings {
-            runtimeScene?.startPhysics(settings: physicsSettings)
-        }
-        runtimeScene?.resetRuntimeInputState()
-        engineContext?.renderer?.inputAccumulator?.resetForRuntimeStart(clearKeys: false, clearMouseButtons: false)
-        if let engineContext {
-            cachedScriptRuntime = engineContext.scriptRuntime
-            engineContext.scriptRuntime = LuaScriptRuntime(engineContext: engineContext)
-        }
-        runtimeScene?.notifyScriptSceneStart()
-        runtimePrepareForPlayStart(lockCursor: true)
         resetTimingBase()
         fixedAccumulator = 0.0
-        isPlaying = true
-        isPaused = false
-        playState = .playing
     }
 
     func stop() {
-        if playState == .editing || playState == .stoppingPlay { return }
-        playState = .stoppingPlay
-        runtimeForceCursorNormal()
-        runtimeScene?.notifyScriptSceneStop()
-        runtimeScene?.stopPhysics()
-        if let engineContext {
-            engineContext.scriptRuntime = cachedScriptRuntime ?? NullScriptRuntime()
-        }
-        cachedScriptRuntime = nil
-        if let snapshot = editorSnapshot, let editorScene {
-            editorScene.apply(document: snapshot)
-            if let settings = snapshot.rendererSettingsOverride {
-                engineContext?.rendererSettings = settings.makeRendererSettings()
-            }
-            if let physicsSettings = snapshot.physicsSettingsOverride {
-                engineContext?.physicsSettings = physicsSettings.makePhysicsSettings()
-            }
-        }
-        editorSnapshot = nil
-        runtimeScene = nil
-        if let engineContext, let prePlayPhysicsSettings {
-            engineContext.physicsSettings = prePlayPhysicsSettings
-        }
-        prePlayPhysicsSettings = nil
-        isPlaying = false
-        isPaused = false
+        guard playModeStateMachine.send(.stop) else { return }
+        runtimeSessionManager.stopPlay(restoreInto: editorScene)
         resetTimingBase()
         fixedAccumulator = 0.0
-        playState = .editing
     }
 
     func simulate() {
-        if isPlaying || isSimulating { return }
         guard let editorScene else { return }
-        let rendererSettings = engineContext?.rendererSettings ?? RendererSettings()
-        let physicsSettings = engineContext?.physicsSettings ?? PhysicsSettings()
-        simulateSnapshot = editorScene.toDocument(
-            rendererSettingsOverride: RendererSettingsDTO(settings: rendererSettings),
-            physicsSettingsOverride: PhysicsSettingsDTO(settings: physicsSettings)
-        )
-        editorScene.startPhysics(settings: physicsSettings)
+        guard playModeStateMachine.send(.simulate) else { return }
+        guard runtimeSessionManager.startSimulate(on: editorScene) else {
+            playModeStateMachine.forceSetState(.edit)
+            return
+        }
         resetTimingBase()
         simulateAccumulator = 0.0
-        isSimulating = true
     }
 
     func resetSimulation() {
-        guard isSimulating else { return }
-        editorScene?.stopPhysics()
-        if let snapshot = simulateSnapshot, let editorScene {
-            editorScene.apply(document: snapshot)
-            if let settings = snapshot.rendererSettingsOverride {
-                engineContext?.rendererSettings = settings.makeRendererSettings()
-            }
-            if let physicsSettings = snapshot.physicsSettingsOverride {
-                engineContext?.physicsSettings = physicsSettings.makePhysicsSettings()
-            }
-        }
-        simulateSnapshot = nil
-        isSimulating = false
+        guard playModeStateMachine.send(.resetSimulate) else { return }
+        runtimeSessionManager.resetSimulate(on: editorScene)
         resetTimingBase()
         simulateAccumulator = 0.0
     }
 
     func pause() {
-        if playState != .playing { return }
-        isPaused = true
-        playState = .paused
+        guard playModeStateMachine.send(.pause) else { return }
         fixedAccumulator = 0.0
     }
 
     func resume() {
-        if playState != .paused { return }
-        isPaused = false
-        playState = .playing
+        guard playModeStateMachine.send(.resume) else { return }
     }
 
     // MARK: - Serialization
@@ -245,11 +153,7 @@ final class EditorSceneController {
         )
         editorScene = scene
         if isPlaying {
-            runtimeScene = SerializedScene(
-                document: document,
-                prefabSystem: prefabSystem,
-                engineContext: engineContext
-            )
+            runtimeSessionManager.replaceRuntimeScene(with: document)
         }
     }
 
@@ -315,7 +219,9 @@ final class EditorSceneController {
                   accumulatorAfter: fixedStepResult.accumulatorAfter,
                   interpolationAlpha: fixedStepResult.interpolationAlpha)
         )
-        scene.refreshRuntimeCamera(frame: frame)
+        recordProfilerScope(.lateUpdate) {
+            scene.refreshRuntimeCamera(frame: frame)
+        }
     }
 
     private func updateEditorScene(_ scene: EngineScene, frame: FrameContext) {
@@ -332,6 +238,7 @@ final class EditorSceneController {
                                          mode: .simulate,
                                          accumulator: &simulateAccumulator)
         }
+        recordProfilerScope(.lateUpdate) {}
     }
 
     private func adjustFrame(_ frame: FrameContext) -> FrameContext {
