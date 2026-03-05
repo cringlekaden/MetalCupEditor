@@ -284,22 +284,11 @@ private func ensureCharacterControllerDependencies(context: MCEContext,
                                                    ecs: SceneECS,
                                                    entity: Entity,
                                                    controller: CharacterControllerComponent) -> Bool {
-    let rbChanged = ensureCharacterControllerRigidbody(context: context, ecs: ecs, entity: entity)
-    let colliderChanged: Bool
-    if ecs.get(ColliderComponent.self, for: entity) == nil {
-        colliderChanged = ensureCharacterControllerCapsuleCollider(context: context,
-                                                                   ecs: ecs,
-                                                                   entity: entity,
-                                                                   controller: controller,
-                                                                   autoSizeFromMesh: false)
-    } else {
-        colliderChanged = false
-    }
-    let didMutate = rbChanged || colliderChanged
-    if didMutate {
-        context.engineContext.log.logInfo("Added Rigidbody + Capsule Collider for CharacterController.", category: .scene)
-    }
-    return didMutate
+    _ = context
+    _ = ecs
+    _ = entity
+    _ = controller
+    return false
 }
 
 private func convertCharacterControllerColliderToCapsule(ecs: SceneECS,
@@ -1894,17 +1883,21 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                             _ jumpSpeed: UnsafeMutablePointer<Float>?,
                                             _ useGravityOverride: UnsafeMutablePointer<UInt32>?,
                                             _ gravity: UnsafeMutablePointer<Float>?,
-                                            _ groundProbeDistance: UnsafeMutablePointer<Float>?,
                                             _ maxSlope: UnsafeMutablePointer<Float>?,
-                                            _ groundSnapDistance: UnsafeMutablePointer<Float>?,
+                                            _ pushStrength: UnsafeMutablePointer<Float>?,
+                                            _ airControl: UnsafeMutablePointer<Float>?,
                                             _ lookSensitivity: UnsafeMutablePointer<Float>?,
                                             _ minPitchDegrees: UnsafeMutablePointer<Float>?,
                                             _ maxPitchDegrees: UnsafeMutablePointer<Float>?,
                                             _ debugDraw: UnsafeMutablePointer<UInt32>?,
                                             _ grounded: UnsafeMutablePointer<UInt32>?,
                                             _ speed: UnsafeMutablePointer<Float>?,
-                                            _ velocityY: UnsafeMutablePointer<Float>?) -> UInt32 {
+                                            _ velocityY: UnsafeMutablePointer<Float>?,
+                                            _ groundBodyId: UnsafeMutablePointer<UInt64>?,
+                                            _ fixedDeltaTime: UnsafeMutablePointer<Float>?,
+                                            _ interpolationAlpha: UnsafeMutablePointer<Float>?) -> UInt32 {
     guard let context = resolveContext(contextPtr),
+          let scene = context.editorSceneController.activeScene(),
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           let controller = ecs.get(CharacterControllerComponent.self, for: entity) else { return 0 }
@@ -1917,9 +1910,9 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
     jumpSpeed?.pointee = controller.jumpSpeed
     useGravityOverride?.pointee = controller.useGravityOverride ? 1 : 0
     gravity?.pointee = controller.gravity
-    groundProbeDistance?.pointee = controller.groundProbeDistance
     maxSlope?.pointee = controller.maxSlope
-    groundSnapDistance?.pointee = controller.groundSnapDistance
+    pushStrength?.pointee = controller.pushStrength
+    airControl?.pointee = controller.airControl
     lookSensitivity?.pointee = controller.lookSensitivity
     minPitchDegrees?.pointee = controller.minPitchDegrees
     maxPitchDegrees?.pointee = controller.maxPitchDegrees
@@ -1927,6 +1920,10 @@ public func MCEEditorGetCharacterController(_ contextPtr: UnsafeRawPointer?,
     grounded?.pointee = controller.isGrounded ? 1 : 0
     speed?.pointee = simd_length(controller.velocity)
     velocityY?.pointee = controller.velocity.y
+    groundBodyId?.pointee = controller.lastGroundBodyId
+    let diagnostics = scene.latestFixedStepDiagnostics()
+    fixedDeltaTime?.pointee = diagnostics.fixedDeltaTime
+    interpolationAlpha?.pointee = diagnostics.interpolationAlpha
     return 1
 }
 
@@ -1942,9 +1939,9 @@ public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                             _ jumpSpeed: Float,
                                             _ useGravityOverride: UInt32,
                                             _ gravity: Float,
-                                            _ groundProbeDistance: Float,
                                             _ maxSlope: Float,
-                                            _ groundSnapDistance: Float,
+                                            _ pushStrength: Float,
+                                            _ airControl: Float,
                                             _ lookSensitivity: Float,
                                             _ minPitchDegrees: Float,
                                             _ maxPitchDegrees: Float,
@@ -1958,21 +1955,20 @@ public func MCEEditorSetCharacterController(_ contextPtr: UnsafeRawPointer?,
                                                   height: height,
                                                   radius: radius,
                                                   stepOffset: stepOffset,
-                                                  slopeLimit: previous?.slopeLimit ?? maxSlope,
                                                   moveSpeed: moveSpeed,
                                                   sprintMultiplier: sprintMultiplier,
+                                                  airControl: simd_clamp(airControl, 0.0, 1.0),
                                                   jumpSpeed: jumpSpeed,
                                                   useGravityOverride: useGravityOverride != 0,
                                                   gravity: gravity,
-                                                  groundProbeDistance: groundProbeDistance,
                                                   maxSlope: maxSlope,
-                                                  groundSnapDistance: groundSnapDistance,
+                                                  pushStrength: max(0.0, pushStrength),
                                                   lookSensitivity: lookSensitivity,
                                                   minPitchDegrees: minPitchDegrees,
                                                   maxPitchDegrees: maxPitchDegrees,
-                                                  pushStrength: previous?.pushStrength ?? 10.0,
                                                   visualEntityId: previous?.visualEntityId,
                                                   cameraPivotEntityId: previous?.cameraPivotEntityId,
+                                                  interpolateSubtree: previous?.interpolateSubtree ?? true,
                                                   debugDraw: debugDraw != 0,
                                                   yawRadians: previous?.yawRadians ?? 0.0,
                                                   pitchRadians: previous?.pitchRadians ?? 0.0,
@@ -2053,6 +2049,20 @@ public func MCEEditorCharacterControllerSetRigidbodyKinematic(_ contextPtr: Unsa
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context) else { return 0 }
     guard ensureCharacterControllerRigidbody(context: context, ecs: ecs, entity: entity) else { return 0 }
+    context.editorProjectManager.notifySceneMutation()
+    return 1
+}
+
+@_cdecl("MCEEditorCharacterControllerRemoveRigidbody")
+public func MCEEditorCharacterControllerRemoveRigidbody(_ contextPtr: UnsafeRawPointer?,
+                                                        _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          !context.editorSceneController.isPlaying,
+          !context.editorSceneController.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          ecs.get(RigidbodyComponent.self, for: entity) != nil else { return 0 }
+    ecs.remove(RigidbodyComponent.self, from: entity)
     context.editorProjectManager.notifySceneMutation()
     return 1
 }

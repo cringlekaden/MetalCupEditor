@@ -36,9 +36,6 @@ final class EditorSceneController {
     private var timeBaseTotal: Float = 0.0
     private var timeBaseUnscaled: Float = 0.0
     private var timeBaseFrameCount: UInt64 = 0
-#if DEBUG
-    private var fixedStepLogged: Bool = false
-#endif
 
     private enum PlayState {
         case editing
@@ -300,18 +297,27 @@ final class EditorSceneController {
 
         if isPaused { return }
         let settings = engineContext?.physicsSettings
-        let fixedDeltaTime = settings?.fixedDeltaTime ?? frame.time.fixedDeltaTime
-        let maxSubsteps = settings?.maxSubsteps ?? maxFixedSteps
-        let steps = consumeFixedSteps(frameTime: frame.time,
-                                      fixedDeltaTime: fixedDeltaTime,
-                                      maxSubsteps: maxSubsteps)
-        if steps > 0 {
-            let fixedStart = CACurrentMediaTime()
-            for _ in 0..<steps {
-                scene.runtime.fixedUpdate(scene: scene)
-            }
-            engineContext?.renderer?.profiler.record(.fixedUpdate, seconds: CACurrentMediaTime() - fixedStart)
-        }
+        let requestedFixedDeltaTime = settings?.fixedDeltaTime ?? frame.time.fixedDeltaTime
+        let fixedDeltaTime = max(0.0001, requestedFixedDeltaTime)
+        let requestedMaxSubsteps = settings?.maxSubsteps ?? 5
+        let maxSubsteps = max(1, min(requestedMaxSubsteps, 5))
+        let fixedStepResult = executeRuntimeFixedSteps(scene: scene,
+                                                       frameTime: frame.time,
+                                                       fixedDeltaTime: fixedDeltaTime,
+                                                       maxSubsteps: maxSubsteps)
+        let interpolationAlpha = fixedStepResult.fixedDeltaTime > 1.0e-6
+            ? simd_clamp(fixedStepResult.accumulatorAfter / fixedStepResult.fixedDeltaTime, 0.0, 1.0)
+            : 0.0
+        scene.setFixedStepDiagnostics(
+            .init(renderDeltaTime: frame.time.unscaledDeltaTime,
+                  fixedDeltaTime: fixedStepResult.fixedDeltaTime,
+                  fixedStepsThisFrame: fixedStepResult.stepsExecuted,
+                  fixedStepsLastSecond: 0,
+                  accumulatorBefore: fixedStepResult.accumulatorBefore,
+                  accumulatorAfter: fixedStepResult.accumulatorAfter,
+                  interpolationAlpha: interpolationAlpha)
+        )
+        scene.refreshRuntimeCamera(frame: frame)
     }
 
     private func updateEditorScene(_ scene: EngineScene, frame: FrameContext) {
@@ -328,9 +334,11 @@ final class EditorSceneController {
                                           maxSubsteps: maxSubsteps,
                                           accumulator: &simulateAccumulator)
             if steps > 0 {
+                let fixedStart = CACurrentMediaTime()
                 for _ in 0..<steps {
                     _ = scene.runFixedStep(mode: [], fixedDeltaOverride: fixedDeltaTime)
                 }
+                engineContext?.renderer?.profiler.record(.fixedUpdate, seconds: CACurrentMediaTime() - fixedStart)
             }
         }
     }
@@ -361,23 +369,48 @@ final class EditorSceneController {
         let clampedFixedDelta = max(0.0001, fixedDeltaTime)
         let clampedMaxSteps = max(1, min(maxSubsteps, maxFixedSteps))
         let maxAccumulatedDelta: Float = 0.1
-        accumulator += max(0.0, frameTime.deltaTime)
+        accumulator += max(0.0, frameTime.unscaledDeltaTime)
         accumulator = min(accumulator, maxAccumulatedDelta)
-#if DEBUG
-        if !fixedStepLogged {
-            fixedStepLogged = true
-            EngineLoggerContext.log(
-                String(format: "Physics Debug Fixed Step: fixedDelta=%.6f, maxSubsteps=%d", clampedFixedDelta, clampedMaxSteps),
-                level: .debug,
-                category: .scene
-            )
-        }
-#endif
         let availableSteps = Int(accumulator / clampedFixedDelta)
         if availableSteps <= 0 { return 0 }
         let steps = min(availableSteps, clampedMaxSteps)
         accumulator -= Float(steps) * clampedFixedDelta
         return steps
+    }
+
+    private struct FixedStepExecutionResult {
+        var stepsExecuted: Int
+        var fixedDeltaTime: Float
+        var accumulatorBefore: Float
+        var accumulatorAfter: Float
+    }
+
+    private func executeRuntimeFixedSteps(scene: EngineScene,
+                                          frameTime: FrameTime,
+                                          fixedDeltaTime: Float,
+                                          maxSubsteps: Int) -> FixedStepExecutionResult {
+        let clampedFixedDelta = max(0.0001, fixedDeltaTime)
+        let clampedMaxSubsteps = max(1, min(maxSubsteps, 5))
+        let maxAccumulatedDelta: Float = 0.1
+        let accumulatorBefore = fixedAccumulator
+        fixedAccumulator += max(0.0, frameTime.unscaledDeltaTime)
+        fixedAccumulator = min(fixedAccumulator, maxAccumulatedDelta)
+
+        var stepsExecuted = 0
+        if fixedAccumulator >= clampedFixedDelta {
+            let fixedStart = CACurrentMediaTime()
+            while fixedAccumulator >= clampedFixedDelta && stepsExecuted < clampedMaxSubsteps {
+                _ = scene.runFixedStep(mode: [.executeScripts, .dispatchScriptEvents], fixedDeltaOverride: clampedFixedDelta)
+                fixedAccumulator -= clampedFixedDelta
+                stepsExecuted += 1
+            }
+            engineContext?.renderer?.profiler.record(.fixedUpdate, seconds: CACurrentMediaTime() - fixedStart)
+        }
+
+        return FixedStepExecutionResult(stepsExecuted: stepsExecuted,
+                                        fixedDeltaTime: clampedFixedDelta,
+                                        accumulatorBefore: accumulatorBefore,
+                                        accumulatorAfter: fixedAccumulator)
     }
 
     private func resetTimingBase() {

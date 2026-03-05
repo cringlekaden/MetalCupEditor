@@ -234,16 +234,19 @@ extern "C" uint32_t MCEEditorGetCharacterController(MCE_CTX, const char *entityI
                                                      float *jumpSpeed,
                                                      uint32_t *useGravityOverride,
                                                      float *gravity,
-                                                     float *groundProbeDistance,
                                                      float *maxSlope,
-                                                     float *groundSnapDistance,
+                                                     float *pushStrength,
+                                                     float *airControl,
                                                      float *lookSensitivity,
                                                      float *minPitchDegrees,
                                                      float *maxPitchDegrees,
                                                      uint32_t *debugDraw,
                                                      uint32_t *grounded,
                                                      float *speed,
-                                                     float *velocityY);
+                                                     float *velocityY,
+                                                     uint64_t *groundBodyId,
+                                                     float *fixedDeltaTime,
+                                                     float *interpolationAlpha);
 extern "C" void MCEEditorSetCharacterController(MCE_CTX, const char *entityId,
                                                 uint32_t enabled,
                                                 float height,
@@ -254,9 +257,9 @@ extern "C" void MCEEditorSetCharacterController(MCE_CTX, const char *entityId,
                                                 float jumpSpeed,
                                                 uint32_t useGravityOverride,
                                                 float gravity,
-                                                float groundProbeDistance,
                                                 float maxSlope,
-                                                float groundSnapDistance,
+                                                float pushStrength,
+                                                float airControl,
                                                 float lookSensitivity,
                                                 float minPitchDegrees,
                                                 float maxPitchDegrees,
@@ -267,10 +270,7 @@ extern "C" uint32_t MCEEditorGetCharacterControllerEntityRefs(MCE_CTX, const cha
 extern "C" uint32_t MCEEditorSetCharacterControllerEntityRefs(MCE_CTX, const char *entityId,
                                                                const char *visualEntityId,
                                                                const char *cameraPivotEntityId);
-extern "C" uint32_t MCEEditorCharacterControllerEnsureDependencies(MCE_CTX, const char *entityId);
-extern "C" uint32_t MCEEditorCharacterControllerSetRigidbodyKinematic(MCE_CTX, const char *entityId);
-extern "C" uint32_t MCEEditorCharacterControllerConvertColliderToCapsule(MCE_CTX, const char *entityId);
-extern "C" uint32_t MCEEditorCharacterControllerAddCapsuleCollider(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorCharacterControllerRemoveRigidbody(MCE_CTX, const char *entityId);
 extern "C" uint32_t MCEEditorCharacterControllerCreateRecommendedHierarchy(MCE_CTX, const char *entityId, uint32_t createCamera);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsSimulating(MCE_CTX);
@@ -2183,9 +2183,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             float jumpSpeed = 5.5f;
             uint32_t useGravityOverride = 0;
             float gravity = -9.81f;
-            float groundProbeDistance = 0.25f;
             float maxSlope = 45.0f;
-            float groundSnapDistance = 0.10f;
+            float pushStrength = 100.0f;
+            float airControl = 0.35f;
             float lookSensitivity = 0.01f;
             float minPitchDegrees = -80.0f;
             float maxPitchDegrees = 80.0f;
@@ -2193,6 +2193,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             uint32_t grounded = 0;
             float currentSpeed = 0.0f;
             float velocityY = 0.0f;
+            uint64_t groundBodyId = 0;
+            float fixedDeltaTime = 1.0f / 60.0f;
+            float interpolationAlpha = 0.0f;
             char visualEntityId[64] = {0};
             char cameraPivotEntityId[64] = {0};
 
@@ -2207,16 +2210,19 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                 &jumpSpeed,
                                                 &useGravityOverride,
                                                 &gravity,
-                                                &groundProbeDistance,
                                                 &maxSlope,
-                                                &groundSnapDistance,
+                                                &pushStrength,
+                                                &airControl,
                                                 &lookSensitivity,
                                                 &minPitchDegrees,
                                                 &maxPitchDegrees,
                                                 &debugDraw,
                                                 &grounded,
                                                 &currentSpeed,
-                                                &velocityY) != 0) {
+                                                &velocityY,
+                                                &groundBodyId,
+                                                &fixedDeltaTime,
+                                                &interpolationAlpha) != 0) {
                 MCEEditorGetCharacterControllerEntityRefs(context,
                                                           selectedEntityId,
                                                           visualEntityId,
@@ -2225,6 +2231,12 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                           static_cast<int32_t>(sizeof(cameraPivotEntityId)));
                 ImGui::TextDisabled("Uses Jolt CharacterVirtual (no Rigidbody/Collider required).");
                 ImGui::TextDisabled("Mode: Play only");
+                if (hasRigidbody) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.55f, 0.2f, 1.0f), "Warning: Rigidbody is unsupported for CharacterVirtual and ignored at runtime.");
+                    if (!isPlaying && ImGui::Button("Remove Rigidbody")) {
+                        MCEEditorCharacterControllerRemoveRigidbody(context, selectedEntityId);
+                    }
+                }
 
                 if (!isPlaying) {
                     if (ImGui::Button("Create Recommended Hierarchy")) {
@@ -2282,6 +2294,10 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 ImGui::Separator();
                 ImGui::Text("CharacterVirtual: %s", characterActive ? "Active" : "Inactive");
                 ImGui::Text("Grounded: %s", isPlaying ? (grounded != 0 ? "true" : "false") : "Play only");
+                ImGui::Text("Script Assigned: %s", hasScript ? "Yes" : "No");
+                ImGui::Text("Camera Under Pivot: %s", cameraUnderPivot ? "Yes" : "No");
+                ImGui::Text("Camera Pivot: %s", pivotAssigned ? "Assigned" : "Missing");
+                ImGui::Text("Visual Child: %s", visualAssigned ? "Assigned" : "Optional");
                 ImGui::Text("Mode: Play only");
                 ImGui::EndChild();
 
@@ -2365,7 +2381,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
 
                 ImGui::Spacing();
-                ImGui::TextDisabled("Shape");
+                ImGui::TextDisabled("Capsule");
                 if (EditorUI::BeginPropertyTable("CharacterControllerShapeProps")) {
                     dirty |= EditorUI::PropertyFloat("Radius", &radius, 0.01f, 0.05f, 5.0f, "%.2f", true);
                     dirty |= EditorUI::PropertyFloat("Height", &height, 0.01f, 0.2f, 10.0f, "%.2f", true);
@@ -2377,13 +2393,27 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 if (EditorUI::BeginPropertyTable("CharacterControllerMovementProps")) {
                     dirty |= EditorUI::PropertyFloat("Move Speed", &moveSpeed, 0.05f, 0.0f, 100.0f, "%.2f", true);
                     dirty |= EditorUI::PropertyFloat("Sprint Multiplier", &sprintMultiplier, 0.05f, 1.0f, 8.0f, "%.2f", true);
+                    dirty |= EditorUI::PropertyFloat("Air Control", &airControl, 0.01f, 0.0f, 1.0f, "%.2f", true);
+                    dirty |= EditorUI::PropertyFloat("Push Strength", &pushStrength, 1.0f, 0.0f, 2000.0f, "%.1f", true);
+                    EditorUI::EndPropertyTable();
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Jump & Gravity");
+                if (EditorUI::BeginPropertyTable("CharacterControllerJumpGravityProps")) {
                     dirty |= EditorUI::PropertyFloat("Jump Speed", &jumpSpeed, 0.05f, 0.0f, 100.0f, "%.2f", true);
-                    dirty |= EditorUI::PropertyFloat("Max Slope", &maxSlope, 1.0f, 1.0f, 89.0f, "%.1f", true);
-                    dirty |= EditorUI::PropertyFloat("Step Offset", &stepOffset, 0.01f, 0.0f, 2.0f, "%.2f", true);
                     dirty |= EditorUI::PropertyBool("Override Gravity", &gravityOverrideEnabled);
                     if (gravityOverrideEnabled) {
                         dirty |= EditorUI::PropertyFloat("Gravity", &gravity, 0.05f, -100.0f, 0.0f, "%.2f", true);
                     }
+                    EditorUI::EndPropertyTable();
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Grounding");
+                if (EditorUI::BeginPropertyTable("CharacterControllerGroundingProps")) {
+                    dirty |= EditorUI::PropertyFloat("Max Slope", &maxSlope, 1.0f, 1.0f, 89.0f, "%.1f", true);
+                    dirty |= EditorUI::PropertyFloat("Step Offset", &stepOffset, 0.01f, 0.0f, 2.0f, "%.2f", true);
                     EditorUI::EndPropertyTable();
                 }
 
@@ -2489,8 +2519,11 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     ImGui::Separator();
                     ImGui::TextDisabled("Runtime");
                     ImGui::Text("Grounded: %s", grounded != 0 ? "Yes" : "No");
+                    ImGui::Text("Ground Body: %llu", static_cast<unsigned long long>(groundBodyId));
                     ImGui::Text("Speed: %.3f", currentSpeed);
                     ImGui::Text("Velocity Y: %.3f", velocityY);
+                    ImGui::Text("Fixed dt: %.4f", fixedDeltaTime);
+                    ImGui::Text("Interpolation alpha: %.3f", interpolationAlpha);
                 }
                 if (dirty) {
                     MCEEditorSetCharacterController(context,
@@ -2504,9 +2537,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                     jumpSpeed,
                                                     gravityOverrideEnabled ? 1u : 0u,
                                                     gravity,
-                                                    groundProbeDistance,
                                                     maxSlope,
-                                                    groundSnapDistance,
+                                                    pushStrength,
+                                                    airControl,
                                                     lookSensitivity,
                                                     minPitchDegrees,
                                                     maxPitchDegrees,
