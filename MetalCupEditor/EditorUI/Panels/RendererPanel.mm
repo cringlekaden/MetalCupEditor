@@ -378,6 +378,11 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
             if (EditorUI::PropertyBool("Skip Spec IBL (Rough>0.9)", &skipSpecIBL)) {
                 MCERendererSetSkipSpecIBLHighRoughness(engineContext, skipSpecIBL ? 1 : 0);
             }
+            bool forwardPlusEnabled = MCERendererGetForwardPlusEnabled(engineContext) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Enable Forward+ light culling path.\nUnits: boolean.\nPerformance: reduces per-pixel light loop cost at higher light counts.\nPersistence: Project.");
+            if (EditorUI::PropertyBool("Forward+ Enabled", &forwardPlusEnabled)) {
+                MCERendererSetForwardPlusEnabled(engineContext, forwardPlusEnabled ? 1 : 0);
+            }
             EditorUI::EndPropertyTable();
         }
         EditorUI::StandardSpacing();
@@ -402,11 +407,27 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
                 "Material Validation",
                 "Geometric World Normal",
                 "Normal Mismatch",
-                "To-Camera Mismatch"
+                "To-Camera Mismatch",
+                "Light Heatmap (Forward+)"
             };
             int debugMode = static_cast<int>(MCERendererGetShadingDebugMode(engineContext));
             if (EditorUI::PropertyCombo("Debug View", &debugMode, debugItems, IM_ARRAYSIZE(debugItems))) {
                 MCERendererSetShadingDebugMode(engineContext, static_cast<uint32_t>(debugMode));
+                if (debugMode == 16 && MCERendererGetForwardPlusEnabled(engineContext) == 0) {
+                    MCERendererSetForwardPlusEnabled(engineContext, 1);
+                }
+            }
+            if (debugMode == 16) {
+                const uint32_t maxPerCluster = MCERendererGetForwardPlusMaxLightsPerCluster(engineContext);
+                if (MCERendererGetForwardPlusEnabled(engineContext) == 0) {
+                    ImGui::TextDisabled("Forward+ is disabled. Heatmap is using legacy approximation.");
+                }
+                const uint32_t q1 = maxPerCluster / 4u;
+                const uint32_t q2 = maxPerCluster / 2u;
+                const uint32_t q3 = (maxPerCluster * 3u) / 4u;
+                ImGui::TextDisabled("Legend: Blue 0..%u  Green %u..%u  Yellow %u..%u  Red %u+",
+                                    q1, q1, q2, q2, q3, q3);
+                ImGui::TextDisabled("Overflow is tinted magenta.");
             }
             EditorUI::EndPropertyTable();
         }

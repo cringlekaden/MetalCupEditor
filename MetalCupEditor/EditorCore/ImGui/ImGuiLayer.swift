@@ -185,6 +185,7 @@ final class ImGuiLayer: Layer {
         let matrices = activeScene.map { SceneRenderer.cameraMatrices(scene: $0) }
         let cameraPosition = activeScene.map { SceneRenderer.cameraPosition(scene: $0) } ?? .zero
         return SceneView(
+            viewId: sceneContext.isPlaying ? 2 : 1,
             viewMatrix: matrices?.view ?? matrix_identity_float4x4,
             projectionMatrix: matrices?.projection ?? matrix_identity_float4x4,
             cameraPosition: cameraPosition,
@@ -196,6 +197,7 @@ final class ImGuiLayer: Layer {
             layerMask: .all,
             selectedEntityIds: sceneContext.selectedEntityIds,
             debugFlags: 0,
+            depthPrepassEnabled: true,
             isEditorView: !sceneContext.isPlaying
         )
     }

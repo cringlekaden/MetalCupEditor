@@ -73,6 +73,9 @@ void MCERendererSetDisableSheen(MCE_CTX, uint32_t value);
 
 uint32_t MCERendererGetSkipSpecIBLHighRoughness(MCE_CTX);
 void MCERendererSetSkipSpecIBLHighRoughness(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetForwardPlusEnabled(MCE_CTX);
+void MCERendererSetForwardPlusEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetForwardPlusMaxLightsPerCluster(MCE_CTX);
 
 uint32_t MCERendererGetShadingDebugMode(MCE_CTX);
 void MCERendererSetShadingDebugMode(MCE_CTX, uint32_t value);
