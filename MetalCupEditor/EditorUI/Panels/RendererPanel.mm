@@ -447,6 +447,7 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
             const uint32_t clusterIndices = MCERendererGetForwardPlusClusterIndicesWritten(engineContext);
             const uint32_t totalTiles = MCERendererGetForwardPlusTotalTiles(engineContext);
             const uint32_t totalClusters = MCERendererGetForwardPlusTotalClusters(engineContext);
+            const uint32_t activeTilesCount = MCERendererGetForwardPlusActiveTilesCount(engineContext);
             const uint32_t missingDepthFrames = MCERendererGetForwardPlusMissingDepthFrames(engineContext);
             const uint32_t cullingDepthSource = MCERendererGetForwardPlusCullingDepthSource(engineContext);
             const char* cullingDepthSourceText = "None";
@@ -455,7 +456,7 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
             } else if (cullingDepthSource == 2u) {
                 cullingDepthSourceText = "Fallback";
             }
-            ImGui::TextDisabled("Forward+ Stats: Tiles %u  Clusters %u", totalTiles, totalClusters);
+            ImGui::TextDisabled("Forward+ Stats: Tiles %u  Active Tiles %u  Clusters %u", totalTiles, activeTilesCount, totalClusters);
             ImGui::TextDisabled("Culling Depth Source: %s", cullingDepthSourceText);
             ImGui::TextDisabled("Missing Depth Frames: %u", missingDepthFrames);
             ImGui::TextDisabled("Indices: Tile %u  Cluster %u", tileIndices, clusterIndices);

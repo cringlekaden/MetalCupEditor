@@ -82,6 +82,7 @@ uint32_t MCERendererGetForwardPlusTileIndicesWritten(MCE_CTX);
 uint32_t MCERendererGetForwardPlusClusterIndicesWritten(MCE_CTX);
 uint32_t MCERendererGetForwardPlusTotalTiles(MCE_CTX);
 uint32_t MCERendererGetForwardPlusTotalClusters(MCE_CTX);
+uint32_t MCERendererGetForwardPlusActiveTilesCount(MCE_CTX);
 uint32_t MCERendererGetForwardPlusMissingDepthFrames(MCE_CTX);
 uint32_t MCERendererGetForwardPlusCullingDepthSource(MCE_CTX);
 
