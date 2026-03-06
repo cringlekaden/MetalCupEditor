@@ -19,7 +19,10 @@ namespace MCEPanelState {
         AssetScene = 4,
         AssetPrefab = 5,
         AssetScript = 6,
-        AssetUnknown = 7
+        AssetUnknown = 7,
+        AssetSkeleton = 8,
+        AssetAnimationClip = 9,
+        AssetAudio = 10
     };
 
     enum SortMode : int32_t {

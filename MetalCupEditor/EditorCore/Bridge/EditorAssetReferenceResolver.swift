@@ -7,8 +7,8 @@ enum EditorAssetReferenceResolver {
                                             _ outId: UnsafeMutablePointer<CChar>?,
                                             _ outIdSize: Int32) -> Int32 {
         guard let context = EditorBridgeInternals.contextValue(contextPtr),
-              !context.editorSceneController.isPlaying,
-              !context.editorSceneController.isSimulating,
+              !context.bridgeServices.isPlaying,
+              !context.bridgeServices.isSimulating,
               let ecs = EditorBridgeInternals.ecsValue(context),
               let prefabHandle else { return 0 }
         _ = ecs
@@ -17,9 +17,9 @@ enum EditorAssetReferenceResolver {
         guard let prefabHandleValue = EditorBridgeInternals.assetHandleValue(handleString) else { return 0 }
         do {
             let prefab = try PrefabSerializer.load(from: url)
-            guard let scene = context.editorSceneController.activeScene() else { return 0 }
+            guard let scene = context.bridgeServices.activeScene() else { return 0 }
             let created = scene.instantiate(prefab: prefab, prefabHandle: prefabHandleValue)
-            context.editorProjectManager.notifySceneMutation()
+            EditorBridgeInternals.commitMutation(context, label: "EditorCommand")
             if let first = created.first {
                 return EditorBridgeInternals.cStringWrite(first.id.uuidString, to: outId, max: outIdSize)
             }
@@ -41,11 +41,11 @@ enum EditorAssetReferenceResolver {
         let handleString = resolved.link.prefabHandle.rawValue.uuidString
         _ = EditorBridgeInternals.cStringWrite(handleString, to: prefabHandleOut, max: prefabHandleOutSize)
 
-        let metadataPath = context.editorProjectManager
+        let metadataPath = context.bridgeServices
             .assetMetadataSnapshot()
             .first(where: { $0.handle == resolved.link.prefabHandle })?
             .sourcePath
-        let fallbackPath = context.editorProjectManager.assetURL(for: resolved.link.prefabHandle)?.lastPathComponent
+        let fallbackPath = context.bridgeServices.assetURL(for: resolved.link.prefabHandle)?.lastPathComponent
         _ = EditorBridgeInternals.cStringWrite(metadataPath ?? fallbackPath ?? "", to: prefabPathOut, max: prefabPathOutSize)
         return 1
     }

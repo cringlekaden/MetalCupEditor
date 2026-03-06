@@ -59,8 +59,11 @@ namespace {
     using MCEPanelState::AssetPrefab;
     using MCEPanelState::AssetScript;
     using MCEPanelState::AssetScene;
+    using MCEPanelState::AssetSkeleton;
     using MCEPanelState::AssetTexture;
     using MCEPanelState::AssetUnknown;
+    using MCEPanelState::AssetAnimationClip;
+    using MCEPanelState::AssetAudio;
     using MCEPanelState::BrowserEntry;
     using MCEPanelState::ContentBrowserState;
     using MCEPanelState::ContextTarget;
@@ -83,6 +86,9 @@ namespace {
         case AssetScene: return "Scene";
         case AssetPrefab: return "Prefab";
         case AssetScript: return "Script";
+        case AssetSkeleton: return "Skeleton";
+        case AssetAnimationClip: return "Animation Clip";
+        case AssetAudio: return "Audio";
         default: return "Unknown";
         }
     }
@@ -96,6 +102,9 @@ namespace {
         case AssetScene: return "MCE_ASSET_SCENE";
         case AssetPrefab: return "MCE_ASSET_PREFAB";
         case AssetScript: return "MCE_ASSET_SCRIPT";
+        case AssetSkeleton: return "MCE_ASSET_SKELETON";
+        case AssetAnimationClip: return "MCE_ASSET_ANIMATION_CLIP";
+        case AssetAudio: return "MCE_ASSET_AUDIO";
         default: return "MCE_ASSET_GENERIC";
         }
     }

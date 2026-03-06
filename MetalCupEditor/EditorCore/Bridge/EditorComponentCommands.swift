@@ -38,8 +38,9 @@ enum EditorComponentCommands {
 
     static func addComponent(_ contextPtr: UnsafeRawPointer?, _ entityId: UnsafePointer<CChar>?, _ componentType: Int32) -> UInt32 {
         guard let context = EditorBridgeInternals.contextValue(contextPtr),
-              !context.editorSceneController.isPlaying,
-              !context.editorSceneController.isSimulating,
+              !context.bridgeServices.isPlaying,
+              !context.bridgeServices.isSimulating,
+              let scene = context.bridgeServices.activeScene(),
               let ecs = EditorBridgeInternals.ecsValue(context),
               let entity = EditorBridgeInternals.entityValue(from: entityId, context: context),
               let type = BridgeComponentType(rawValue: componentType) else { return 0 }
@@ -47,7 +48,9 @@ enum EditorComponentCommands {
         case .name:
             ecs.add(NameComponent(name: "Entity"), to: entity)
         case .transform:
-            ecs.add(TransformComponent(), to: entity)
+            _ = scene.transformAuthority.ensureLocalTransform(entity: entity,
+                                                              default: TransformComponent(),
+                                                              source: .editor)
         case .meshRenderer:
             ecs.add(MeshRendererComponent(meshHandle: nil), to: entity)
         case .light:
@@ -82,7 +85,7 @@ enum EditorComponentCommands {
         case .characterController:
             ecs.add(CharacterControllerComponent(), to: entity)
         }
-        context.editorProjectManager.notifySceneMutation()
+        EditorBridgeInternals.commitMutation(context, label: "EditorCommand")
         return 1
     }
 }

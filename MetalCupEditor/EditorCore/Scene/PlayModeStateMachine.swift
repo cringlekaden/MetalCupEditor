@@ -57,12 +57,14 @@ final class PlayModeStateMachine {
             return .play
         case (.edit, .simulate):
             return .simulate
-        case (.play, .stop), (.pausedPlay, .stop), (.pausedSimulate, .stop):
+        case (.play, .stop), (.pausedPlay, .stop), (.simulate, .stop), (.pausedSimulate, .stop):
             return .edit
         case (.simulate, .resetSimulate), (.pausedSimulate, .resetSimulate):
             return .edit
         case (.play, .pause):
             return .pausedPlay
+        case (.simulate, .pause):
+            return .pausedSimulate
         case (.pausedPlay, .resume):
             return .play
         case (.pausedSimulate, .resume):

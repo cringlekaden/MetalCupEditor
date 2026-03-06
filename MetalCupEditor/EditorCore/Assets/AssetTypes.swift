@@ -16,6 +16,9 @@ enum AssetTypes {
         case .prefab: return 5
         case .script: return 6
         case .unknown: return 7
+        case .skeleton: return 8
+        case .animationClip: return 9
+        case .audio: return 10
         @unknown default: return 7
         }
     }
@@ -36,6 +39,12 @@ enum AssetTypes {
             return .prefab
         case "lua", "mcscript", "cs":
             return .script
+        case "skeleton", "mcskeleton":
+            return .skeleton
+        case "anim", "animclip", "mcanim":
+            return .animationClip
+        case "wav", "ogg", "mp3", "aiff", "caf", "m4a":
+            return .audio
         default:
             return .unknown
         }

@@ -227,7 +227,10 @@ final class EditorSceneController {
     private func updateEditorScene(_ scene: EngineScene, frame: FrameContext) {
         recordProfilerScope(.sceneUpdate) {
             if isSimulating {
-                scene.updateSimulate(frame: frame, scriptsEnabled: false)
+                // Simulate mode policy: keep animation advancing even when script execution is disabled.
+                scene.updateSimulate(frame: frame,
+                                     scriptsEnabled: false,
+                                     animationPolicy: .animateWithoutScripts)
             } else {
                 scene.updateEdit(frame: frame)
             }

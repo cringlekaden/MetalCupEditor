@@ -3,6 +3,7 @@ import MetalCupEngine
 
 enum EditorSceneQueries {
     static func getEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
+        EditorBridgeInternals.markFacadeInvocation("EditorSceneQueries.getEntityCount")
         guard let context = EditorBridgeInternals.contextValue(contextPtr), let ecs = EditorBridgeInternals.ecsValue(context) else { return 0 }
         return Int32(ecs.allEntities().count)
     }
@@ -96,7 +97,7 @@ enum EditorSceneQueries {
 
     static func getEditorCameraMatrices(_ contextPtr: UnsafeRawPointer?, _ viewOut: UnsafeMutablePointer<Float>?,
                                         _ projectionOut: UnsafeMutablePointer<Float>?) -> UInt32 {
-        guard let context = EditorBridgeInternals.contextValue(contextPtr), let scene = context.editorSceneController.activeScene() else { return 0 }
+        guard let context = EditorBridgeInternals.contextValue(contextPtr), let scene = context.bridgeServices.activeScene() else { return 0 }
         let matrices = SceneRenderer.cameraMatrices(scene: scene)
         if let viewOut { EditorBridgeInternals.matrixWrite(matrices.view, to: viewOut) }
         if let projectionOut { EditorBridgeInternals.matrixWrite(matrices.projection, to: projectionOut) }

@@ -564,6 +564,12 @@ struct AssetPathResolver {
             return assetsRootURL.appendingPathComponent("Scenes", isDirectory: true)
         case .script:
             return assetsRootURL.appendingPathComponent("Scripts", isDirectory: true)
+        case .skeleton:
+            return assetsRootURL.appendingPathComponent("Skeletons", isDirectory: true)
+        case .animationClip:
+            return assetsRootURL.appendingPathComponent("Animations", isDirectory: true)
+        case .audio:
+            return assetsRootURL.appendingPathComponent("Audio", isDirectory: true)
         case .unknown:
             return nil
         @unknown default:

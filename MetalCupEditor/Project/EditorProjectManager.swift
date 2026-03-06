@@ -830,6 +830,12 @@ final class EditorProjectManager {
             return "Scenes"
         case .script:
             return "Scripts"
+        case .skeleton:
+            return "Skeletons"
+        case .animationClip:
+            return "Animations"
+        case .audio:
+            return "Audio"
         case .unknown:
             return nil
         @unknown default:

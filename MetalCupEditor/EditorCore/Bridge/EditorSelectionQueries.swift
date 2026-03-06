@@ -4,7 +4,7 @@ import MetalCupEngine
 enum EditorSelectionQueries {
     static func getSelectedEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
         guard let context = EditorBridgeInternals.contextValue(contextPtr) else { return 0 }
-        return Int32(context.editorSceneController.selectedEntityUUIDs().count)
+        return Int32(context.bridgeServices.selectedEntityIds().count)
     }
 
     static func getSelectedEntityIdAt(_ contextPtr: UnsafeRawPointer?,
@@ -12,26 +12,9 @@ enum EditorSelectionQueries {
                                       _ buffer: UnsafeMutablePointer<CChar>?,
                                       _ bufferSize: Int32) -> Int32 {
         guard let context = EditorBridgeInternals.contextValue(contextPtr), index >= 0 else { return 0 }
-        let ids = context.editorSceneController.selectedEntityUUIDs()
+        let ids = context.bridgeServices.selectedEntityIds()
         guard index < Int32(ids.count) else { return 0 }
         return EditorBridgeInternals.cStringWrite(ids[Int(index)].uuidString, to: buffer, max: bufferSize)
     }
 
-    static func setSelectedEntitiesCSV(_ contextPtr: UnsafeRawPointer?,
-                                       _ csv: UnsafePointer<CChar>?,
-                                       _ primaryId: UnsafePointer<CChar>?) {
-        guard let context = EditorBridgeInternals.contextValue(contextPtr) else { return }
-        let requested = EditorBridgeInternals.entityIdsFromCSV(csv)
-        guard let scene = context.editorSceneController.activeScene() else {
-            context.editorSceneController.setSelectedEntityIds([], primary: nil)
-            return
-        }
-        var filtered: [UUID] = []
-        filtered.reserveCapacity(requested.count)
-        for id in requested where scene.ecs.entity(with: id) != nil {
-            filtered.append(id)
-        }
-        let primary = primaryId.flatMap { UUID(uuidString: String(cString: $0)) }
-        context.editorSceneController.setSelectedEntityIds(filtered, primary: primary)
-    }
 }

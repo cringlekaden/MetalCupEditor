@@ -5,6 +5,69 @@
 import Foundation
 import MetalCupEngine
 
+protocol EditorBridgeServices: AnyObject {
+    var isPlaying: Bool { get }
+    var isSimulating: Bool { get }
+    var runtimeScene: EngineScene? { get }
+
+    func activeScene() -> EngineScene?
+    func selectedEntityIds() -> [UUID]
+    func setSelectedEntityIds(_ ids: [UUID], primary: UUID?)
+
+    func notifySceneMutation()
+    func assetMetadataSnapshot() -> [AssetMetadata]
+    func assetURL(for handle: AssetHandle) -> URL?
+    func performAssetMutation(_ body: () throws -> Bool) -> Bool
+    var supportsUndoTransactions: Bool { get }
+    func recordUndoTransaction(_ label: String)
+}
+
+final class DefaultEditorBridgeServices: EditorBridgeServices {
+    private unowned let context: MCEContext
+
+    init(context: MCEContext) {
+        self.context = context
+    }
+
+    var isPlaying: Bool { context.editorSceneController.isPlaying }
+    var isSimulating: Bool { context.editorSceneController.isSimulating }
+    var runtimeScene: EngineScene? { context.editorSceneController.runtimeScene }
+
+    func activeScene() -> EngineScene? {
+        context.editorSceneController.activeScene()
+    }
+
+    func selectedEntityIds() -> [UUID] {
+        context.editorSceneController.selectedEntityUUIDs()
+    }
+
+    func setSelectedEntityIds(_ ids: [UUID], primary: UUID?) {
+        context.editorSceneController.setSelectedEntityIds(ids, primary: primary)
+    }
+
+    func notifySceneMutation() {
+        context.editorProjectManager.notifySceneMutation()
+    }
+
+    func assetMetadataSnapshot() -> [AssetMetadata] {
+        context.editorProjectManager.assetMetadataSnapshot()
+    }
+
+    func assetURL(for handle: AssetHandle) -> URL? {
+        context.editorProjectManager.assetURL(for: handle)
+    }
+
+    func performAssetMutation(_ body: () throws -> Bool) -> Bool {
+        context.editorProjectManager.performAssetMutation(body)
+    }
+
+    var supportsUndoTransactions: Bool { false }
+
+    func recordUndoTransaction(_ label: String) {
+        _ = label
+    }
+}
+
 final class EditorAssetSnapshotStore {
     var snapshot: [AssetMetadata] = []
     var revision: UInt64 = 0
@@ -46,6 +109,7 @@ final class MCEContext {
     let importController: ImportController
     let panelState: UnsafeMutableRawPointer
     var imguiBridge: ImGuiBridge?
+    lazy var bridgeServices: EditorBridgeServices = DefaultEditorBridgeServices(context: self)
 
     init(engineContext: EngineContext) {
         self.engineContext = engineContext
