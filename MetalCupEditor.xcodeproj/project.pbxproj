@@ -9,6 +9,8 @@
 /* Begin PBXBuildFile section */
 		3786522A2F32EE2800321B24 /* MetalCupEngine.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 378652292F32EE2800321B24 /* MetalCupEngine.framework */; settings = {ATTRIBUTES = (Required, ); }; };
 		3786522B2F32EE2800321B24 /* MetalCupEngine.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 378652292F32EE2800321B24 /* MetalCupEngine.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+		37BA04A32F5F3E790085FBA6 /* Assimp in Frameworks */ = {isa = PBXBuildFile; productRef = 37BA04A22F5F3E790085FBA6 /* Assimp */; };
+		37BA04A62F5F3F890085FBA6 /* libassimp.dylib in CopyFiles */ = {isa = PBXBuildFile; fileRef = 37BA04A52F5F3F890085FBA6 /* libassimp.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		37F505032F3C2AB8001C21A5 /* MetalCupEditor in Resources */ = {isa = PBXBuildFile; fileRef = 37F505022F3C2AB8001C21A5 /* MetalCupEditor */; };
 /* End PBXBuildFile section */
 
@@ -24,18 +26,139 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		37BA04A42F5F3EEC0085FBA6 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				37BA04A62F5F3F890085FBA6 /* libassimp.dylib in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		375E99272F3F589A00F39780 /* AGENTS.md */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AGENTS.md; sourceTree = "<group>"; };
 		3786521A2F32EDBB00321B24 /* MetalCupEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MetalCupEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		378652292F32EE2800321B24 /* MetalCupEngine.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = MetalCupEngine.framework; sourceTree = BUILT_PRODUCTS_DIR; };
+		37BA04A52F5F3F890085FBA6 /* libassimp.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libassimp.dylib; sourceTree = "<group>"; };
 		37F505022F3C2AB8001C21A5 /* MetalCupEditor */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MetalCupEditor; path = "../../../Library/Application Support/MetalCupEditor"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		3709C97A2F60D09200A7CD42 /* Exceptions for "MetalCupEditor" folder in "MetalCupEditor" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Assets.xcassets,
+				ImGui/LICENSE.txt,
+				ImGuizmo/LICENSE,
+				"ImGuizmo/README-ImGuizmo.md",
+				README.md,
+				"ThirdParty/imgui-node-editor/docs/CHANGELOG.txt",
+				"ThirdParty/imgui-node-editor/docs/README.md",
+				"ThirdParty/imgui-node-editor/docs/TODO.md",
+				"ThirdParty/imgui-node-editor/examples/application/CMakeLists.txt",
+				"ThirdParty/imgui-node-editor/examples/application/source/application.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/config.h.in",
+				"ThirdParty/imgui-node-editor/examples/application/source/entry_point.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/imgui_impl_dx11.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/imgui_impl_glfw.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/imgui_impl_opengl3.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/imgui_impl_win32.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/platform_glfw.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/platform_win32.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/renderer_dx11.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/source/renderer_ogl3.cpp",
+				"ThirdParty/imgui-node-editor/examples/application/support/Icon.icns",
+				"ThirdParty/imgui-node-editor/examples/application/support/Icon.ico",
+				"ThirdParty/imgui-node-editor/examples/application/support/Icon.png",
+				"ThirdParty/imgui-node-editor/examples/application/support/Info.plist.in",
+				"ThirdParty/imgui-node-editor/examples/application/support/Resource.rc.in",
+				"ThirdParty/imgui-node-editor/examples/basic-interaction-example/basic-interaction-example.cpp",
+				"ThirdParty/imgui-node-editor/examples/basic-interaction-example/CMakeLists.txt",
+				"ThirdParty/imgui-node-editor/examples/blueprints-example/blueprints-example.cpp",
+				"ThirdParty/imgui-node-editor/examples/blueprints-example/CMakeLists.txt",
+				"ThirdParty/imgui-node-editor/examples/blueprints-example/data/BlueprintBackground.png",
+				"ThirdParty/imgui-node-editor/examples/blueprints-example/data/ic_restore_white_24dp.png",
+				"ThirdParty/imgui-node-editor/examples/blueprints-example/data/ic_save_white_24dp.png",
+				"ThirdParty/imgui-node-editor/examples/blueprints-example/utilities/builders.cpp",
+				"ThirdParty/imgui-node-editor/examples/blueprints-example/utilities/drawing.cpp",
+				"ThirdParty/imgui-node-editor/examples/blueprints-example/utilities/widgets.cpp",
+				"MetalCupEditor/ThirdParty/imgui-node-editor/examples/blueprints-example/utilities/widgets.cpp",
+				"ThirdParty/imgui-node-editor/examples/canvas-example/canvas-example.cpp",
+				"ThirdParty/imgui-node-editor/examples/canvas-example/CMakeLists.txt",
+				"ThirdParty/imgui-node-editor/examples/CMakeLists.txt",
+				"ThirdParty/imgui-node-editor/examples",
+				"MetalCupEditor/ThirdParty/imgui-node-editor/examples",
+				"ThirdParty/imgui-node-editor/examples/data/Cuprum-Bold.ttf",
+				"ThirdParty/imgui-node-editor/examples/data/Cuprum-OFL.txt",
+				"ThirdParty/imgui-node-editor/examples/data/Oswald-OFL.txt",
+				"ThirdParty/imgui-node-editor/examples/data/Oswald-Regular.ttf",
+				"ThirdParty/imgui-node-editor/examples/data/Play-OFL.txt",
+				"ThirdParty/imgui-node-editor/examples/data/Play-Regular.ttf",
+				"ThirdParty/imgui-node-editor/examples/simple-example/CMakeLists.txt",
+				"ThirdParty/imgui-node-editor/examples/simple-example/simple-example.cpp",
+				"ThirdParty/imgui-node-editor/examples/widgets-example/CMakeLists.txt",
+				"ThirdParty/imgui-node-editor/examples/widgets-example/widgets-example.cpp",
+			);
+			target = 378652192F32EDBB00321B24 /* MetalCupEditor */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
+		3709CAFA2F60D17A00A7CD42 /* Exceptions for "MetalCupEditor" folder in "Copy Bundle Resources" phase from "MetalCupEditor" target */ = {
+			isa = PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet;
+			buildPhase = 378652182F32EDBB00321B24 /* Resources */;
+			membershipExceptions = (
+				ImGui/backends/imgui_impl_metal.h,
+				ImGui/backends/imgui_impl_metal.mm,
+				ImGui/backends/imgui_impl_osx.h,
+				ImGui/backends/imgui_impl_osx.mm,
+				ImGui/imconfig.h,
+				ImGui/imgui_demo.cpp,
+				ImGui/imgui_draw.cpp,
+				ImGui/imgui_internal.h,
+				ImGui/imgui_tables.cpp,
+				ImGui/imgui_widgets.cpp,
+				ImGui/imgui.cpp,
+				ImGui/imgui.h,
+				ImGui/imstb_rectpack.h,
+				ImGui/imstb_textedit.h,
+				ImGui/imstb_truetype.h,
+				ImGuizmo/GraphEditor.cpp,
+				ImGuizmo/GraphEditor.h,
+				ImGuizmo/ImCurveEdit.cpp,
+				ImGuizmo/ImCurveEdit.h,
+				ImGuizmo/ImGradient.cpp,
+				ImGuizmo/ImGradient.h,
+				ImGuizmo/ImGuizmo.cpp,
+				ImGuizmo/ImGuizmo.h,
+				ImGuizmo/ImLightRig.h,
+				ImGuizmo/ImSequencer.cpp,
+				ImGuizmo/ImSequencer.h,
+				ImGuizmo/ImZoomSlider.h,
+				"ThirdParty/imgui-node-editor/crude_json.cpp",
+				"ThirdParty/imgui-node-editor/crude_json.h",
+				"ThirdParty/imgui-node-editor/imgui_bezier_math.h",
+				"ThirdParty/imgui-node-editor/imgui_canvas.cpp",
+				"ThirdParty/imgui-node-editor/imgui_canvas.h",
+				"ThirdParty/imgui-node-editor/imgui_extra_math.h",
+				"ThirdParty/imgui-node-editor/imgui_node_editor_api.cpp",
+				"ThirdParty/imgui-node-editor/imgui_node_editor_internal.h",
+				"ThirdParty/imgui-node-editor/imgui_node_editor.cpp",
+				"ThirdParty/imgui-node-editor/imgui_node_editor.h",
+			);
+		};
+/* End PBXFileSystemSynchronizedGroupBuildPhaseMembershipExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		3786521C2F32EDBB00321B24 /* MetalCupEditor */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				3709C97A2F60D09200A7CD42 /* Exceptions for "MetalCupEditor" folder in "MetalCupEditor" target */,
+				3709CAFA2F60D17A00A7CD42 /* Exceptions for "MetalCupEditor" folder in "Copy Bundle Resources" phase from "MetalCupEditor" target */,
+			);
 			path = MetalCupEditor;
 			sourceTree = "<group>";
 		};
@@ -47,6 +170,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				3786522A2F32EE2800321B24 /* MetalCupEngine.framework in Frameworks */,
+				37BA04A32F5F3E790085FBA6 /* Assimp in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -56,6 +180,7 @@
 		378652112F32EDBB00321B24 = {
 			isa = PBXGroup;
 			children = (
+				37BA04A52F5F3F890085FBA6 /* libassimp.dylib */,
 				375E99272F3F589A00F39780 /* AGENTS.md */,
 				37F505022F3C2AB8001C21A5 /* MetalCupEditor */,
 				3786521C2F32EDBB00321B24 /* MetalCupEditor */,
@@ -91,6 +216,7 @@
 				378652172F32EDBB00321B24 /* Frameworks */,
 				378652182F32EDBB00321B24 /* Resources */,
 				3786522C2F32EE2800321B24 /* Embed Frameworks */,
+				37BA04A42F5F3EEC0085FBA6 /* CopyFiles */,
 			);
 			buildRules = (
 			);
@@ -101,6 +227,7 @@
 			);
 			name = MetalCupEditor;
 			packageProductDependencies = (
+				37BA04A22F5F3E790085FBA6 /* Assimp */,
 			);
 			productName = MetalCupEditor;
 			productReference = 3786521A2F32EDBB00321B24 /* MetalCupEditor.app */;
@@ -131,6 +258,9 @@
 			);
 			mainGroup = 378652112F32EDBB00321B24;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				37BA04A12F5F3E790085FBA6 /* XCLocalSwiftPackageReference "LocalPackages/SwiftAssimp" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3786521B2F32EDBB00321B24 /* Products */;
 			projectDirPath = "";
@@ -311,6 +441,11 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/MetalCupEditor/ThirdParty/imgui-node-editor/external/DXSDK/lib/x64",
+					"$(PROJECT_DIR)/MetalCupEditor/ThirdParty/imgui-node-editor/external/DXSDK/lib/x86",
+				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cringlekaden.MetalCupEditor;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -347,6 +482,11 @@
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/MetalCupEditor/ThirdParty/imgui-node-editor/external/DXSDK/lib/x64",
+					"$(PROJECT_DIR)/MetalCupEditor/ThirdParty/imgui-node-editor/external/DXSDK/lib/x86",
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.cringlekaden.MetalCupEditor;
@@ -385,6 +525,21 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		37BA04A12F5F3E790085FBA6 /* XCLocalSwiftPackageReference "LocalPackages/SwiftAssimp" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = LocalPackages/SwiftAssimp;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		37BA04A22F5F3E790085FBA6 /* Assimp */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 37BA04A12F5F3E790085FBA6 /* XCLocalSwiftPackageReference "LocalPackages/SwiftAssimp" */;
+			productName = Assimp;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 378652122F32EDBB00321B24 /* Project object */;
 }
