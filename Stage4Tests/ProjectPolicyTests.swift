@@ -10,6 +10,7 @@ struct ProjectPolicyTests {
         try externalProjectOpensInPlace()
         try portableOverridePathsStayInsideProject()
         try validationProjectIsCanonical()
+        try phase2ValidationLabScenesDecode()
         print("Stage 4 Editor policy tests passed")
     }
 
@@ -104,6 +105,75 @@ struct ProjectPolicyTests {
         require(renderer.effectiveGlobalIBLSamplingGain == 1.0, "Validation scene must sample captured IBL at unit gain")
         require(renderer.tonemap == TonemapType.filmic.rawValue, "Validation scene must resolve to MetalCup Filmic v1")
         require(renderer.gamma == 2.2, "Validation scene must retain neutral legacy gamma state")
+        guard let validationLightEntity = scene.entities.first(where: { $0.components.name?.name == "Validation Sun" }),
+              let validationLight = validationLightEntity.components.light,
+              let validationTransform = validationLightEntity.components.transform else {
+            throw TestFailure("Validation scene must contain its transform-authored directional light")
+        }
+        require(validationLight.schemaVersion == LightComponentDTO.currentSchemaVersion,
+                "Validation Sun must use modern transform-authoritative serialization")
+        require(validationLight.data.type == 2 && abs(validationLight.data.brightness - .pi) < 0.0001,
+                "Validation Sun must persist directional illuminance pi")
+        require(abs(validationTransform.rotationQuat.w) < 0.99,
+                "Validation Sun must not retain an identity transform with a redundant diagonal direction")
+    }
+
+    private static func phase2ValidationLabScenesDecode() throws {
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).standardizedFileURL
+        let scenes = root.appendingPathComponent("Assets/Scenes", isDirectory: true)
+
+        let material = try decodeScene(named: "MaterialReference", in: scenes)
+        let materialLights = material.entities.compactMap { $0.components.light }
+        require(materialLights.count == 1, "MaterialReference must have exactly one analytic light")
+        require(abs(materialLights[0].data.brightness - .pi) < 0.0001,
+                "MaterialReference directional illuminance must be pi")
+        require(material.entities.compactMap { $0.components.environment }.isEmpty,
+                "MaterialReference direct reference must not create an environment Sun")
+        require(material.entities.compactMap { $0.components.meshRenderer?.material }.count >= 8,
+                "MaterialReference must contain explicit dielectric and metal references")
+
+        let analytic = try decodeScene(named: "AnalyticLightLab", in: scenes)
+        let analyticLights = analytic.entities.compactMap { $0.components.light }
+        require(analyticLights.count == 3, "AnalyticLightLab must contain directional, point, and spot rigs")
+        require(analyticLights.filter { $0.data.brightness > 0 }.count == 1,
+                "AnalyticLightLab must start with exactly one active rig")
+        require(analyticLights.filter { $0.type != .directional }.allSatisfy { !$0.castsShadows },
+                "Point and spot validation rigs must not claim shadow support")
+
+        let shadow = try decodeScene(named: "ShadowValidation", in: scenes)
+        let shadowCasters = shadow.entities.compactMap { $0.components.light }.filter { $0.castsShadows }
+        require(shadowCasters.count == 1 && shadowCasters[0].type == .directional,
+                "ShadowValidation must contain exactly one directional caster")
+        require(shadow.entities.compactMap { $0.components.environment }.isEmpty,
+                "ShadowValidation must not create an environment Sun")
+        guard let shadowCamera = shadow.entities.compactMap({ $0.components.camera }).first else {
+            throw TestFailure("ShadowValidation must contain a camera")
+        }
+        require(shadowCamera.nearPlane == 0.1 && shadowCamera.farPlane == 100,
+                "ShadowValidation camera must use near 0.1 and far 100")
+        guard let shadowSettings = shadow.rendererSettingsOverride?.makeRendererSettings().shadows else {
+            throw TestFailure("ShadowValidation must persist hard-shadow settings")
+        }
+        require(shadowSettings.enabled != 0 && shadowSettings.filterMode == ShadowFilterMode.hard.rawValue,
+                "ShadowValidation must start in hard-shadow mode")
+
+        let ao = try decodeScene(named: "AOReference", in: scenes)
+        require(ao.entities.compactMap { $0.components.environment }.count == 1,
+                "AOReference must contain one controlled indirect environment")
+        guard let aoSettings = ao.rendererSettingsOverride?.makeRendererSettings() else {
+            throw TestFailure("AOReference must persist AO settings")
+        }
+        require(aoSettings.ssaoEnabled != 0, "AOReference must enable SAO")
+        let aoNames = Set(ao.entities.compactMap { $0.components.name?.name })
+        for role in ["Isolated Elevated Object", "Touching Pair Left", "Touching Pair Right",
+                     "Wall Floor Corner", "Wedge Grazing Contact", "Isolated Silhouette"] {
+            require(aoNames.contains(role), "AOReference is missing \(role)")
+        }
+    }
+
+    private static func decodeScene(named name: String, in scenes: URL) throws -> SceneDocument {
+        let url = scenes.appendingPathComponent("\(name).mcscene")
+        return try JSONDecoder().decode(SceneDocument.self, from: Data(contentsOf: url))
     }
 
     private static func temporaryDirectory(named name: String) -> URL {

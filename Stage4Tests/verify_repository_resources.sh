@@ -50,6 +50,36 @@ jq -e '.entities[] | select(.components.camera != null) | .components.camera | .
 jq -e '.rendererSettingsOverride | .iblEnabled == 1 and .iblIntensity == 1 and .tonemap == 5 and .gamma == 2.2' \
     "$validation_root/Assets/Scenes/RendererValidation.mcscene" >/dev/null
 
+for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference; do
+    scene="$validation_root/Assets/Scenes/$scene_name.mcscene"
+    meta="$scene.meta"
+    test -f "$scene"
+    test -f "$meta"
+    jq empty "$scene"
+    jq empty "$meta"
+    jq -e '.entities[] | select(.components.camera != null) | .components.camera | .autoExposureEnabled == false and .exposureEV == 0' \
+        "$scene" >/dev/null
+    jq -e --arg source "Scenes/$scene_name.mcscene" '.sourcePath == $source and .type == "scene"' "$meta" >/dev/null
+done
+
+jq -e '[.entities[].components.light? | select(. != null)] | length == 1 and .[0].type == "directional" and (.[0].data.brightness - 3.1415927 | if . < 0 then -. else . end) < 0.0001' \
+    "$validation_root/Assets/Scenes/MaterialReference.mcscene" >/dev/null
+jq -e '[.entities[].components.environment? | select(. != null)] | length == 0' \
+    "$validation_root/Assets/Scenes/MaterialReference.mcscene" >/dev/null
+jq -e '[.entities[].components.light? | select(. != null)] | length == 3 and ([.[] | select(.data.brightness > 0)] | length == 1)' \
+    "$validation_root/Assets/Scenes/AnalyticLightLab.mcscene" >/dev/null
+jq -e '[.entities[].components.light? | select(. != null and .castsShadows == true)] | length == 1 and .[0].type == "directional"' \
+    "$validation_root/Assets/Scenes/ShadowValidation.mcscene" >/dev/null
+jq -e '.rendererSettingsOverride.shadows | .enabled == 1 and .filterMode == 0' \
+    "$validation_root/Assets/Scenes/ShadowValidation.mcscene" >/dev/null
+jq -e '.rendererSettingsOverride.ssaoEnabled == 1 and ([.entities[].components.environment? | select(. != null)] | length == 1)' \
+    "$validation_root/Assets/Scenes/AOReference.mcscene" >/dev/null
+
+if rg -n '/Volumes/External/kadencringle|Library/Application Support/MetalCupEditor' "$validation_root" >/dev/null; then
+    echo "RendererValidation contains a machine-local path." >&2
+    exit 1
+fi
+
 pbx="$editor_root/MetalCupEditor.xcodeproj/project.pbxproj"
 if grep -q 'Library/Application Support/MetalCupEditor' "$pbx"; then
     echo "Editor project still references live Application Support content." >&2
@@ -61,6 +91,10 @@ grep -q 'path = MetalCupEditor/Resources/Icons;' "$pbx"
 if git -C "$engine_root" rev-parse --git-dir >/dev/null 2>&1; then
     git -C "$engine_root" ls-files --error-unmatch MetalCupEngine/Assets/Shaders/BasicShaders.metal >/dev/null
     git -C "$editor_root" ls-files --error-unmatch RendererValidation/Project.mcp >/dev/null
+    for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference; do
+        git -C "$editor_root" ls-files --error-unmatch "RendererValidation/Assets/Scenes/$scene_name.mcscene" >/dev/null
+        git -C "$editor_root" ls-files --error-unmatch "RendererValidation/Assets/Scenes/$scene_name.mcscene.meta" >/dev/null
+    done
     git -C "$editor_root" ls-files --error-unmatch ASSET_ATTRIBUTION.md >/dev/null
     git -C "$editor_root" ls-files --error-unmatch MetalCupEditor/Projects/Sandbox/Assets/Textures/Moon/lroc_color_2k.jpg >/dev/null
     git -C "$editor_root" ls-files --error-unmatch MetalCupEditor/Resources/Icons/FA7Free-Regular-400.otf >/dev/null

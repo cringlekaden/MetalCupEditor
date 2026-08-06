@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "id": "22000000-0000-4000-8000-000000000001",
+  "name": "ShadowValidation",
+  "entities": [
+    {
+      "id": "22000000-0000-4000-8000-000000000010",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "Shadow Camera near 0.1 far 100" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 5, "z": 0 }, "rotationQuat": { "x": -0.0871557, "y": 0, "z": 0, "w": 0.9961947 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "camera": { "schemaVersion": 4, "fovDegrees": 50, "nearPlane": 0.1, "farPlane": 100, "isPrimary": true, "isEditor": true, "autoExposureEnabled": false, "exposureEV": 0 }
+      }
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000011",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "ONLY Shadow Caster - Diagonal Directional" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 0, "z": 0 }, "rotationQuat": { "x": -0.5005899, "y": 0.3128687, "z": 0, "w": 0.8071697 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "light": { "schemaVersion": 2, "type": "directional", "castsShadows": true, "direction": { "x": -0.5050763, "y": -0.808122, "z": -0.3030458 }, "range": 0, "innerConeCos": 0.95, "outerConeCos": 0.9, "data": { "position": { "x": 0, "y": 0, "z": 0 }, "type": 2, "direction": { "x": -0.5050763, "y": -0.808122, "z": -0.3030458 }, "range": 0, "color": { "x": 1, "y": 1, "z": 1 }, "brightness": 3.1415927, "ambientIntensity": 1, "diffuseIntensity": 1, "specularIntensity": 1, "innerConeCos": 0.95, "outerConeCos": 0.9 } }
+      }
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000012",
+      "components": { "name": { "schemaVersion": 1, "name": "Receiver Plane depth span 0-100" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": -0.1, "z": -40 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 20, "y": 0.1, "z": 80 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007" } }
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000020",
+      "components": { "name": { "schemaVersion": 1, "name": "Near Large Caster camera depth about 5" }, "transform": { "schemaVersion": 2, "position": { "x": -3, "y": 2, "z": -5 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 2, "y": 2, "z": 2 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000021",
+      "components": { "name": { "schemaVersion": 1, "name": "Mid Medium Caster camera depth about 20" }, "transform": { "schemaVersion": 2, "position": { "x": 2, "y": 1.25, "z": -20 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1.25, "y": 1.25, "z": 1.25 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000022",
+      "components": { "name": { "schemaVersion": 1, "name": "Far Thin Caster camera depth about 60" }, "transform": { "schemaVersion": 2, "position": { "x": -1, "y": 2, "z": -60 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.12, "y": 2, "z": 2 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "22000000-0000-4000-8000-000000000023",
+      "components": { "name": { "schemaVersion": 1, "name": "Grazing Bias Stress Caster depth about 35" }, "transform": { "schemaVersion": 2, "position": { "x": 4, "y": 0.75, "z": -35 }, "rotationQuat": { "x": 0, "y": 0, "z": 0.3826834, "w": 0.9238795 }, "scale": { "x": 4, "y": 0.15, "z": 2 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    }
+  ],
+  "rendererSettingsOverride": {
+    "schemaVersion": 4, "tonemap": 5, "gamma": 2.2, "iblEnabled": 0, "iblIntensity": 1, "ssaoEnabled": 0,
+    "shadows": { "enabled": 1, "directionalEnabled": 1, "shadowMapResolution": 2048, "cascadeCount": 3, "cascadeSplitLambda": 0.65, "depthBias": 0.0005, "normalBias": 0.01, "filterMode": 0, "maxShadowDistance": 100, "fadeOutDistance": 10 }
+  }
+}

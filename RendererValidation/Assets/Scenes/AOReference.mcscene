@@ -1,0 +1,61 @@
+{
+  "schemaVersion": 1,
+  "id": "23000000-0000-4000-8000-000000000001",
+  "name": "AOReference",
+  "entities": [
+    {
+      "id": "23000000-0000-4000-8000-000000000010",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "AO Camera" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 5, "z": 14 }, "rotationQuat": { "x": -0.1736482, "y": 0, "z": 0, "w": 0.9848078 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "camera": { "schemaVersion": 4, "fovDegrees": 45, "nearPlane": 0.1, "farPlane": 100, "isPrimary": true, "isEditor": true, "autoExposureEnabled": false, "exposureEV": 0 }
+      }
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000011",
+      "components": { "name": { "schemaVersion": 1, "name": "AO Receiver Floor" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": -0.1, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 12, "y": 0.1, "z": 10 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000012",
+      "components": { "name": { "schemaVersion": 1, "name": "Isolated Elevated Object" }, "transform": { "schemaVersion": 2, "position": { "x": -5, "y": 2.5, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000013",
+      "components": { "name": { "schemaVersion": 1, "name": "Touching Pair Left" }, "transform": { "schemaVersion": 2, "position": { "x": -2.5, "y": 1, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000014",
+      "components": { "name": { "schemaVersion": 1, "name": "Touching Pair Right" }, "transform": { "schemaVersion": 2, "position": { "x": -0.5, "y": 1, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000015",
+      "components": { "name": { "schemaVersion": 1, "name": "Wall Floor Corner" }, "transform": { "schemaVersion": 2, "position": { "x": 2, "y": 2, "z": -2 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.15, "y": 2, "z": 2 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000016",
+      "components": { "name": { "schemaVersion": 1, "name": "Wedge Grazing Contact" }, "transform": { "schemaVersion": 2, "position": { "x": 3.5, "y": 0.55, "z": 1 }, "rotationQuat": { "x": 0, "y": 0, "z": 0.258819, "w": 0.9659258 }, "scale": { "x": 2.5, "y": 0.15, "z": 1 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000017",
+      "components": { "name": { "schemaVersion": 1, "name": "Isolated Silhouette" }, "transform": { "schemaVersion": 2, "position": { "x": 5.5, "y": 2, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.4, "y": 2, "z": 0.4 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-000000000018",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "Controlled Procedural Indirect Environment" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 0, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "environment": {
+          "schemaVersion": 1, "enabled": true,
+          "source": { "schemaVersion": 1, "mode": 1 },
+          "celestial": { "schemaVersion": 1, "defaultTimeOfDay": 15.9, "moonIntensity": 0.18, "moonSizeDegrees": 0.54, "starIntensity": 0.75 },
+          "atmosphere": { "schemaVersion": 1, "amount": 0.92, "density": 0.72, "haze": 1, "mood": -1, "temperature": 0 },
+          "weather": { "schemaVersion": 1, "amount": 0, "blend": 0, "primaryType": 0, "secondaryType": 0 },
+          "clouds": { "schemaVersion": 1, "coverage": 0.3, "style": 2 },
+          "fog": { "schemaVersion": 1, "amount": 0, "distance": 105.5, "height": 105.7 },
+          "ibl": { "schemaVersion": 1, "autoRebuildOnChange": false, "realtimeUpdate": false }
+        }
+      }
+    }
+  ],
+  "rendererSettingsOverride": { "schemaVersion": 4, "tonemap": 5, "gamma": 2.2, "iblEnabled": 1, "iblIntensity": 1, "ssaoEnabled": 1, "aoMethod": 0, "ssaoRadius": 0.35, "ssaoIntensity": 1.25, "ssaoPower": 1, "ssaoBias": 0.008, "shadows": { "enabled": 0, "directionalEnabled": 1, "filterMode": 0, "cascadeCount": 3 } }
+}

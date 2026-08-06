@@ -1,0 +1,64 @@
+{
+  "schemaVersion": 1,
+  "id": "21000000-0000-4000-8000-000000000001",
+  "name": "AnalyticLightLab",
+  "entities": [
+    {
+      "id": "21000000-0000-4000-8000-000000000010",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "Analytic Light Camera" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 5, "z": 15 }, "rotationQuat": { "x": -0.1736482, "y": 0, "z": 0, "w": 0.9848078 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "camera": { "schemaVersion": 4, "fovDegrees": 45, "nearPlane": 0.1, "farPlane": 100, "isPrimary": true, "isEditor": true, "autoExposureEnabled": false, "exposureEV": 0 }
+      }
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000011",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "ACTIVE RIG - Directional illuminance pi" },
+        "transform": { "schemaVersion": 2, "position": { "x": -5, "y": 5, "z": 0 }, "rotationQuat": { "x": -0.5005899, "y": 0.3128687, "z": 0, "w": 0.8071697 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "light": { "schemaVersion": 2, "type": "directional", "castsShadows": false, "direction": { "x": -0.5050763, "y": -0.808122, "z": -0.3030458 }, "range": 0, "innerConeCos": 0.95, "outerConeCos": 0.9, "data": { "position": { "x": -5, "y": 5, "z": 0 }, "type": 2, "direction": { "x": -0.5050763, "y": -0.808122, "z": -0.3030458 }, "range": 0, "color": { "x": 1, "y": 1, "z": 1 }, "brightness": 3.1415927, "ambientIntensity": 1, "diffuseIntensity": 1, "specularIntensity": 1, "innerConeCos": 0.95, "outerConeCos": 0.9 } }
+      }
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000012",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "DISABLED RIG - Point intensity 0 (set 16 to test)" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 2, "z": 3 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "light": { "schemaVersion": 2, "type": "point", "castsShadows": false, "direction": { "x": 0, "y": -1, "z": 0 }, "range": 5, "innerConeCos": 0.95, "outerConeCos": 0.9, "data": { "position": { "x": 0, "y": 2, "z": 3 }, "type": 0, "direction": { "x": 0, "y": -1, "z": 0 }, "range": 5, "color": { "x": 1, "y": 0.8, "z": 0.6 }, "brightness": 0, "ambientIntensity": 1, "diffuseIntensity": 1, "specularIntensity": 1, "innerConeCos": 0.95, "outerConeCos": 0.9 } }
+      }
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000013",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "DISABLED RIG - Spot intensity 0 (set 16 to test)" },
+        "transform": { "schemaVersion": 2, "position": { "x": 5, "y": 5, "z": 0 }, "rotationQuat": { "x": -0.7071068, "y": 0, "z": 0, "w": 0.7071068 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "light": { "schemaVersion": 2, "type": "spot", "castsShadows": false, "direction": { "x": 0, "y": -1, "z": 0 }, "range": 8, "innerConeCos": 0.95, "outerConeCos": 0.8, "data": { "position": { "x": 5, "y": 5, "z": 0 }, "type": 1, "direction": { "x": 0, "y": -1, "z": 0 }, "range": 8, "color": { "x": 0.6, "y": 0.8, "z": 1 }, "brightness": 0, "ambientIntensity": 1, "diffuseIntensity": 1, "specularIntensity": 1, "innerConeCos": 0.95, "outerConeCos": 0.8 } }
+      }
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000014",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "Neutral Receiver" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": -0.1, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 12, "y": 0.1, "z": 9 } },
+        "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007" }
+      }
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000020",
+      "components": { "name": { "schemaVersion": 1, "name": "Point Distance Marker 1" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 1, "z": 3 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.2, "y": 0.2, "z": 0.2 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000021",
+      "components": { "name": { "schemaVersion": 1, "name": "Point Distance Marker 2" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 0, "z": 3 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.2, "y": 0.2, "z": 0.2 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000022",
+      "components": { "name": { "schemaVersion": 1, "name": "Point Distance Marker 4" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": -2, "z": 3 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.2, "y": 0.2, "z": 0.2 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "21000000-0000-4000-8000-000000000023",
+      "components": { "name": { "schemaVersion": 1, "name": "Spot Axis and Cone Target Marker" }, "transform": { "schemaVersion": 2, "position": { "x": 5, "y": 0, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.3, "y": 0.3, "z": 0.3 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    }
+  ],
+  "rendererSettingsOverride": { "schemaVersion": 4, "tonemap": 5, "gamma": 2.2, "iblEnabled": 0, "iblIntensity": 1, "ssaoEnabled": 0, "shadows": { "enabled": 0, "directionalEnabled": 1, "filterMode": 0, "cascadeCount": 3 } }
+}

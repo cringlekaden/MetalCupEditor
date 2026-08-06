@@ -58,7 +58,7 @@
           "castsShadows" : true,
           "data" : {
             "ambientIntensity" : 1,
-            "brightness" : 2,
+            "brightness" : 3.1415927,
             "color" : {
               "x" : 1,
               "y" : 1,
@@ -66,9 +66,9 @@
             },
             "diffuseIntensity" : 1,
             "direction" : {
-              "x" : 0,
-              "y" : -1,
-              "z" : 0
+              "x" : -0.5050763,
+              "y" : -0.808122,
+              "z" : -0.3030458
             },
             "innerConeCos" : 0.95,
             "outerConeCos" : 0.9,
@@ -79,17 +79,17 @@
             },
             "range" : 0,
             "specularIntensity" : 1,
-            "type" : 0
+            "type" : 2
           },
           "direction" : {
-            "x" : -0.5,
-            "y" : -0.8,
-            "z" : -0.3
+            "x" : -0.5050763,
+            "y" : -0.808122,
+            "z" : -0.3030458
           },
           "innerConeCos" : 0.95,
           "outerConeCos" : 0.9,
           "range" : 0,
-          "schemaVersion" : 1,
+          "schemaVersion" : 2,
           "type" : "directional"
         },
         "name" : {
@@ -103,9 +103,9 @@
             "z" : 0
           },
           "rotationQuat" : {
-            "w" : 1,
-            "x" : 0,
-            "y" : 0,
+            "w" : 0.8071697,
+            "x" : -0.5005899,
+            "y" : 0.3128687,
             "z" : 0
           },
           "scale" : {

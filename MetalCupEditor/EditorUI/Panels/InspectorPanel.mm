@@ -3785,9 +3785,14 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                         colorZ = color[2];
                         dirty = true;
                     }
-                    EditorUI::SetNextPropertyInfoTooltip("Luminous intensity multiplier.\nUnits: unitless.\nPerformance: high values can increase bloom/overdraw perception.\nPersistence: Scene.");
-                    dirty |= EditorUI::PropertyFloat("Brightness", &brightness, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 1.0f);
-                    EditorUI::SetNextPropertyInfoTooltip("Attenuation range.\nUnits: meters.\nPerformance: larger ranges can affect more pixels.\nPersistence: Scene.");
+                    if (type == 2) {
+                        EditorUI::SetNextPropertyInfoTooltip("Scene-relative incident illuminance. A value of pi produces radiance 1 from a white Lambertian at normal incidence before dielectric Fresnel redistribution. Not calibrated lux.\nPersistence: Scene.");
+                        dirty |= EditorUI::PropertyFloat("Illuminance", &brightness, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 1.0f);
+                    } else {
+                        EditorUI::SetNextPropertyInfoTooltip("Scene-relative numerator of inverse-square irradiance. Not calibrated candela.\nPersistence: Scene.");
+                        dirty |= EditorUI::PropertyFloat("Intensity", &brightness, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 1.0f);
+                    }
+                    EditorUI::SetNextPropertyInfoTooltip("Finite-support distance. Inverse-square response is unchanged through 80% of range, then fades smoothly to zero. Zero means no finite cutoff.\nUnits: scene distance.\nPerformance: larger ranges can affect more pixels.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyFloat("Range", &range, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 0.0f);
                     if (type == 1) {
                         EditorUI::SetNextPropertyInfoTooltip("Spot inner cone cosine.\nUnits: cosine value.\nPerformance: low.\nPersistence: Scene.");
@@ -3815,6 +3820,12 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                             castsShadows = castsShadowsBool ? 1 : 0;
                             dirty = true;
                         }
+                    } else {
+                        ImGui::BeginDisabled(true);
+                        bool unsupportedShadows = false;
+                        EditorUI::SetNextPropertyInfoTooltip("Point and spot shadows are unsupported in Phase 2. This control is informational only.");
+                        EditorUI::PropertyBool("Shadows (unsupported)", &unsupportedShadows);
+                        ImGui::EndDisabled();
                     }
                     EditorUI::EndPropertyTable();
                 }

@@ -1,15 +1,71 @@
 # Renderer Validation
 
-Open `Project.mcp` directly from the MetalCup Editor project chooser. The project is opened in place and uses canonical Engine shaders; it intentionally has no `Assets/Shaders` directory.
+Open `Project.mcp` directly from the MetalCup Editor project chooser. The project opens in place, uses canonical Engine shaders, and intentionally contains no `Assets/Shaders` directory. Every camera is fixed at `0 EV` with automatic exposure disabled. MetalCup Filmic v1 and neutral legacy gamma state are explicit in every scene.
 
-The scene contains a fixed editor camera with automatic exposure disabled and `exposureEV = 0`, a neutral diffuse cube, a neutral metallic cube, a neutral floor, a directional light, and a fixed procedural environment. It explicitly selects normal global IBL gain `1`, the fixed MetalCup Filmic v1 output transform, and neutral legacy gamma state. It is a deterministic renderer-regression baseline, not a claim of calibrated visual correctness.
+This is a deterministic numerical-regression lab, not a claim of calibrated visual correctness. Phase 1 intentionally invalidated older compensated brightness values. The procedural sky still appears somewhat dark and is reserved for Phase 4 calibration; do not compensate for that observation here.
 
-Phase 1 intentionally invalidates older compensated brightness values. Do not retune this project to recreate the pre-Phase-1 appearance.
+## Scene index
 
-## Checks
+### `RendererValidation.mcscene`
 
-1. **Direct-light only:** keep the `Validation Sun` enabled and disable IBL in Renderer settings.
-2. **IBL only:** disable the `Validation Sun` light component and enable IBL.
-3. **Combined:** enable both the light and IBL.
+The general Phase 1 baseline. `Validation Sun` now uses schema 2 and a transform whose local `-Z` ray is `(-0.5050763, -0.8081220, -0.3030458)`. Its scene-relative directional illuminance is `pi`. `Validation Environment` owns the fixed procedural sky and global IBL.
 
-Keep the camera at `0 EV` for comparisons. Confirm the Renderer settings panel reports `Canonical Engine shaders` and `MetalCup Filmic v1` before recording results. Changing to `-1 EV` and `+1 EV` should halve and double the value entering the tonemapper without rebuilding IBL.
+- Direct only: keep `Validation Sun`, disable IBL.
+- IBL only: disable `Validation Sun`, enable IBL.
+- Combined: enable both.
+- Exposure checks: compare `-1`, `0`, and `+1 EV`; exposure must not rebuild IBL.
+
+### `MaterialReference.mcscene`
+
+This source scene is direct-only by default: IBL, SAO, and shadows are disabled. It has exactly one analytic directional light at illuminance `pi` and no Environment component, so an environment-generated analytic Sun cannot contaminate the direct reference.
+
+Left-to-right entities and numeric roles:
+
+1. white dielectric, roughness `0.50`, metallic `0`;
+2. 18% gray dielectric, roughness `0.50`, metallic `0`;
+3. smooth dielectric, roughness `0.06`, metallic `0`;
+4. rough dielectric, roughness `0.80`, metallic `0`;
+5. neutral metal at the production roughness floor `0.06`;
+6. neutral metal at roughness `0.25`;
+7. neutral metal at roughness `0.80`;
+8. copper-colored metal at roughness `0.25`.
+
+Use the authored scene unchanged for the authoritative direct-only capture. For IBL-only and combined comparisons, use the general `RendererValidation.mcscene`, which has the same EV/output contract and a controlled procedural environment. Keep any environment-generated analytic Sun disabled when isolating IBL. Inspect pre-tonemap values for the narrow `0.06` highlight; do not judge its normalized peak only through the filmic output.
+
+### `AnalyticLightLab.mcscene`
+
+The directional rig is the only active rig initially. Its illuminance is `pi`. The point and spot rigs are deliberately represented with intensity `0`; activate one by setting its intensity to `16` and set the directional illuminance to `0`. Only one rig is authoritative for each capture.
+
+- `Point Distance Marker 1`, `2`, and `4` are one, two, and four scene units from the point-light origin. Below 80% of range, irradiance ratios should be `1 : 1/4 : 1/16` before BRDF geometry.
+- `Spot Axis and Cone Target Marker` lies on the transform-derived local `-Z` axis. Inspect center, inner cone, smooth transition, outer boundary, and outside.
+- Point and spot shadows are unsupported in Phase 2. Their `castsShadows` fields remain false and the Inspector reports the limitation.
+- Directional light values are scene-relative illuminance; point/spot values are scene-relative inverse-square intensity numerators. They are not calibrated lux or candela.
+
+### `ShadowValidation.mcscene`
+
+This scene has one and only one transform-authored diagonal directional shadow caster, hard filtering, IBL off, AO off, camera near `0.1`, and camera far `100`.
+
+- `Near Large Caster`: camera depth approximately `5`.
+- `Mid Medium Caster`: camera depth approximately `20`.
+- `Far Thin Caster`: camera depth approximately `60`.
+- `Grazing Bias Stress Caster`: sloped, thin geometry near depth `35`.
+- `Receiver Plane`: spans the cascade range.
+
+Validate hard shadows before PCF. Inspect Renderer debug modes `Shadow Cascade Index` (20), `Shadow Cascade Blend` (21), `Shadow Factor` (22), and `Shadow Bias Stress` (23). Repeat with one, three, and four cascades. For ownership checks use disposable copies: authored caster only; environment Sun only; authored caster plus a brighter noncasting Sun; and no caster. The debug factor describes only the selected map owner. Do not enable or tune experimental PCSS.
+
+### `AOReference.mcscene`
+
+The fixed procedural environment provides controlled indirect illumination. Entities cover an isolated elevated object, a touching pair, a wall/floor corner, a grazing wedge, an isolated silhouette, and open background/no-sample pixels.
+
+- Inspect `AO Raw` (27), then `AO Filtered` (28).
+- Background and no-valid-sample pixels must be visibility `1`.
+- More obscurance or greater intensity must not increase visibility.
+- Bilateral blur averages visibility and uses `1` as the neutral fallback.
+- To verify isolation, compare with AO on/off while direct-only: AO must not darken analytic direct lighting. Disable IBL and retain one analytic light in a disposable copy for this check.
+- Coplanar/lateral-contact response and evaluate-time normal rejection remain diagnostic follow-ups, not Phase 2 aesthetic tuning.
+
+## Static checkpoints and optional motion
+
+The Engine has an existing `LightOrbitComponent`, so an orbit can be added manually for exploratory sweeps without a new scripting architecture. It depends on runtime time progression and is not serialized into these authoritative references. The checked-in static positions remain the reproducible checkpoints.
+
+Do not save manual acceptance changes into these files. The Phase 1 manual shadow reproduction remains preserved outside Git at `.git-recovery/RendererValidation-manual-acceptance-2026-08-06`.
