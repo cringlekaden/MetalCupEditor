@@ -62,3 +62,13 @@ AGENTS.md
 # =========================
 *.orig
 *.bak
+
+# Local third-party SDK installations
+LocalSDKs/
+
+# Machine-local Assimp runtime copy
+/libassimp.6.dylib
+
+# Optional upstream imgui-node-editor material not used by MetalCupEditor
+/MetalCupEditor/ThirdParty/imgui-node-editor/docs/
+/MetalCupEditor/ThirdParty/imgui-node-editor/examples/
