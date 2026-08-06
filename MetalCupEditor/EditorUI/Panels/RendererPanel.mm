@@ -611,16 +611,6 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
                 MCERendererSetIBLQualityPreset(engineContext, static_cast<uint32_t>(iblPreset));
                 rebuildIBL = true;
             }
-            bool fireflyClampEnabled = MCERendererGetIBLFireflyClampEnabled(engineContext) != 0;
-            if (EditorUI::PropertyBool("Firefly Clamp", &fireflyClampEnabled)) {
-                MCERendererSetIBLFireflyClampEnabled(engineContext, fireflyClampEnabled ? 1 : 0);
-                rebuildIBL = true;
-            }
-            float fireflyClamp = MCERendererGetIBLFireflyClamp(engineContext);
-            if (EditorUI::PropertyFloat("Firefly Threshold", &fireflyClamp, 1.0f, 0.0f, 10000.0f, "%.1f", true, true, 100.0f)) {
-                MCERendererSetIBLFireflyClamp(engineContext, fireflyClamp);
-                rebuildIBL = true;
-            }
             float sampleMultiplier = MCERendererGetIBLSampleMultiplier(engineContext);
             if (EditorUI::PropertyFloat("Sample Multiplier", &sampleMultiplier, 0.05f, 0.1f, 4.0f, "%.2f", true, true, 1.0f)) {
                 MCERendererSetIBLSampleMultiplier(engineContext, sampleMultiplier);
@@ -642,24 +632,6 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
             ImGui::TextWrapped("These controls are intended for renderer experimentation and compatibility tuning. Normal indirect brightness should come from the sky model and exposure, not manual global IBL gain. Use these controls only for specular response, specular AA behavior, and compatibility debugging.");
             ImGui::Spacing();
             if (EditorUI::BeginPropertyTable("IBLAdvancedTable")) {
-                float specularLodExponent = MCERendererGetIBLSpecularLodExponent(engineContext);
-                EditorUI::SetNextPropertyInfoTooltip("Controls how aggressively roughness maps into specular IBL mip level.\nUnits: exponent.\nPerformance: negligible.\nPersistence: Project.");
-                if (EditorUI::PropertyFloat("Specular LOD Exponent", &specularLodExponent, 0.01f, 0.01f, 4.0f, "%.2f", true, true, 1.5f)) {
-                    MCERendererSetIBLSpecularLodExponent(engineContext, specularLodExponent);
-                }
-
-                float specularLodBias = MCERendererGetIBLSpecularLodBias(engineContext);
-                EditorUI::SetNextPropertyInfoTooltip("Global bias applied to specular IBL mip selection.\nUnits: mip bias.\nPerformance: negligible.\nPersistence: Project.");
-                if (EditorUI::PropertyFloat("Specular LOD Bias", &specularLodBias, 0.05f, -4.0f, 4.0f, "%.2f", true, true, 0.0f)) {
-                    MCERendererSetIBLSpecularLodBias(engineContext, specularLodBias);
-                }
-
-                float grazingLodBias = MCERendererGetIBLSpecularGrazingLodBias(engineContext);
-                EditorUI::SetNextPropertyInfoTooltip("Extra specular IBL mip bias applied at grazing angles.\nUnits: mip bias.\nPerformance: negligible.\nPersistence: Project.");
-                if (EditorUI::PropertyFloat("Grazing LOD Bias", &grazingLodBias, 0.05f, -2.0f, 4.0f, "%.2f", true, true, 0.35f)) {
-                    MCERendererSetIBLSpecularGrazingLodBias(engineContext, grazingLodBias);
-                }
-
                 float minRoughness = MCERendererGetIBLSpecularMinRoughness(engineContext);
                 EditorUI::SetNextPropertyInfoTooltip("Minimum roughness used for specular IBL lookup.\nUnits: roughness.\nPerformance: negligible.\nPersistence: Project.");
                 if (EditorUI::PropertyFloat("Specular Min Roughness", &minRoughness, 0.005f, 0.0f, 1.0f, "%.3f", true, true, 0.06f)) {
