@@ -1,0 +1,84 @@
+{
+  "schemaVersion": 1,
+  "id": "32000000-0000-4000-8000-000000000001",
+  "name": "ReflectionProbeValidation",
+  "entities": [
+    {
+      "id": "32000000-0000-4000-8000-000000000010",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "Reflection Probe Camera" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 4, "z": 16 }, "rotationQuat": { "x": -0.1305262, "y": 0, "z": 0, "w": 0.9914449 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "camera": { "schemaVersion": 4, "fovDegrees": 45, "nearPlane": 0.1, "farPlane": 100, "isPrimary": true, "isEditor": true, "autoExposureEnabled": false, "exposureEV": 0 }
+      }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000011",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "Global Reference Environment" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 0, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "environment": {
+          "schemaVersion": 1, "enabled": true,
+          "source": { "schemaVersion": 1, "mode": 1 },
+          "celestial": { "schemaVersion": 1, "defaultTimeOfDay": 12, "moonIntensity": 0, "moonSizeDegrees": 0.54, "starIntensity": 0 },
+          "weather": { "schemaVersion": 1, "primaryType": 0, "secondaryType": 0, "blend": 0, "amount": 0 },
+          "atmosphere": { "schemaVersion": 1, "amount": 0.92, "haze": 0, "density": 0.72, "temperature": 0, "mood": 0 },
+          "clouds": { "schemaVersion": 1, "coverage": 0, "style": 0 },
+          "fog": { "schemaVersion": 1, "amount": 0, "height": 0, "distance": 0 },
+          "ibl": { "schemaVersion": 1, "realtimeUpdate": false, "autoRebuildOnChange": false }
+        }
+      }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000012",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "Canonical Local Reflection Probe" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 1, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } },
+        "reflectionProbe": { "schemaVersion": 2, "enabled": true, "intensity": 1, "boxExtents": { "x": 5, "y": 4, "z": 5 }, "blendDistance": 1, "priority": 10, "captureResolution": 128, "rebuildMode": 0, "includeSky": true }
+      }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000020",
+      "components": { "name": { "schemaVersion": 1, "name": "Local Probe Smooth Metal +Z Test" }, "transform": { "schemaVersion": 2, "position": { "x": -2, "y": 1, "z": 2.5 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002", "material": { "schemaVersion": 1, "baseColor": { "x": 0.92, "y": 0.92, "z": 0.92 }, "metallicScalar": 1, "roughnessScalar": 0.10, "aoScalar": 1, "emissiveColor": { "x": 0, "y": 0, "z": 0 }, "emissiveScalar": 0, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000021",
+      "components": { "name": { "schemaVersion": 1, "name": "Local Probe Rough Metal -Z Test" }, "transform": { "schemaVersion": 2, "position": { "x": 2, "y": 1, "z": -2.5 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002", "material": { "schemaVersion": 1, "baseColor": { "x": 0.92, "y": 0.92, "z": 0.92 }, "metallicScalar": 1, "roughnessScalar": 0.50, "aoScalar": 1, "emissiveColor": { "x": 0, "y": 0, "z": 0 }, "emissiveScalar": 0, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000022",
+      "components": { "name": { "schemaVersion": 1, "name": "Global Only Smooth Metal Reference" }, "transform": { "schemaVersion": 2, "position": { "x": 7, "y": 1, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002", "material": { "schemaVersion": 1, "baseColor": { "x": 0.92, "y": 0.92, "z": 0.92 }, "metallicScalar": 1, "roughnessScalar": 0.10, "aoScalar": 1, "emissiveColor": { "x": 0, "y": 0, "z": 0 }, "emissiveScalar": 0, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000030",
+      "components": { "name": { "schemaVersion": 1, "name": "+X Red Capture Marker" }, "transform": { "schemaVersion": 2, "position": { "x": 4.5, "y": 1, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.3, "y": 0.3, "z": 0.3 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 1, "y": 0, "z": 0 }, "metallicScalar": 0, "roughnessScalar": 1, "aoScalar": 1, "emissiveColor": { "x": 1, "y": 0, "z": 0 }, "emissiveScalar": 8, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000031",
+      "components": { "name": { "schemaVersion": 1, "name": "-X Cyan Capture Marker" }, "transform": { "schemaVersion": 2, "position": { "x": -4.5, "y": 1, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.3, "y": 0.3, "z": 0.3 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 0, "y": 1, "z": 1 }, "metallicScalar": 0, "roughnessScalar": 1, "aoScalar": 1, "emissiveColor": { "x": 0, "y": 1, "z": 1 }, "emissiveScalar": 8, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000032",
+      "components": { "name": { "schemaVersion": 1, "name": "+Y Green Capture Marker" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 4.5, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.3, "y": 0.3, "z": 0.3 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 0, "y": 1, "z": 0 }, "metallicScalar": 0, "roughnessScalar": 1, "aoScalar": 1, "emissiveColor": { "x": 0, "y": 1, "z": 0 }, "emissiveScalar": 8, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000033",
+      "components": { "name": { "schemaVersion": 1, "name": "-Y Magenta Capture Marker" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": -2.5, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.3, "y": 0.3, "z": 0.3 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 1, "y": 0, "z": 1 }, "metallicScalar": 0, "roughnessScalar": 1, "aoScalar": 1, "emissiveColor": { "x": 1, "y": 0, "z": 1 }, "emissiveScalar": 8, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000034",
+      "components": { "name": { "schemaVersion": 1, "name": "+Z Blue Capture Marker" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 1, "z": 4.5 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.3, "y": 0.3, "z": 0.3 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 0, "y": 0.15, "z": 1 }, "metallicScalar": 0, "roughnessScalar": 1, "aoScalar": 1, "emissiveColor": { "x": 0, "y": 0.15, "z": 1 }, "emissiveScalar": 8, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000035",
+      "components": { "name": { "schemaVersion": 1, "name": "-Z Yellow Capture Marker" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 1, "z": -4.5 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.3, "y": 0.3, "z": 0.3 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 1, "y": 1, "z": 0 }, "metallicScalar": 0, "roughnessScalar": 1, "aoScalar": 1, "emissiveColor": { "x": 1, "y": 1, "z": 0 }, "emissiveScalar": 8, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    },
+    {
+      "id": "32000000-0000-4000-8000-000000000036",
+      "components": { "name": { "schemaVersion": 1, "name": "+Z Up-Right Narrow Marker" }, "transform": { "schemaVersion": 2, "position": { "x": 1.5, "y": 3, "z": 4.5 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.15, "y": 0.5, "z": 0.15 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 1, "y": 1, "z": 1 }, "metallicScalar": 0, "roughnessScalar": 1, "aoScalar": 1, "emissiveColor": { "x": 1, "y": 1, "z": 1 }, "emissiveScalar": 10, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+    }
+  ],
+  "rendererSettingsOverride": {
+    "schemaVersion": 4, "tonemap": 5, "gamma": 2.2, "iblEnabled": 1, "iblIntensity": 1, "ssaoEnabled": 0,
+    "shadows": { "enabled": 0, "directionalEnabled": 1, "filterMode": 0, "cascadeCount": 3 }
+  }
+}

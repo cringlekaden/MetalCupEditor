@@ -50,7 +50,7 @@ jq -e '.entities[] | select(.components.camera != null) | .components.camera | .
 jq -e '.rendererSettingsOverride | .iblEnabled == 1 and .iblIntensity == 1 and .tonemap == 5 and .gamma == 2.2' \
     "$validation_root/Assets/Scenes/RendererValidation.mcscene" >/dev/null
 
-for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference; do
+for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference IBLOrientation IBLRoughness ReflectionProbeValidation; do
     scene="$validation_root/Assets/Scenes/$scene_name.mcscene"
     meta="$scene.meta"
     test -f "$scene"
@@ -75,6 +75,18 @@ jq -e '.rendererSettingsOverride.shadows | .enabled == 1 and .filterMode == 0' \
 jq -e '.rendererSettingsOverride.ssaoEnabled == 1 and ([.entities[].components.environment? | select(. != null)] | length == 1)' \
     "$validation_root/Assets/Scenes/AOReference.mcscene" >/dev/null
 
+for scene_name in IBLOrientation IBLRoughness ReflectionProbeValidation; do
+    scene="$validation_root/Assets/Scenes/$scene_name.mcscene"
+    jq -e '[.entities[].components.light? | select(. != null)] | length == 0' "$scene" >/dev/null
+    jq -e '.rendererSettingsOverride | .iblEnabled == 1 and .iblIntensity == 1 and .ssaoEnabled == 0' "$scene" >/dev/null
+done
+jq -e '[.entities[].components.meshRenderer?.material? | select(. != null)] | map(select(.metallicScalar == 0)) | length >= 7' \
+    "$validation_root/Assets/Scenes/IBLRoughness.mcscene" >/dev/null
+jq -e '[.entities[].components.meshRenderer?.material? | select(. != null)] | map(select(.metallicScalar == 1)) | length == 7' \
+    "$validation_root/Assets/Scenes/IBLRoughness.mcscene" >/dev/null
+jq -e '[.entities[].components.reflectionProbe? | select(. != null)] | length == 1 and .[0].intensity == 1' \
+    "$validation_root/Assets/Scenes/ReflectionProbeValidation.mcscene" >/dev/null
+
 if rg -n '/Volumes/External/kadencringle|Library/Application Support/MetalCupEditor' "$validation_root" >/dev/null; then
     echo "RendererValidation contains a machine-local path." >&2
     exit 1
@@ -91,7 +103,7 @@ grep -q 'path = MetalCupEditor/Resources/Icons;' "$pbx"
 if git -C "$engine_root" rev-parse --git-dir >/dev/null 2>&1; then
     git -C "$engine_root" ls-files --error-unmatch MetalCupEngine/Assets/Shaders/BasicShaders.metal >/dev/null
     git -C "$editor_root" ls-files --error-unmatch RendererValidation/Project.mcp >/dev/null
-    for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference; do
+    for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference IBLOrientation IBLRoughness ReflectionProbeValidation; do
         git -C "$editor_root" ls-files --error-unmatch "RendererValidation/Assets/Scenes/$scene_name.mcscene" >/dev/null
         git -C "$editor_root" ls-files --error-unmatch "RendererValidation/Assets/Scenes/$scene_name.mcscene.meta" >/dev/null
     done

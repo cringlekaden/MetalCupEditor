@@ -11,6 +11,7 @@ struct ProjectPolicyTests {
         try portableOverridePathsStayInsideProject()
         try validationProjectIsCanonical()
         try phase2ValidationLabScenesDecode()
+        try phase3ValidationLabScenesDecode()
         print("Stage 4 Editor policy tests passed")
     }
 
@@ -168,6 +169,41 @@ struct ProjectPolicyTests {
         for role in ["Isolated Elevated Object", "Touching Pair Left", "Touching Pair Right",
                      "Wall Floor Corner", "Wedge Grazing Contact", "Isolated Silhouette"] {
             require(aoNames.contains(role), "AOReference is missing \(role)")
+        }
+    }
+
+    private static func phase3ValidationLabScenesDecode() throws {
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).standardizedFileURL
+        let scenes = root.appendingPathComponent("Assets/Scenes", isDirectory: true)
+
+        let orientation = try decodeScene(named: "IBLOrientation", in: scenes)
+        require(orientation.entities.compactMap { $0.components.light }.isEmpty,
+                "IBLOrientation must not contain analytic lights")
+        require(orientation.entities.compactMap { $0.components.environment }.count == 1,
+                "IBLOrientation must contain one controlled environment")
+        require(orientation.entities.compactMap { $0.components.meshRenderer?.material }.count >= 12,
+                "IBLOrientation must contain material and six-axis marker references")
+
+        let roughness = try decodeScene(named: "IBLRoughness", in: scenes)
+        let roughnessMaterials = roughness.entities.compactMap { $0.components.meshRenderer?.material }
+        require(roughnessMaterials.filter { $0.metallicScalar == 0 }.count == 7,
+                "IBLRoughness must contain seven dielectric references")
+        require(roughnessMaterials.filter { $0.metallicScalar == 1 }.count == 7,
+                "IBLRoughness must contain seven metallic references")
+        let expectedRoughness: Set<Float> = [0.06, 0.10, 0.20, 0.25, 0.50, 0.80, 1.00]
+        require(Set(roughnessMaterials.map(\.roughnessScalar)) == expectedRoughness,
+                "IBLRoughness must use the production reference sweep")
+
+        let probes = try decodeScene(named: "ReflectionProbeValidation", in: scenes)
+        let authoredProbes = probes.entities.compactMap { $0.components.reflectionProbe }
+        require(authoredProbes.count == 1 && authoredProbes[0].enabled,
+                "ReflectionProbeValidation must contain one enabled local probe")
+        require(probes.entities.compactMap { $0.components.light }.isEmpty,
+                "ReflectionProbeValidation must not contain analytic lights")
+        let names = Set(probes.entities.compactMap { $0.components.name?.name })
+        for role in ["+Z Blue Capture Marker", "-Z Yellow Capture Marker", "+Z Up-Right Narrow Marker",
+                     "Global Only Smooth Metal Reference"] {
+            require(names.contains(role), "ReflectionProbeValidation is missing \(role)")
         }
     }
 

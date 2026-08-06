@@ -64,6 +64,35 @@ The fixed procedural environment provides controlled indirect illumination. Enti
 - To verify isolation, compare with AO on/off while direct-only: AO must not darken analytic direct lighting. Disable IBL and retain one analytic light in a disposable copy for this check.
 - Coplanar/lateral-contact response and evaluate-time normal rejection remain diagnostic follow-ups, not Phase 2 aesthetic tuning.
 
+### `IBLOrientation.mcscene`
+
+This scene has no analytic lights, fog, AO, or clouds. Enable `Orientation Pattern Global IBL` in Renderer diagnostics to replace the procedural source with the deterministic six-face production diagnostic. Face identity is `+X` red, `-X` cyan, `+Y` green, `-Y` magenta, `+Z` blue, and `-Z` yellow. White borders, the upper stripe, corner dot, equator, and narrow HDR marker distinguish face orientation from a solid-color false positive.
+
+- Inspect the diffuse, rough/smooth dielectric, and rough/smooth metal references at fixed `0 EV`.
+- Global sky, diffuse irradiance, and prefiltered specular must agree on the marker direction.
+- The physical axis markers are capture references for `ReflectionProbeValidation`; they do not replace the generated global diagnostic.
+- Face edges must remain continuous. A mirrored stripe, swapped color, or marker on the opposite side is a convention failure.
+
+### `IBLRoughness.mcscene`
+
+The top dielectric row and bottom metal row use roughness `0.06`, `0.10`, `0.20`, `0.25`, `0.50`, `0.80`, and `1.00` from left to right. The scene is global-IBL-only at fixed `0 EV`.
+
+- Enable `Orientation Pattern Global IBL` for the directional marker sweep.
+- The marker must broaden monotonically as roughness increases without rotating, mirroring, or collapsing to black.
+- Disable the diagnostic for the uniform/procedural reference. Uniform-radiance numeric truth is automated because the procedural sky is not uniform.
+- Do not compensate weak procedural-sky IBL here; source-radiance calibration remains Phase 4 work.
+
+### `ReflectionProbeValidation.mcscene`
+
+`Canonical Local Reflection Probe` is the sole selected local probe. Six emissive axis markers and a narrow `+Z` up-right marker surround its capture origin. The `+Z` and `-Z` metal references deliberately expose the former probe-only Z flip; the `Global Only Smooth Metal Reference` lies outside the authored influence box.
+
+1. Rebuild the local probe explicitly and wait for `ready`.
+2. Compare the same reflection direction with local-probe contribution enabled and disabled.
+3. Enable the local-probe orientation diagnostic to inspect the canonical generated cube, then disable it to inspect the scene capture.
+4. The marker color, side, and within-face up/right placement must match the global convention. Probe intensity is compatibility-only and must not rescale captured energy.
+
+Phase 3 retains one selected probe, the existing opaque-geometry/sky capture policy, and current blend-shell selection. Overlapping-probe redesign and parallax-corrected box projection remain later quality work.
+
 ## Static checkpoints and optional motion
 
 The Engine has an existing `LightOrbitComponent`, so an orbit can be added manually for exploratory sweeps without a new scripting architecture. It depends on runtime time progression and is not serialized into these authoritative references. The checked-in static positions remain the reproducible checkpoints.
