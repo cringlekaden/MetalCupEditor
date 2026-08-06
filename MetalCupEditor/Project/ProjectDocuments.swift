@@ -6,7 +6,46 @@ import Foundation
 import MetalCupEngine
 
 enum ProjectSchema {
-    static let currentVersion: Int = 4
+    static let currentVersion: Int = 5
+}
+
+enum ProjectShaderSource: Codable, Equatable {
+    case canonical
+    case projectOverride(path: String)
+
+    private enum CodingKeys: String, CodingKey {
+        case mode
+        case path
+    }
+
+    private enum Mode: String, Codable {
+        case canonical
+        case projectOverride
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let mode = try container.decodeIfPresent(Mode.self, forKey: .mode) ?? .canonical
+        switch mode {
+        case .canonical:
+            self = .canonical
+        case .projectOverride:
+            self = .projectOverride(
+                path: try container.decodeIfPresent(String.self, forKey: .path) ?? "Assets/Shaders"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case .canonical:
+            try container.encode(Mode.canonical, forKey: .mode)
+        case .projectOverride(let path):
+            try container.encode(Mode.projectOverride, forKey: .mode)
+            try container.encode(path, forKey: .path)
+        }
+    }
 }
 
 struct ProjectDocument: Codable {
@@ -21,6 +60,7 @@ struct ProjectDocument: Codable {
     var savedDirectory: String
     var startScene: String
     var layerNames: [String]
+    var shaderSource: ProjectShaderSource
 
     init(
         schemaVersion: Int = ProjectSchema.currentVersion,
@@ -33,7 +73,8 @@ struct ProjectDocument: Codable {
         intermediateDirectory: String,
         savedDirectory: String,
         startScene: String,
-        layerNames: [String] = LayerCatalog.defaultNames()
+        layerNames: [String] = LayerCatalog.defaultNames(),
+        shaderSource: ProjectShaderSource = .canonical
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -46,6 +87,7 @@ struct ProjectDocument: Codable {
         self.savedDirectory = savedDirectory
         self.startScene = startScene
         self.layerNames = LayerCatalog.normalizedNames(layerNames)
+        self.shaderSource = shaderSource
     }
 
     enum CodingKeys: String, CodingKey {
@@ -60,6 +102,7 @@ struct ProjectDocument: Codable {
         case savedDirectory
         case startScene
         case layerNames
+        case shaderSource
     }
 
     init(from decoder: Decoder) throws {
@@ -76,6 +119,7 @@ struct ProjectDocument: Codable {
         startScene = try container.decodeIfPresent(String.self, forKey: .startScene) ?? "Assets/Scenes/Default.mcscene"
         let decodedNames = try container.decodeIfPresent([String].self, forKey: .layerNames) ?? LayerCatalog.defaultNames()
         layerNames = LayerCatalog.normalizedNames(decodedNames)
+        shaderSource = try container.decodeIfPresent(ProjectShaderSource.self, forKey: .shaderSource) ?? .canonical
     }
 }
 

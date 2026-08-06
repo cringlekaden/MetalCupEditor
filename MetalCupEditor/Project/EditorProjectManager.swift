@@ -30,7 +30,6 @@ final class EditorProjectManager {
     private var assetRegistry: AssetRegistry?
     private var projectPaths: ProjectPaths?
     private var shouldShowProjectModal: Bool = false
-    private var resourcesRootURL: URL?
     private var didRunStartupCheck: Bool = false
     private var sceneDirty: Bool = false
     private var assetRevision: UInt64 = 0
@@ -57,30 +56,19 @@ final class EditorProjectManager {
         let modified: Date
     }
 
-    func bootstrap(resourcesRootURL: URL?) {
-        self.resourcesRootURL = resourcesRootURL
+    func bootstrap() {
         settingsStore.load()
-        if let projectsRoot = ensureProjectsRootURL() {
-            let updated = ProjectMigration.migrateRecentProjects(settingsStore.recentProjects,
-                                                                 projectsRoot: projectsRoot,
-                                                                 logCenter: logCenter,
-                                                                 alertCenter: alertCenter)
-            if updated != settingsStore.recentProjects {
-                settingsStore.replaceRecentProjects(updated)
-                settingsStore.save()
-            }
+        let updated = ProjectMigration.existingRecentProjects(settingsStore.recentProjects)
+        if updated != settingsStore.recentProjects {
+            settingsStore.replaceRecentProjects(updated)
+            settingsStore.save()
         }
 
         if let recent = settingsStore.recentProjects.first {
             let url = URL(fileURLWithPath: recent)
             _ = openProject(at: url, updateRecent: false)
-        } else {
-            let projects = listProjects()
-            if projects.count == 1 {
-                _ = openProject(at: projects[0].url, updateRecent: false)
-            }
         }
-        shouldShowProjectModal = true
+        shouldShowProjectModal = !isProjectOpen
 
         if !isProjectOpen {
             setEmptyScene()
@@ -113,20 +101,17 @@ final class EditorProjectManager {
             return
         }
 
-        let projectName = url.deletingPathExtension().lastPathComponent
-        let projectFolder = projectsRoot.appendingPathComponent(projectName, isDirectory: true)
-        let assetsFolder = projectFolder.appendingPathComponent("Assets", isDirectory: true)
-        let scenesFolder = assetsFolder.appendingPathComponent("Scenes", isDirectory: true)
-        let cacheFolder = projectFolder.appendingPathComponent("Cache", isDirectory: true)
-        let intermediateFolder = projectFolder.appendingPathComponent("Intermediate", isDirectory: true)
-        let savedFolder = projectFolder.appendingPathComponent("Saved", isDirectory: true)
+        let locations = ProjectLocationPolicy.creationLocations(forSelectedProjectURL: url)
+        let projectName = locations.projectFolder.lastPathComponent
+        let projectFolder = locations.projectFolder
+        let projectURL = locations.projectDocument
+        if FileManager.default.fileExists(atPath: projectURL.path) {
+            alertCenter.enqueueError("A project already exists at the selected location.")
+            return
+        }
 
         do {
-            try FileManager.default.createDirectory(at: assetsFolder, withIntermediateDirectories: true)
-            try FileManager.default.createDirectory(at: scenesFolder, withIntermediateDirectories: true)
-            try FileManager.default.createDirectory(at: cacheFolder, withIntermediateDirectories: true)
-            try FileManager.default.createDirectory(at: intermediateFolder, withIntermediateDirectories: true)
-            try FileManager.default.createDirectory(at: savedFolder, withIntermediateDirectories: true)
+            _ = try ProjectLocationPolicy.createProjectDirectories(forSelectedProjectURL: url)
         } catch {
             alertCenter.enqueueError("Failed to create project folders: \(error.localizedDescription)")
             return
@@ -146,14 +131,13 @@ final class EditorProjectManager {
             layerNames: settingsStore.layerNames
         )
 
-        let projectURL = projectFolder.appendingPathComponent("Project.mcp")
         if !writeProject(project, to: projectURL) {
             return
         }
 
         let sceneURL = projectFolder.appendingPathComponent(startScenePath)
         saveEmptyScene(to: sceneURL, name: "Default")
-        seedDefaultAssetsIfNeeded(projectAssetsURL: assetsFolder)
+        ensureProjectAssetFolders(projectAssetsURL: locations.assetsFolder)
 
         _ = openProject(at: projectURL)
     }
@@ -286,17 +270,12 @@ final class EditorProjectManager {
 
     private func openProject(at url: URL, updateRecent: Bool = true) -> Bool {
         let decoder = JSONDecoder()
-        let projectsRoot = ensureProjectsRootURL() ?? url.deletingLastPathComponent()
-        let resolvedProjectURL = ProjectMigration.migrateProjectIfNeeded(url: url,
-                                                                         projectsRoot: projectsRoot,
-                                                                         logCenter: logCenter,
-                                                                         alertCenter: alertCenter) ?? url
+        let resolvedProjectURL = ProjectLocationPolicy.openInPlaceURL(url)
         do {
             let data = try Data(contentsOf: resolvedProjectURL)
             let document = try decodeProject(from: data, decoder: decoder)
             let migrated = ProjectMigration.migrateDocumentIfNeeded(document,
                                                                     projectURL: resolvedProjectURL,
-                                                                    projectsRoot: projectsRoot,
                                                                     logCenter: logCenter,
                                                                     alertCenter: alertCenter)
             let resolvedRootURL = resolvedProjectURL.deletingLastPathComponent().standardizedFileURL
@@ -325,7 +304,6 @@ final class EditorProjectManager {
             shouldShowProjectModal = false
 
             lastOpenedScenePath = ""
-            seedDefaultAssetsIfNeeded(projectAssetsURL: paths.assetsRoot)
             configureAssets(project: migrated, rootURL: resolvedRootURL)
             loadEditorState(rootURL: resolvedRootURL, project: migrated)
 
@@ -367,8 +345,46 @@ final class EditorProjectManager {
         engineContext.assets.assetDatabase = registry
         engineContext.assets.preload(from: registry)
 
-        engineContext.resources.resourcesRootURL = resourcesRootURL
-        engineContext.resources.shaderRootURLs = [resolvedAssetRoot.appendingPathComponent("Shaders", isDirectory: true)]
+        configureShaders(project: project, rootURL: rootURL)
+    }
+
+    private func configureShaders(project: ProjectDocument, rootURL: URL) {
+        let resources = engineContext.resources
+        switch project.shaderSource {
+        case .canonical:
+            resources.useCanonicalShaders()
+        case .projectOverride(let relativePath):
+            guard let overrideURL = ProjectLocationPolicy.resolvePortableProjectPath(
+                relativePath,
+                projectRoot: rootURL
+            ) else {
+                resources.rejectProjectShaderOverride(
+                    relativePath: relativePath,
+                    message: "Shader override path must be a portable path inside the project."
+                )
+                engineContext.graphics.refreshForActiveShaderLibrary()
+                let status = resources.activeShaderSourceStatus
+                logCenter.logError(status, category: .renderer)
+                alertCenter.enqueueError(status)
+                return
+            }
+            _ = resources.activateProjectShaderOverride(
+                at: overrideURL,
+                relativePath: relativePath,
+                device: engineContext.device,
+                requiredFunctions: ShaderLibrary.requiredFunctionNames
+            )
+        }
+
+        engineContext.graphics.refreshForActiveShaderLibrary()
+        let status = resources.activeShaderSourceStatus
+        switch resources.activeShaderSource {
+        case .overrideFailed:
+            logCenter.logError(status, category: .renderer)
+            alertCenter.enqueueError(status)
+        case .canonical, .projectOverride:
+            logCenter.logInfo(status, category: .renderer)
+        }
     }
 
     private func loadScene(relativePath: String) {
@@ -430,9 +446,7 @@ final class EditorProjectManager {
     }
 
     private func ensureProjectsRootURL() -> URL? {
-        guard let projectsRoot = EditorFileSystem.projectsRootURL(ensureExists: true) else { return nil }
-        EditorFileSystem.seedBaseFromBundleIfNeeded(projectsRoot: projectsRoot)
-        return projectsRoot
+        EditorFileSystem.projectsRootURL(ensureExists: true)
     }
 
 
@@ -651,6 +665,10 @@ final class EditorProjectManager {
         ensureProjectsRootURL()
     }
 
+    func shaderSourceStatus() -> String {
+        engineContext.resources.activeShaderSourceStatus
+    }
+
     private func writeProject(_ project: ProjectDocument, to url: URL) -> Bool {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -712,56 +730,6 @@ final class EditorProjectManager {
             return String(targetPath.dropFirst(rootPath.count + 1))
         }
         return url.lastPathComponent
-    }
-
-    private struct DefaultAssetsMarker: Codable {
-        let version: String
-        let paths: [String]
-    }
-
-    private func seedDefaultAssetsIfNeeded(projectAssetsURL: URL) {
-        let fileManager = FileManager.default
-        if !fileManager.fileExists(atPath: projectAssetsURL.path) {
-            PathUtils.ensureDirectoryExists(projectAssetsURL)
-        }
-
-        guard let templateURL = EditorFileSystem.defaultAssetsTemplateURL(resourcesRootURL: resourcesRootURL) else {
-            ensureProjectAssetFolders(projectAssetsURL: projectAssetsURL)
-            return
-        }
-
-        let markerURL = projectAssetsURL.appendingPathComponent(".mce_defaults_version.json")
-        let version = "2"
-        var templatePaths: [String] = []
-        var needsScan = true
-
-        if let data = try? Data(contentsOf: markerURL),
-           let marker = try? JSONDecoder().decode(DefaultAssetsMarker.self, from: data),
-           marker.version == version {
-            templatePaths = marker.paths
-            needsScan = false
-        }
-
-        if needsScan {
-            templatePaths = collectTemplateFilePaths(templateRoot: templateURL)
-        }
-
-        let missing = templatePaths.filter { relative in
-            let target = projectAssetsURL.appendingPathComponent(relative)
-            return !fileManager.fileExists(atPath: target.path)
-        }
-
-        if missing.isEmpty && !needsScan {
-            return
-        }
-
-        copyMissingDefaults(from: templateURL, to: projectAssetsURL, relativePaths: missing)
-        ensureProjectAssetFolders(projectAssetsURL: projectAssetsURL)
-
-        let marker = DefaultAssetsMarker(version: version, paths: templatePaths)
-        if let data = try? JSONEncoder().encode(marker) {
-            try? data.write(to: markerURL, options: [.atomic])
-        }
     }
 
     private func ensureProjectAssetFolders(projectAssetsURL: URL) {
@@ -870,36 +838,6 @@ final class EditorProjectManager {
         }
     }
 
-    private func collectTemplateFilePaths(templateRoot: URL) -> [String] {
-        let fileManager = FileManager.default
-        guard let enumerator = fileManager.enumerator(at: templateRoot, includingPropertiesForKeys: [.isDirectoryKey]) else {
-            return []
-        }
-        var paths: [String] = []
-        for case let url as URL in enumerator {
-            let values = try? url.resourceValues(forKeys: [.isDirectoryKey])
-            if values?.isDirectory == true { continue }
-            guard let relative = PathUtils.relativePath(from: templateRoot, to: url) else { continue }
-            paths.append(relative)
-        }
-        return paths.sorted()
-    }
-
-    private func copyMissingDefaults(from templateRoot: URL, to assetsRoot: URL, relativePaths: [String]) {
-        let fileManager = FileManager.default
-        for relative in relativePaths {
-            let source = templateRoot.appendingPathComponent(relative)
-            let destination = assetsRoot.appendingPathComponent(relative)
-            let parent = destination.deletingLastPathComponent()
-            if !fileManager.fileExists(atPath: parent.path) {
-                PathUtils.ensureDirectoryExists(parent)
-            }
-            if !fileManager.fileExists(atPath: destination.path) {
-                try? fileManager.copyItem(at: source, to: destination)
-            }
-        }
-    }
-
     private func performStartupSanityCheck() {
         guard !didRunStartupCheck else { return }
         didRunStartupCheck = true
@@ -959,6 +897,22 @@ public func MCEProjectOpen(_ contextPtr: UnsafeMutableRawPointer) {
 @_cdecl("MCEProjectHasOpen")
 public func MCEProjectHasOpen(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
     return resolveContext(contextPtr).editorProjectManager.isProjectOpen ? 1 : 0
+}
+
+@_cdecl("MCEProjectShaderSourceStatus")
+public func MCEProjectShaderSourceStatus(_ contextPtr: UnsafeMutableRawPointer,
+                                         _ buffer: UnsafeMutablePointer<CChar>?,
+                                         _ bufferSize: Int32) -> Int32 {
+    guard let buffer, bufferSize > 0 else { return 0 }
+    let status = resolveContext(contextPtr).editorProjectManager.shaderSourceStatus()
+    return status.withCString { pointer in
+        let length = min(Int(bufferSize - 1), strlen(pointer))
+        if length > 0 {
+            memcpy(buffer, pointer, length)
+        }
+        buffer[length] = 0
+        return Int32(length)
+    }
 }
 
 @_cdecl("MCEProjectNeedsModal")

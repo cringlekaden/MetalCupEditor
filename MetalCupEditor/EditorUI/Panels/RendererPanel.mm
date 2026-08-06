@@ -12,6 +12,7 @@
 
 extern "C" void MCEEditorRequestActiveSkyRebuild(MCE_CTX);
 extern "C" void MCESceneNotifyMutation(MCE_CTX);
+extern "C" int32_t MCEProjectShaderSourceStatus(MCE_CTX, char *buffer, int32_t bufferSize);
 
 namespace {
     void *EngineContextFromMCE(void *context) {
@@ -78,6 +79,15 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
 
     void *engineContext = EngineContextFromMCE(context);
     if (SectionEnabled(sectionMask, RendererSectionCore)) {
+        SectionTitle("Shader Source");
+        char shaderStatus[1024] = {};
+        if (MCEProjectShaderSourceStatus(context, shaderStatus, sizeof(shaderStatus)) > 0) {
+            ImGui::TextWrapped("%s", shaderStatus);
+        } else {
+            ImGui::TextDisabled("Canonical Engine shaders");
+        }
+        EditorUI::StandardSpacing();
+
         SectionTitle("Post Processing");
         if (EditorUI::BeginPropertyTable("PostProcessTable")) {
             bool bloomEnabled = MCERendererGetBloomEnabled(engineContext) != 0;

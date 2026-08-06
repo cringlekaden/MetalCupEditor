@@ -11,7 +11,7 @@
 		3786522B2F32EE2800321B24 /* MetalCupEngine.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 378652292F32EE2800321B24 /* MetalCupEngine.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		37BA04A32F5F3E790085FBA6 /* Assimp in Frameworks */ = {isa = PBXBuildFile; productRef = 37BA04A22F5F3E790085FBA6 /* Assimp */; };
 		37BA04A62F5F3F890085FBA6 /* libassimp.dylib in CopyFiles */ = {isa = PBXBuildFile; fileRef = 37BA04A52F5F3F890085FBA6 /* libassimp.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
-		37F505032F3C2AB8001C21A5 /* MetalCupEditor in Resources */ = {isa = PBXBuildFile; fileRef = 37F505022F3C2AB8001C21A5 /* MetalCupEditor */; };
+		5A4C10012F00000000000001 /* Textures in Resources */ = {isa = PBXBuildFile; fileRef = 5A4C10022F00000000000002 /* Textures */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -43,7 +43,7 @@
 		3786521A2F32EDBB00321B24 /* MetalCupEditor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = MetalCupEditor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		378652292F32EE2800321B24 /* MetalCupEngine.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = MetalCupEngine.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		37BA04A52F5F3F890085FBA6 /* libassimp.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libassimp.dylib; sourceTree = "<group>"; };
-		37F505022F3C2AB8001C21A5 /* MetalCupEditor */ = {isa = PBXFileReference; lastKnownFileType = folder; name = MetalCupEditor; path = "../../../Library/Application Support/MetalCupEditor"; sourceTree = "<group>"; };
+		5A4C10022F00000000000002 /* Textures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Textures; path = MetalCupEditor/Projects/Sandbox/Assets/Textures; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -53,6 +53,25 @@
 				Assets.xcassets,
 				ImGui/LICENSE.txt,
 				ImGuizmo/LICENSE,
+				Projects,
+				Projects/Sandbox/Assets/Textures/Moon/lroc_color_2k.jpg,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Impostors/cloud_card_broken.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Impostors/cloud_card_cumulus.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Impostors/cloud_card_storm.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Impostors/cloud_card_wispy.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha01.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha02.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha03.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha04.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha05.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha06.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha07.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha08.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha09.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Source/OpenGameArt_CloudsWithTransparency/FX_CloudAlpha10.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/Weather/weather_clouds_alpha_4k.png,
+				Projects/Sandbox/Assets/Textures/Sky/Clouds/cloud_atlas_4k.png,
+				Projects/Sandbox/Assets/Textures/Sky/MilkyWay/milkyway_2020_4k.exr,
 				"ImGuizmo/README-ImGuizmo.md",
 				README.md,
 				"ThirdParty/imgui-node-editor/docs/CHANGELOG.txt",
@@ -179,7 +198,7 @@
 			children = (
 				37BA04A52F5F3F890085FBA6 /* libassimp.dylib */,
 				375E99272F3F589A00F39780 /* AGENTS.md */,
-				37F505022F3C2AB8001C21A5 /* MetalCupEditor */,
+				5A4C10022F00000000000002 /* Textures */,
 				3786521C2F32EDBB00321B24 /* MetalCupEditor */,
 				378652282F32EE2800321B24 /* Frameworks */,
 				3786521B2F32EDBB00321B24 /* Products */,
@@ -273,7 +292,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				37F505032F3C2AB8001C21A5 /* MetalCupEditor in Resources */,
+				5A4C10012F00000000000001 /* Textures in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

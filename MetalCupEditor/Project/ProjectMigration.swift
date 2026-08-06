@@ -28,63 +28,15 @@ enum ProjectMigration {
         let document: ProjectDocument
     }
 
-    static func migrateRecentProjects(_ paths: [String],
-                                      projectsRoot: URL,
-                                      logCenter: EngineLogger,
-                                      alertCenter: EditorAlertCenter) -> [String] {
-        var updated: [String] = []
-        for path in paths {
-            let url = URL(fileURLWithPath: path)
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            let migrated = migrateProjectIfNeeded(url: url, projectsRoot: projectsRoot, logCenter: logCenter, alertCenter: alertCenter) ?? url
-            updated.append(migrated.path)
+    static func existingRecentProjects(_ paths: [String]) -> [String] {
+        paths.compactMap { path in
+            let url = ProjectLocationPolicy.openInPlaceURL(URL(fileURLWithPath: path))
+            return FileManager.default.fileExists(atPath: url.path) ? url.path : nil
         }
-        return updated
-    }
-
-    static func migrateProjectIfNeeded(url: URL,
-                                       projectsRoot: URL,
-                                       logCenter: EngineLogger,
-                                       alertCenter: EditorAlertCenter) -> URL? {
-        let standardized = url.standardizedFileURL
-        let projectsRootPath = projectsRoot.standardizedFileURL.path
-
-        if standardized.path.hasPrefix(projectsRootPath) {
-            return standardized
-        }
-
-        let sourceFolder = standardized.deletingLastPathComponent()
-        let projectName = standardized.deletingPathExtension().lastPathComponent
-        let destinationFolder = uniqueDestination(for: projectsRoot.appendingPathComponent(projectName, isDirectory: true))
-
-        if moveOrCopyItem(from: sourceFolder, to: destinationFolder, alertCenter: alertCenter) == false {
-            return standardized
-        }
-
-        let migratedURL = destinationFolder.appendingPathComponent("Project.mcp")
-        if !FileManager.default.fileExists(atPath: migratedURL.path) {
-            let legacyURL = destinationFolder.appendingPathComponent(standardized.lastPathComponent)
-            if FileManager.default.fileExists(atPath: legacyURL.path) {
-                try? FileManager.default.moveItem(at: legacyURL, to: migratedURL)
-            }
-        }
-
-        if let data = try? Data(contentsOf: migratedURL),
-           let document = try? JSONDecoder().decode(ProjectDocument.self, from: data) {
-            let normalized = migrateDocumentIfNeeded(document,
-                                                     projectURL: migratedURL,
-                                                     projectsRoot: projectsRoot,
-                                                     logCenter: logCenter,
-                                                     alertCenter: alertCenter)
-            _ = saveProject(normalized, to: migratedURL, alertCenter: alertCenter)
-        }
-
-        return migratedURL
     }
 
     static func migrateDocumentIfNeeded(_ project: ProjectDocument,
                                         projectURL: URL,
-                                        projectsRoot: URL,
                                         logCenter: EngineLogger,
                                         alertCenter: EditorAlertCenter) -> ProjectDocument {
         var updated = project
@@ -261,16 +213,4 @@ enum ProjectMigration {
         return path.hasPrefix("/")
     }
 
-    private static func saveProject(_ project: ProjectDocument, to url: URL, alertCenter: EditorAlertCenter) -> Bool {
-        let encoder = JSONEncoder()
-        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-        do {
-            let data = try encoder.encode(project)
-            try data.write(to: url, options: [.atomic])
-            return true
-        } catch {
-            alertCenter.enqueueError("Failed to save project: \(error.localizedDescription)")
-            return false
-        }
-    }
 }

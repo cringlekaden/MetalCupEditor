@@ -37,64 +37,6 @@ enum EditorFileSystem {
         return base.appendingPathComponent("imgui.ini")
     }
 
-    static func resourcesRootURL(preferredFolderName: String?) -> URL? {
-        if let folder = preferredFolderName,
-           let url = Bundle.main.url(forResource: folder, withExtension: nil) {
-            return url.standardizedFileURL
-        }
-
-        if let bundleRoot = Bundle.main.resourceURL {
-            let candidate = bundleRoot.appendingPathComponent(appName, isDirectory: true)
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate.standardizedFileURL
-            }
-        }
-
-        if let appSupport = Bundle.main.url(forResource: "ApplicationSupport", withExtension: nil) {
-            let candidate = appSupport.appendingPathComponent(appName, isDirectory: true)
-            if FileManager.default.fileExists(atPath: candidate.path) {
-                return candidate.standardizedFileURL
-            }
-        }
-
-        if let direct = Bundle.main.url(forResource: "ApplicationSupport/\(appName)", withExtension: nil),
-           FileManager.default.fileExists(atPath: direct.path) {
-            return direct.standardizedFileURL
-        }
-
-        return nil
-    }
-
-    static func defaultAssetsTemplateURL(resourcesRootURL: URL?) -> URL? {
-        guard let resourcesRootURL else { return nil }
-        let sandboxTemplate = resourcesRootURL
-            .appendingPathComponent("Projects", isDirectory: true)
-            .appendingPathComponent("Sandbox", isDirectory: true)
-            .appendingPathComponent("Assets", isDirectory: true)
-        if FileManager.default.fileExists(atPath: sandboxTemplate.path) {
-            return sandboxTemplate.standardizedFileURL
-        }
-        return nil
-    }
-
-    static func seedBaseFromBundleIfNeeded(projectsRoot: URL) {
-        let baseRoot = projectsRoot.deletingLastPathComponent().standardizedFileURL
-        if let contents = try? FileManager.default.contentsOfDirectory(at: projectsRoot, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]),
-           !contents.isEmpty {
-            return
-        }
-        guard let bundleRoot = resourcesRootURL(preferredFolderName: nil) else { return }
-
-        let fm = FileManager.default
-        guard let items = try? fm.contentsOfDirectory(at: bundleRoot, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
-            return
-        }
-        for item in items {
-            let destination = baseRoot.appendingPathComponent(item.lastPathComponent, isDirectory: item.hasDirectoryPath)
-            if fm.fileExists(atPath: destination.path) { continue }
-            try? fm.copyItem(at: item, to: destination)
-        }
-    }
 }
 @_cdecl("MCEEditorGetImGuiIniPath")
 public func MCEEditorGetImGuiIniPath(_ contextPtr: UnsafeRawPointer?,

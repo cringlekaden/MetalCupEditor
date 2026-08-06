@@ -17,14 +17,12 @@ final class EditorApplication: Application, NSWindowDelegate {
     }
     
     nonisolated override func willCreateWindow() {
-        let resourcesRoot = EditorFileSystem.resourcesRootURL(preferredFolderName: specification.resourcesFolderName)
-        engineContext.resources.resourcesRootURL = resourcesRoot
         let enginePtr = Unmanaged.passUnretained(engineContext).toOpaque()
         let contextPtr = MCEContextCreate(enginePtr)
         self.contextPtr = contextPtr
         let context = Unmanaged<MCEContext>.fromOpaque(contextPtr).takeUnretainedValue()
         self.context = context
-        context.editorProjectManager.bootstrap(resourcesRootURL: resourcesRoot)
+        context.editorProjectManager.bootstrap()
         engineContext.graphics.build()
     }
     
