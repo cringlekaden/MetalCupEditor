@@ -45,6 +45,10 @@ test -f "$validation_root/Assets/Scenes/RendererValidation.mcscene"
 test ! -d "$validation_root/Assets/Shaders"
 jq empty "$validation_root/Project.mcp"
 jq empty "$validation_root/Assets/Scenes/RendererValidation.mcscene"
+jq -e '.entities[] | select(.components.camera != null) | .components.camera | .autoExposureEnabled == false and .exposureEV == 0 and .schemaVersion == 4' \
+    "$validation_root/Assets/Scenes/RendererValidation.mcscene" >/dev/null
+jq -e '.rendererSettingsOverride | .iblEnabled == 1 and .iblIntensity == 1 and .tonemap == 5 and .gamma == 2.2' \
+    "$validation_root/Assets/Scenes/RendererValidation.mcscene" >/dev/null
 
 pbx="$editor_root/MetalCupEditor.xcodeproj/project.pbxproj"
 if grep -q 'Library/Application Support/MetalCupEditor' "$pbx"; then

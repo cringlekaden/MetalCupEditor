@@ -92,6 +92,18 @@ struct ProjectPolicyTests {
                 "Validation project start scene must exist")
         let scene = try JSONDecoder().decode(SceneDocument.self, from: Data(contentsOf: sceneURL))
         require(scene.entities.count >= 4, "Validation scene must contain its deterministic reference setup")
+        guard let camera = scene.entities.compactMap({ $0.components.camera }).first else {
+            throw TestFailure("Validation scene must contain a camera")
+        }
+        require(camera.autoExposureEnabled == false, "Validation camera must keep auto exposure disabled")
+        require(camera.exposureEV == 0.0, "Validation camera must use 0 EV")
+        guard let renderer = scene.rendererSettingsOverride?.makeRendererSettings() else {
+            throw TestFailure("Validation scene must explicitly record Phase 1 renderer invariants")
+        }
+        require(renderer.iblEnabled != 0, "Validation scene must enable global IBL")
+        require(renderer.effectiveGlobalIBLSamplingGain == 1.0, "Validation scene must sample captured IBL at unit gain")
+        require(renderer.tonemap == TonemapType.filmic.rawValue, "Validation scene must resolve to MetalCup Filmic v1")
+        require(renderer.gamma == 2.2, "Validation scene must retain neutral legacy gamma state")
     }
 
     private static func temporaryDirectory(named name: String) -> URL {

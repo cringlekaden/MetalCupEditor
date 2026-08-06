@@ -80,14 +80,14 @@ extern "C" uint32_t MCEEditorRequestReflectionProbeRebuild(MCE_CTX,  const char 
 extern "C" uint32_t MCEEditorRequestAllReflectionProbeRebuilds(MCE_CTX);
 extern "C" uint32_t MCEEditorGetCameraExposure(MCE_CTX, const char *entityId,
                                                uint32_t *autoExposureEnabled,
-                                               float *manualExposure,
+                                               float *exposureEV,
                                                float *exposureCompensation,
                                                float *autoExposureMin,
                                                float *autoExposureMax,
                                                float *adaptationSpeed);
 extern "C" void MCEEditorSetCameraExposure(MCE_CTX, const char *entityId,
                                            uint32_t autoExposureEnabled,
-                                           float manualExposure,
+                                           float exposureEV,
                                            float exposureCompensation,
                                            float autoExposureMin,
                                            float autoExposureMax,
@@ -2173,8 +2173,8 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 int projectionIndex = projectionType;
                 bool dirty = false;
                 bool primaryDirty = false;
-                uint32_t autoExposureEnabled = 1;
-                float manualExposure = 1.0f;
+                uint32_t autoExposureEnabled = 0;
+                float exposureEV = 0.0f;
                 float exposureCompensation = 0.0f;
                 float autoExposureMin = 0.03f;
                 float autoExposureMax = 8.0f;
@@ -2182,7 +2182,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 bool hasExposureSettings = MCEEditorGetCameraExposure(context,
                                                                       selectedEntityId,
                                                                       &autoExposureEnabled,
-                                                                      &manualExposure,
+                                                                      &exposureEV,
                                                                       &exposureCompensation,
                                                                       &autoExposureMin,
                                                                       &autoExposureMax,
@@ -2211,44 +2211,26 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     }
                     if (hasExposureSettings) {
                         const bool editorCamera = isEditor != 0;
-                        const char *exposureModeItems[] = {"Manual", "Auto"};
-                        int exposureMode = (autoExposureEnabled != 0) ? 1 : 0;
+                        const char *exposureModeItems[] = {"Manual (Phase 1)"};
+                        int exposureMode = 0;
                         bool exposureDirty = false;
 
-                        EditorUI::SetNextPropertyInfoTooltip(editorCamera
-                            ? "Editor viewport exposure mode. Use Manual for stable sky and atmosphere look-dev, or Auto to preview the exposure adaptation path.\nPersistence: Scene."
-                            : "Per-camera exposure mode. Manual uses the authored exposure value; Auto derives exposure from scene luminance.\nPersistence: Scene.");
-                        exposureDirty |= EditorUI::PropertyCombo("Exposure Mode", &exposureMode, exposureModeItems, 2);
+                        EditorUI::SetNextPropertyInfoTooltip("Auto exposure is unavailable pending histogram and temporal-adaptation reconstruction. Phase 1 rendering is deterministic and manual-only.");
+                        ImGui::BeginDisabled(true);
+                        EditorUI::PropertyCombo("Exposure Mode", &exposureMode, exposureModeItems, 1);
+                        ImGui::EndDisabled();
 
-                        const bool autoExposure = exposureMode == 1;
-                        if (autoExposure) {
-                            ImGui::BeginDisabled();
-                        }
                         EditorUI::SetNextPropertyInfoTooltip(editorCamera
-                            ? "Stable manual exposure for editor viewport look-dev. This is the main control to lock the sky, clouds, and fog while tuning.\nPersistence: Scene."
-                            : "Manual exposure used only when Exposure Mode is set to Manual.\nPersistence: Scene.");
-                        exposureDirty |= EditorUI::PropertyFloat("Manual Exposure", &manualExposure, 0.05f, 0.01f, 10.0f, "%.3f", true);
-                        if (autoExposure) {
-                            ImGui::EndDisabled();
-                        }
-
-                        EditorUI::SetNextPropertyInfoTooltip("Exposure bias applied on top of auto exposure.\nUnits: EV.\nPersistence: Scene.");
-                        exposureDirty |= EditorUI::PropertyFloat("Exposure Compensation", &exposureCompensation, 0.1f, -10.0f, 10.0f, "%.2f", true);
-                        EditorUI::SetNextPropertyInfoTooltip("Minimum auto exposure clamp.\nPersistence: Scene.");
-                        exposureDirty |= EditorUI::PropertyFloat("Auto Exposure Min", &autoExposureMin, 0.01f, 0.001f, 32.0f, "%.3f", true);
-                        autoExposureMax = std::max(autoExposureMax, autoExposureMin);
-                        EditorUI::SetNextPropertyInfoTooltip("Maximum auto exposure clamp.\nPersistence: Scene.");
-                        exposureDirty |= EditorUI::PropertyFloat("Auto Exposure Max", &autoExposureMax, 0.01f, autoExposureMin, 64.0f, "%.3f", true);
-                        adaptationSpeed = std::max(0.0f, adaptationSpeed);
-                        EditorUI::SetNextPropertyInfoTooltip("Temporal adaptation speed for auto exposure.\nPersistence: Scene.");
-                        exposureDirty |= EditorUI::PropertyFloat("Adaptation Speed", &adaptationSpeed, 0.05f, 0.0f, 20.0f, "%.2f", true);
+                            ? "Stable editor viewport exposure in stops. EV 0 is unity; +1 doubles and -1 halves final-stage exposure.\nPersistence: Scene."
+                            : "Manual final-stage exposure in stops. EV 0 is unity; +1 doubles and -1 halves exposure.\nPersistence: Scene.");
+                        exposureDirty |= EditorUI::PropertyFloat("Exposure (EV)", &exposureEV, 0.1f, -16.0f, 16.0f, "%+.2f EV", true);
 
                         if (exposureDirty) {
-                            autoExposureEnabled = autoExposure ? 1u : 0u;
+                            autoExposureEnabled = 0;
                             MCEEditorSetCameraExposure(context,
                                                        selectedEntityId,
                                                        autoExposureEnabled,
-                                                       manualExposure,
+                                                       exposureEV,
                                                        exposureCompensation,
                                                        autoExposureMin,
                                                        autoExposureMax,

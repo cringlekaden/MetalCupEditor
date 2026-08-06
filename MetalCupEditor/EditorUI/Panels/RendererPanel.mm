@@ -218,20 +218,17 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
     }
 
     if (SectionEnabled(sectionMask, RendererSectionCore)) {
-        SectionTitle("Tonemap");
+        SectionTitle("Output");
         if (EditorUI::BeginPropertyTable("TonemapTable")) {
-            const char* tonemapItems[] = { "None", "Reinhard", "ACES", "MetalCup Custom", "AgX (Experimental)", "Filmic (Default)" };
-            int tonemap = static_cast<int>(MCERendererGetTonemap(engineContext));
-            EditorUI::SetNextPropertyInfoTooltip("Tone mapping operator.\nUnits: enum.\nPerformance: low.\nPersistence: Project.\nRecommended: Filmic for the best default final image.\nAgX remains available for comparison.");
-            if (EditorUI::PropertyCombo("Tonemap", &tonemap, tonemapItems, IM_ARRAYSIZE(tonemapItems))) {
-                MCERendererSetTonemap(engineContext, static_cast<uint32_t>(tonemap));
-            }
-            float gamma = MCERendererGetGamma(engineContext);
-            EditorUI::SetNextPropertyInfoTooltip("Display gamma.\nUnits: gamma value.\nPerformance: low.\nPersistence: Project.");
-            if (EditorUI::PropertyFloat("Gamma", &gamma, EditorUIConstants::kGammaStep,
-                                        EditorUIConstants::kGammaMin, EditorUIConstants::kGammaMax, "%.3f", true, true, EditorUIConstants::kDefaultGamma)) {
-                MCERendererSetGamma(engineContext, gamma);
-            }
+            const char* outputItems[] = { "MetalCup Filmic v1" };
+            int outputIndex = 0;
+            EditorUI::SetNextPropertyInfoTooltip("Phase 1 fixed output transform. Scene-linear HDR is exposed once, mapped with MetalCup Filmic v1, then encoded to sRGB once.");
+            ImGui::BeginDisabled(true);
+            EditorUI::PropertyCombo("Transform", &outputIndex, outputItems, IM_ARRAYSIZE(outputItems));
+            const char* encodingItems[] = { "sRGB (single encode)" };
+            int encodingIndex = 0;
+            EditorUI::PropertyCombo("Encoding", &encodingIndex, encodingItems, IM_ARRAYSIZE(encodingItems));
+            ImGui::EndDisabled();
             EditorUI::EndPropertyTable();
         }
         EditorUI::StandardSpacing();

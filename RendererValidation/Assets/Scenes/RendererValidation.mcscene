@@ -12,11 +12,11 @@
           "fovDegrees" : 45,
           "isEditor" : true,
           "isPrimary" : true,
-          "manualExposure" : 1,
+          "exposureEV" : 0,
           "nearPlane" : 0.1,
           "orthoSize" : 10,
           "projectionType" : 0,
-          "schemaVersion" : 3
+          "schemaVersion" : 4
         },
         "layer" : {
           "layerIndex" : 0,
@@ -424,5 +424,12 @@
   ],
   "id" : "F72218BB-9411-4764-BD6F-8A1EDAD97FB0",
   "name" : "RendererValidation",
+  "rendererSettingsOverride" : {
+    "gamma" : 2.2,
+    "iblEnabled" : 1,
+    "iblIntensity" : 1,
+    "schemaVersion" : 4,
+    "tonemap" : 5
+  },
   "schemaVersion" : 1
 }

@@ -2575,7 +2575,7 @@ public func MCEEditorSetCamera(_ contextPtr: UnsafeRawPointer?,
 public func MCEEditorGetCameraExposure(_ contextPtr: UnsafeRawPointer?,
                                        _ entityId: UnsafePointer<CChar>?,
                                        _ autoExposureEnabled: UnsafeMutablePointer<UInt32>?,
-                                       _ manualExposure: UnsafeMutablePointer<Float>?,
+                                       _ exposureEV: UnsafeMutablePointer<Float>?,
                                        _ exposureCompensation: UnsafeMutablePointer<Float>?,
                                        _ autoExposureMin: UnsafeMutablePointer<Float>?,
                                        _ autoExposureMax: UnsafeMutablePointer<Float>?,
@@ -2584,8 +2584,8 @@ public func MCEEditorGetCameraExposure(_ contextPtr: UnsafeRawPointer?,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           let camera = ecs.get(CameraComponent.self, for: entity) else { return 0 }
-    autoExposureEnabled?.pointee = camera.autoExposureEnabled ? 1 : 0
-    manualExposure?.pointee = camera.manualExposure
+    autoExposureEnabled?.pointee = 0
+    exposureEV?.pointee = camera.exposureEV
     exposureCompensation?.pointee = camera.exposureCompensation
     autoExposureMin?.pointee = camera.autoExposureMin
     autoExposureMax?.pointee = camera.autoExposureMax
@@ -2597,7 +2597,7 @@ public func MCEEditorGetCameraExposure(_ contextPtr: UnsafeRawPointer?,
 public func MCEEditorSetCameraExposure(_ contextPtr: UnsafeRawPointer?,
                                        _ entityId: UnsafePointer<CChar>?,
                                        _ autoExposureEnabled: UInt32,
-                                       _ manualExposure: Float,
+                                       _ exposureEV: Float,
                                        _ exposureCompensation: Float,
                                        _ autoExposureMin: Float,
                                        _ autoExposureMax: Float,
@@ -2608,12 +2608,8 @@ public func MCEEditorSetCameraExposure(_ contextPtr: UnsafeRawPointer?,
           let entity = entity(from: entityId, context: context),
           var camera = ecs.get(CameraComponent.self, for: entity) else { return }
 
-    camera.autoExposureEnabled = autoExposureEnabled != 0
-    camera.manualExposure = max(manualExposure, 0.0001)
-    camera.exposureCompensation = exposureCompensation
-    camera.autoExposureMin = max(autoExposureMin, 0.0001)
-    camera.autoExposureMax = max(autoExposureMax, camera.autoExposureMin)
-    camera.adaptationSpeed = max(adaptationSpeed, 0.0)
+    camera.autoExposureEnabled = false
+    camera.exposureEV = min(max(exposureEV, -16.0), 16.0)
     ecs.add(camera, to: entity)
     context.bridgeServices.notifySceneMutation()
 }
