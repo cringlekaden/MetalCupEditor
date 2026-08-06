@@ -53,7 +53,8 @@ enum class FieldBinding : int32_t {
     ParameterYName = 5,
     FloatValue = 6,
     BoolValue = 7,
-    Duration = 8
+    Duration = 8,
+    SynchronizeValue = 9
 };
 
 enum class SubgraphOwnership : int32_t {
@@ -580,6 +581,7 @@ inline const std::vector<AnimGraphNodeSchema> &AllSchemas() {
             {
                 {"title", InlineFieldKind::Text, "Title", FieldVisibility::Always, FieldBinding::Title},
                 {"boolValue", InlineFieldKind::Bool, "Transition", FieldVisibility::Always, FieldBinding::BoolValue},
+                {"synchronizeValue", InlineFieldKind::Bool, "Synchronize", FieldVisibility::Always, FieldBinding::SynchronizeValue},
                 {"duration", InlineFieldKind::Float, "Duration", FieldVisibility::Always, FieldBinding::Duration},
             },
             {},
@@ -738,6 +740,199 @@ inline const std::vector<AnimGraphNodeSchema> &AllSchemas() {
             SubgraphOwnership::None,
             {},
             {true, "NOT", "Logical", 42}
+        },
+        {
+            "parameterFloat",
+            -1,
+            "Float Parameter",
+            "Parameters",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"value", PinDirection::Output, PinType::Float, "Value", false, false, true},
+            },
+            {
+                {"parameter", InlineFieldKind::ParameterName, "Parameter", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, true, false},
+            {true, "Float Parameter", "Parameters", 50}
+        },
+        {
+            "parameterBool",
+            -1,
+            "Bool Parameter",
+            "Parameters",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"value", PinDirection::Output, PinType::Bool, "Value", false, false, true},
+            },
+            {
+                {"parameter", InlineFieldKind::ParameterName, "Parameter", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, true, false},
+            {true, "Bool Parameter", "Parameters", 51}
+        },
+        {
+            "parameterInt",
+            -1,
+            "Int Parameter",
+            "Parameters",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"value", PinDirection::Output, PinType::Int, "Value", false, false, true},
+            },
+            {
+                {"parameter", InlineFieldKind::ParameterName, "Parameter", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, true, false},
+            {true, "Int Parameter", "Parameters", 52}
+        },
+        {
+            "parameterTrigger",
+            -1,
+            "Trigger Parameter",
+            "Parameters",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"value", PinDirection::Output, PinType::Trigger, "Value", false, false, true},
+            },
+            {
+                {"parameter", InlineFieldKind::ParameterName, "Parameter", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, true, false},
+            {true, "Trigger Parameter", "Parameters", 53}
+        },
+        {
+            "localFloat",
+            -1,
+            "Float Local",
+            "Locals",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"value", PinDirection::Output, PinType::Float, "Value", false, false, true},
+            },
+            {
+                {"local", InlineFieldKind::LocalName, "Local", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, false, true},
+            {true, "Float Local", "Locals", 60}
+        },
+        {
+            "localBool",
+            -1,
+            "Bool Local",
+            "Locals",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"value", PinDirection::Output, PinType::Bool, "Value", false, false, true},
+            },
+            {
+                {"local", InlineFieldKind::LocalName, "Local", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, false, true},
+            {true, "Bool Local", "Locals", 61}
+        },
+        {
+            "localInt",
+            -1,
+            "Int Local",
+            "Locals",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"value", PinDirection::Output, PinType::Int, "Value", false, false, true},
+            },
+            {
+                {"local", InlineFieldKind::LocalName, "Local", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, false, true},
+            {true, "Int Local", "Locals", 62}
+        },
+        {
+            "setLocalFloat",
+            -1,
+            "Set Local Float",
+            "Locals",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"valueIn", PinDirection::Input, PinType::Float, "Value", true, true, true},
+                {"valueOut", PinDirection::Output, PinType::Float, "Value", false, false, true},
+            },
+            {
+                {"local", InlineFieldKind::LocalName, "Local", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, false, true},
+            {true, "Set Local Float", "Locals", 63}
+        },
+        {
+            "setLocalBool",
+            -1,
+            "Set Local Bool",
+            "Locals",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"valueIn", PinDirection::Input, PinType::Bool, "Value", true, true, true},
+                {"valueOut", PinDirection::Output, PinType::Bool, "Value", false, false, true},
+            },
+            {
+                {"local", InlineFieldKind::LocalName, "Local", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, false, true},
+            {true, "Set Local Bool", "Locals", 64}
+        },
+        {
+            "setLocalInt",
+            -1,
+            "Set Local Int",
+            "Locals",
+            GraphDomain::Transition,
+            {false, false, true},
+            {
+                {"valueIn", PinDirection::Input, PinType::Int, "Value", true, true, true},
+                {"valueOut", PinDirection::Output, PinType::Int, "Value", false, false, true},
+            },
+            {
+                {"local", InlineFieldKind::LocalName, "Local", FieldVisibility::Always, FieldBinding::ParameterName},
+            },
+            {},
+            {},
+            SubgraphOwnership::None,
+            {false, false, true},
+            {true, "Set Local Int", "Locals", 65}
         },
     };
     return schemas;

@@ -77,6 +77,7 @@ final class ImGuiLayer: Layer {
         }
         if let scene = sceneContext.activeScene {
             submitSelectedCameraFrustumGizmoIfNeeded(scene: scene)
+            submitReflectionProbeDebugGizmosIfNeeded(scene: scene)
         }
         context.engineContext.debugDraw.endFrame()
 
@@ -109,6 +110,8 @@ final class ImGuiLayer: Layer {
         imguiBridge.setup(with: view)
         let deltaTime = lastFrameTime?.deltaTime ?? 0.0
         imguiBridge.newFrame(with: view, deltaTime: deltaTime)
+        // The renderer graph publishes its final composite here; ImGui samples it as the
+        // viewport scene image, then renders editor UI into the drawable render pass.
         let sceneTex = context.engineContext.assets.texture(handle: BuiltinAssets.finalColorRender)
         let previewTex = updateCameraPreviewIfNeeded(view: view, commandBuffer: commandBuffer, frameContext: frameContext)
         imguiBridge.buildUI(withSceneTexture: sceneTex, previewTexture: previewTex)
@@ -184,6 +187,7 @@ final class ImGuiLayer: Layer {
         let activeScene = sceneContext.activeScene
         let matrices = activeScene.map { SceneRenderer.cameraMatrices(scene: $0) }
         let cameraPosition = activeScene.map { SceneRenderer.cameraPosition(scene: $0) } ?? .zero
+        let exposureSettings = activeScene.map { SceneRenderer.cameraExposure(scene: $0) } ?? SceneViewExposureSettings()
         return SceneView(
             viewId: sceneContext.isPlaying ? 2 : 1,
             viewMatrix: matrices?.view ?? matrix_identity_float4x4,
@@ -193,7 +197,7 @@ final class ImGuiLayer: Layer {
             viewportOrigin: sceneContext.viewportOrigin,
             mousePositionInViewport: nil,
             requestPick: sceneContext.pendingPickRequest != nil,
-            exposure: 1.0,
+            exposureSettings: exposureSettings,
             layerMask: .all,
             selectedEntityIds: sceneContext.selectedEntityIds,
             debugFlags: 0,
@@ -376,7 +380,7 @@ final class ImGuiLayer: Layer {
         if context.editorSceneController.isPlaying || context.editorSceneController.isSimulating {
             return
         }
-        if !context.editorProjectManager.viewportShowSelectedCameraFrustum() {
+        if !context.editorProjectManager.viewportDebugStyle(.cameraFrustums).enabled {
             return
         }
         guard let selectedId = context.editorSceneController.selectedEntityUUID(),
@@ -440,9 +444,9 @@ final class ImGuiLayer: Layer {
         submitFrustumRect(corners: nearCorners, debugDraw: debugDraw, color: color)
         submitFrustumRect(corners: farCorners, debugDraw: debugDraw, color: color)
         for i in 0..<4 {
-            debugDraw.submitLine(nearCorners[i], farCorners[i], color: color)
+            debugDraw.submitLine(category: .cameraFrustum, nearCorners[i], farCorners[i], color: color)
         }
-        debugDraw.submitLine(position, farCenter, color: color)
+        debugDraw.submitLine(category: .cameraFrustum, position, farCenter, color: color)
     }
 
     private func makeFrustumCorners(center: SIMD3<Float>,
@@ -460,7 +464,7 @@ final class ImGuiLayer: Layer {
 
     private func submitFrustumRect(corners: [SIMD3<Float>], debugDraw: DebugDraw, color: SIMD4<Float>) {
         guard corners.count == 4 else { return }
-        debugDraw.submitPolyline(corners, color: color, closed: true)
+        debugDraw.submitPolyline(category: .cameraFrustum, corners, color: color, closed: true)
     }
 
     private func safeNormalize(_ v: SIMD3<Float>, fallback: SIMD3<Float>) -> SIMD3<Float> {
@@ -469,6 +473,138 @@ final class ImGuiLayer: Layer {
             return fallback
         }
         return v / sqrt(lenSq)
+    }
+
+    private func submitReflectionProbeDebugGizmosIfNeeded(scene: EngineScene) {
+        let probeInfluenceEnabled = context.editorProjectManager.viewportDebugStyle(.reflectionProbeInfluence).enabled
+        let probeShellEnabled = context.editorProjectManager.viewportDebugStyle(.reflectionProbeBlendShell).enabled
+        let probeLinkEnabled = context.editorProjectManager.viewportDebugStyle(.reflectionProbeLinks).enabled
+        if !probeInfluenceEnabled && !probeShellEnabled && !probeLinkEnabled {
+            return
+        }
+
+        let debugDraw = context.engineContext.debugDraw
+        let renderer = context.engineContext.renderer
+        let selectedEntityID = context.editorSceneController.selectedEntityUUID()
+        let accent = context.editorProjectManager.themeAccent()
+        let accentColor = SIMD4<Float>(accent.0, accent.1, accent.2, 1.0)
+
+        let selectedReflectionDebug = selectedEntityID.flatMap {
+            renderer?.debugReflectionProbeSelection(scene: scene, entityID: $0)
+        }
+        let selectedProbeEntityID = selectedReflectionDebug?.selectedProbeEntityID
+
+        if probeLinkEnabled {
+            if let selectedEntityID,
+               let selectedEntity = scene.ecs.entity(with: selectedEntityID),
+               let selectedProbeEntityID,
+               let selectedProbeEntity = scene.ecs.entity(with: selectedProbeEntityID) {
+                let selectedWorld = scene.ecs.worldTransform(for: selectedEntity).position
+                let probeWorld = scene.ecs.worldTransform(for: selectedProbeEntity).position
+                debugDraw.submitLine(category: .reflectionProbeSelectionLink, selectedWorld, probeWorld, color: accentColor)
+            } else if !context.editorSceneController.isPlaying,
+                      !context.editorSceneController.isSimulating,
+                      let selectedEntityID,
+                      let selectedEntity = scene.ecs.entity(with: selectedEntityID),
+                      let selectedReflectionDebug,
+                      selectedReflectionDebug.fallbackReason != .none {
+                let fallbackCenter = scene.ecs.worldTransform(for: selectedEntity).position
+                let fallbackColor: SIMD4<Float>
+                switch selectedReflectionDebug.fallbackReason {
+                case .noEnabledProbes:
+                    fallbackColor = SIMD4<Float>(0.65, 0.65, 0.65, 1.0)
+                case .noReadyProbes:
+                    fallbackColor = SIMD4<Float>(0.95, 0.45, 0.2, 1.0)
+                case .outsideInfluence:
+                    fallbackColor = SIMD4<Float>(1.0, 0.8, 0.2, 1.0)
+                case .none:
+                    fallbackColor = accentColor
+                }
+                debugDraw.submitWireSphere(
+                    category: .reflectionProbeSelectionLink,
+                    transform: TransformMath.makeMatrix(
+                        position: fallbackCenter,
+                        rotation: .zero,
+                        scale: SIMD3<Float>(repeating: 1.0)
+                    ),
+                    radius: 0.2,
+                    color: fallbackColor,
+                    segments: 12
+                )
+            }
+        }
+
+        scene.ecs.viewReflectionProbes { entity, probe in
+            guard probe.enabled else { return }
+            let worldTransform = scene.ecs.worldTransform(for: entity)
+            let transformMatrix = TransformMath.makeMatrix(
+                position: worldTransform.position,
+                rotation: worldTransform.rotation,
+                scale: SIMD3<Float>(repeating: 1.0)
+            )
+            let halfExtents = max(probe.boxExtents, SIMD3<Float>(repeating: 0.001))
+            let outerHalfExtents = max(halfExtents + SIMD3<Float>(repeating: max(probe.blendDistance, 0.0)),
+                                       SIMD3<Float>(repeating: 0.001))
+
+            let statusColor = reflectionProbeDebugColor(
+                for: renderer?.reflectionProbeBakeStatus(scene: scene, entityID: entity.id)
+            )
+            let baseColor: SIMD4<Float>
+            if selectedEntityID == entity.id {
+                baseColor = accentColor
+            } else if selectedProbeEntityID == entity.id {
+                baseColor = SIMD4<Float>(0.25, 0.95, 0.95, 1.0)
+            } else {
+                baseColor = statusColor
+            }
+            let shellOuterColor = SIMD4<Float>(baseColor.x, baseColor.y, baseColor.z, max(0.32, baseColor.w * 0.5))
+            let shellConnectorColor = SIMD4<Float>(baseColor.x, baseColor.y, baseColor.z, max(0.55, baseColor.w * 0.78))
+
+            if probeInfluenceEnabled {
+                debugDraw.submitWireBox(category: .reflectionProbeInfluence,
+                                        transform: transformMatrix,
+                                        halfExtents: halfExtents,
+                                        color: baseColor)
+            }
+            if probeShellEnabled && probe.blendDistance > 0.0 {
+                debugDraw.submitWireBoxShell(category: .reflectionProbeBlendShell,
+                                             transform: transformMatrix,
+                                             innerHalfExtents: halfExtents,
+                                             outerHalfExtents: outerHalfExtents,
+                                             outerColor: shellOuterColor,
+                                             connectorColor: shellConnectorColor)
+            }
+            if probeInfluenceEnabled {
+                debugDraw.submitWireSphere(
+                    category: .reflectionProbeInfluence,
+                    transform: TransformMath.makeMatrix(
+                        position: worldTransform.position,
+                        rotation: .zero,
+                        scale: SIMD3<Float>(repeating: 1.0)
+                    ),
+                    radius: 0.08,
+                    color: baseColor,
+                    segments: 10
+                )
+            }
+        }
+    }
+
+    private func reflectionProbeDebugColor(for status: ReflectionProbeRuntimeStatus?) -> SIMD4<Float> {
+        switch status {
+        case .queued:
+            return SIMD4<Float>(0.95, 0.75, 0.2, 0.95)
+        case .capturing:
+            return SIMD4<Float>(1.0, 0.55, 0.2, 0.95)
+        case .filtering:
+            return SIMD4<Float>(0.95, 0.9, 0.35, 0.95)
+        case .ready:
+            return SIMD4<Float>(0.25, 0.95, 0.6, 0.95)
+        case .failed:
+            return SIMD4<Float>(0.95, 0.3, 0.25, 0.95)
+        default:
+            return SIMD4<Float>(0.6, 0.65, 0.75, 0.75)
+        }
     }
 }
 final class EditorSceneContext {

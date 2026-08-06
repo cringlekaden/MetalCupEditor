@@ -2,21 +2,39 @@ import Foundation
 import MetalCupEngine
 
 enum EditorSceneQueries {
+    private static func isVisibleInEditorHierarchy(_ ecs: SceneECS, entity: Entity) -> Bool {
+        // Auto-driven sky sun lights are runtime artifacts of the active sky and should not
+        // present as normal authorable entities in the editor workflow.
+        ecs.get(SkySunTag.self, for: entity) == nil
+    }
+
+    private static func visibleEditorEntities(_ ecs: SceneECS) -> [Entity] {
+        ecs.allEntities().filter { isVisibleInEditorHierarchy(ecs, entity: $0) }
+    }
+
+    private static func visibleRootEditorEntities(_ ecs: SceneECS) -> [Entity] {
+        ecs.rootLevelEntities().filter { isVisibleInEditorHierarchy(ecs, entity: $0) }
+    }
+
+    private static func visibleEditorChildren(_ ecs: SceneECS, parent: Entity) -> [Entity] {
+        ecs.getChildren(parent).filter { isVisibleInEditorHierarchy(ecs, entity: $0) }
+    }
+
     static func getEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
         EditorBridgeInternals.markFacadeInvocation("EditorSceneQueries.getEntityCount")
         guard let context = EditorBridgeInternals.contextValue(contextPtr), let ecs = EditorBridgeInternals.ecsValue(context) else { return 0 }
-        return Int32(ecs.allEntities().count)
+        return Int32(visibleEditorEntities(ecs).count)
     }
 
     static func getRootEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {
         guard let context = EditorBridgeInternals.contextValue(contextPtr), let ecs = EditorBridgeInternals.ecsValue(context) else { return 0 }
-        return Int32(ecs.rootLevelEntities().count)
+        return Int32(visibleRootEditorEntities(ecs).count)
     }
 
     static func getRootEntityIdAt(_ contextPtr: UnsafeRawPointer?, _ index: Int32,
                                   _ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> Int32 {
         guard let context = EditorBridgeInternals.contextValue(contextPtr), let ecs = EditorBridgeInternals.ecsValue(context), index >= 0 else { return 0 }
-        let roots = ecs.rootLevelEntities()
+        let roots = visibleRootEditorEntities(ecs)
         guard index < Int32(roots.count) else { return 0 }
         return EditorBridgeInternals.cStringWrite(roots[Int(index)].id.uuidString, to: buffer, max: bufferSize)
     }
@@ -25,7 +43,7 @@ enum EditorSceneQueries {
         guard let context = EditorBridgeInternals.contextValue(contextPtr),
               let ecs = EditorBridgeInternals.ecsValue(context),
               let parent = EditorBridgeInternals.entityValue(from: parentId, context: context) else { return 0 }
-        return Int32(ecs.getChildren(parent).count)
+        return Int32(visibleEditorChildren(ecs, parent: parent).count)
     }
 
     static func getChildEntityIdAt(_ contextPtr: UnsafeRawPointer?, _ parentId: UnsafePointer<CChar>?, _ index: Int32,
@@ -34,7 +52,7 @@ enum EditorSceneQueries {
               let ecs = EditorBridgeInternals.ecsValue(context),
               let parent = EditorBridgeInternals.entityValue(from: parentId, context: context),
               index >= 0 else { return 0 }
-        let children = ecs.getChildren(parent)
+        let children = visibleEditorChildren(ecs, parent: parent)
         guard index < Int32(children.count) else { return 0 }
         return EditorBridgeInternals.cStringWrite(children[Int(index)].id.uuidString, to: buffer, max: bufferSize)
     }
@@ -51,7 +69,7 @@ enum EditorSceneQueries {
     static func getEntityIdAt(_ contextPtr: UnsafeRawPointer?, _ index: Int32,
                               _ buffer: UnsafeMutablePointer<CChar>?, _ bufferSize: Int32) -> Int32 {
         guard let context = EditorBridgeInternals.contextValue(contextPtr), let ecs = EditorBridgeInternals.ecsValue(context), index >= 0 else { return 0 }
-        let entities = ecs.allEntities()
+        let entities = visibleEditorEntities(ecs)
         guard index < Int32(entities.count) else { return 0 }
         return EditorBridgeInternals.cStringWrite(entities[Int(index)].id.uuidString, to: buffer, max: bufferSize)
     }
@@ -68,6 +86,13 @@ enum EditorSceneQueries {
     static func entityExists(_ contextPtr: UnsafeRawPointer?, _ entityId: UnsafePointer<CChar>?) -> UInt32 {
         guard let context = EditorBridgeInternals.contextValue(contextPtr), let _ = EditorBridgeInternals.entityValue(from: entityId, context: context) else { return 0 }
         return 1
+    }
+
+    static func entityIsAutoDrivenSkySun(_ contextPtr: UnsafeRawPointer?, _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+        guard let context = EditorBridgeInternals.contextValue(contextPtr),
+              let ecs = EditorBridgeInternals.ecsValue(context),
+              let entity = EditorBridgeInternals.entityValue(from: entityId, context: context) else { return 0 }
+        return ecs.get(SkySunTag.self, for: entity) != nil ? 1 : 0
     }
 
     static func getColliderEntityCount(_ contextPtr: UnsafeRawPointer?) -> Int32 {

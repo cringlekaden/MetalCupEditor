@@ -53,6 +53,9 @@ final class RuntimeSessionManager {
         if let physicsSettings = engineContext?.physicsSettings {
             runtimeScene?.startPhysics(settings: physicsSettings)
         }
+        if let runtimeScene, let renderer = engineContext?.renderer {
+            renderer.queueReflectionProbeRebuilds(scene: runtimeScene)
+        }
         runtimeScene?.resetRuntimeInputState()
         engineContext?.renderer?.inputAccumulator?.resetForRuntimeStart(clearKeys: false, clearMouseButtons: false)
 
@@ -78,12 +81,6 @@ final class RuntimeSessionManager {
 
         if let snapshot = editorSnapshot, let editorScene {
             editorScene.apply(document: snapshot)
-            if let settings = snapshot.rendererSettingsOverride {
-                engineContext?.rendererSettings = settings.makeRendererSettings()
-            }
-            if let physicsSettings = snapshot.physicsSettingsOverride {
-                engineContext?.physicsSettings = physicsSettings.makePhysicsSettings()
-            }
         }
 
         editorSnapshot = nil
@@ -111,12 +108,6 @@ final class RuntimeSessionManager {
         editorScene?.stopPhysics()
         if let snapshot = simulateSnapshot, let editorScene {
             editorScene.apply(document: snapshot)
-            if let settings = snapshot.rendererSettingsOverride {
-                engineContext?.rendererSettings = settings.makeRendererSettings()
-            }
-            if let physicsSettings = snapshot.physicsSettingsOverride {
-                engineContext?.physicsSettings = physicsSettings.makePhysicsSettings()
-            }
         }
         simulateSnapshot = nil
     }

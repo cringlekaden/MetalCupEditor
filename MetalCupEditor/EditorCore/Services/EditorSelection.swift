@@ -6,7 +6,9 @@ import Foundation
 
 final class EditorSelection {
     private(set) var selectedMaterialHandle: String = ""
+    private(set) var selectedAnimationGraphHandle: String = ""
     private var openMaterialEditorHandle: String = ""
+    private var openAnimationGraphEditorHandle: String = ""
 
     init() {}
 
@@ -23,5 +25,16 @@ final class EditorSelection {
         guard !openMaterialEditorHandle.isEmpty else { return nil }
         defer { openMaterialEditorHandle = "" }
         return openMaterialEditorHandle
+    }
+
+    func requestOpenAnimationGraphEditor(handle: String) {
+        selectedAnimationGraphHandle = handle
+        openAnimationGraphEditorHandle = handle
+    }
+
+    func consumeOpenAnimationGraphEditorHandle() -> String? {
+        guard !openAnimationGraphEditorHandle.isEmpty else { return nil }
+        defer { openAnimationGraphEditorHandle = "" }
+        return openAnimationGraphEditorHandle
     }
 }

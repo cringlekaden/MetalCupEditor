@@ -6,6 +6,75 @@ import Foundation
 import MetalCupEngine
 import simd
 
+public struct MCEEnvironmentLookBridge {
+    public var preset: Int32
+    public var mood: Float
+    public var warmth: Float
+    public var cinematicAmount: Float
+}
+
+public struct MCEEnvironmentSourceBridge {
+    public var enabled: UInt32
+    public var mode: Int32
+    public var hasHdriHandle: UInt32
+    public var hdriHandleHigh: UInt64
+    public var hdriHandleLow: UInt64
+}
+
+public struct MCEEnvironmentTimeBridge {
+    public var defaultTimeOfDay: Float
+    public var previewTimeOfDay: Float
+    public var timeControlMode: Int32
+    public var dayLengthSeconds: Float
+    public var timeScale: Float
+}
+
+public struct MCEEnvironmentAtmosphereBridge {
+    public var amount: Float
+    public var haze: Float
+    public var density: Float
+    public var temperature: Float
+    public var mood: Float
+}
+
+public struct MCEEnvironmentCelestialBridge {
+    public var moonIntensity: Float
+    public var moonSizeDegrees: Float
+    public var starIntensity: Float
+    public var starRichness: Float
+    public var milkyWayIntensity: Float
+    public var milkyWayChroma: Float
+    public var milkyWayRotation: Float
+    public var nightBrightness: Float
+}
+
+public struct MCEEnvironmentWeatherCloudBridge {
+    public var weatherPrimary: Int32
+    public var weatherSecondary: Int32
+    public var weatherBlend: Float
+    public var weatherAmount: Float
+    public var cloudCoverage: Float
+    public var cloudStyle: Int32
+    public var cloudRenderMode: Int32
+}
+
+public struct MCEEnvironmentFogBridge {
+    public var amount: Float
+    public var height: Float
+    public var distance: Float
+}
+
+public struct MCEEnvironmentIBLBridge {
+    public var realtimeUpdate: UInt32
+    public var autoRebuildOnChange: UInt32
+    public var needsRebuild: UInt32
+    public var dirty: UInt32
+    public var isRebuilding: UInt32
+    public var currentRebuildQuality: Int32
+    public var lastBuiltQuality: Int32
+    public var hasFailure: UInt32
+}
+
 #if DEBUG
 private var bridgeFacadeSanityChecked = false
 private func runBridgeFacadeSanityCheckOnce() {
@@ -90,6 +159,10 @@ private enum EditorComponentType: Int32 {
     case collider = 8
     case script = 9
     case characterController = 10
+    case skinnedMesh = 11
+    case animator = 12
+    case reflectionProbe = 13
+    case environment = 14
 }
 
 private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
@@ -141,6 +214,48 @@ private func writeCString(_ string: String, to buffer: UnsafeMutablePointer<CCha
 private func handleFromString(_ string: String) -> AssetHandle? {
     guard !string.isEmpty, let uuid = UUID(uuidString: string) else { return nil }
     return AssetHandle(rawValue: uuid)
+}
+
+private func uuidParts(_ uuid: UUID) -> (high: UInt64, low: UInt64) {
+    let raw = uuid.uuid
+    let high = UInt64(raw.0) << 56
+        | UInt64(raw.1) << 48
+        | UInt64(raw.2) << 40
+        | UInt64(raw.3) << 32
+        | UInt64(raw.4) << 24
+        | UInt64(raw.5) << 16
+        | UInt64(raw.6) << 8
+        | UInt64(raw.7)
+    let low = UInt64(raw.8) << 56
+        | UInt64(raw.9) << 48
+        | UInt64(raw.10) << 40
+        | UInt64(raw.11) << 32
+        | UInt64(raw.12) << 24
+        | UInt64(raw.13) << 16
+        | UInt64(raw.14) << 8
+        | UInt64(raw.15)
+    return (high, low)
+}
+
+private func uuidFromParts(high: UInt64, low: UInt64) -> UUID {
+    UUID(uuid: (
+        UInt8((high >> 56) & 0xff),
+        UInt8((high >> 48) & 0xff),
+        UInt8((high >> 40) & 0xff),
+        UInt8((high >> 32) & 0xff),
+        UInt8((high >> 24) & 0xff),
+        UInt8((high >> 16) & 0xff),
+        UInt8((high >> 8) & 0xff),
+        UInt8(high & 0xff),
+        UInt8((low >> 56) & 0xff),
+        UInt8((low >> 48) & 0xff),
+        UInt8((low >> 40) & 0xff),
+        UInt8((low >> 32) & 0xff),
+        UInt8((low >> 24) & 0xff),
+        UInt8((low >> 16) & 0xff),
+        UInt8((low >> 8) & 0xff),
+        UInt8(low & 0xff)
+    ))
 }
 
 private func parseSubmeshMaterialHandles(_ raw: String) -> [AssetHandle?] {
@@ -355,6 +470,23 @@ private func ensureNamedChild(named name: String,
     return (child, true)
 }
 
+private func firstAnimatorInSubtree(root: Entity, ecs: SceneECS) -> Entity? {
+    var queue: [Entity] = [root]
+    var cursor = 0
+    while cursor < queue.count {
+        let current = queue[cursor]
+        cursor += 1
+        if ecs.get(AnimatorComponent.self, for: current) != nil {
+            return current
+        }
+        let children = ecs.getChildren(current)
+        if !children.isEmpty {
+            queue.append(contentsOf: children)
+        }
+    }
+    return nil
+}
+
 private func componentsDocument(for entity: Entity, ecs: SceneECS) -> ComponentsDocument {
     return ComponentsDocument(
         name: ecs.get(NameComponent.self, for: entity).map { NameComponentDTO(name: $0.name) },
@@ -438,13 +570,26 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
         characterController: ecs.get(CharacterControllerComponent.self, for: entity).map { component in
             CharacterControllerComponentDTO(component: component)
         },
-        sky: ecs.get(SkyComponent.self, for: entity).map { component in
-            SkyComponentDTO(environmentMapHandle: component.environmentMapHandle)
-        },
         skyLight: ecs.get(SkyLightComponent.self, for: entity).map { component in
             SkyLightComponentDTO(
                 mode: component.mode.rawValue,
                 enabled: component.enabled,
+                timeOfDay: component.timeOfDay,
+                weatherType: component.weatherType.rawValue,
+                secondaryWeatherType: component.secondaryWeatherType.rawValue,
+                weatherBlend: component.weatherBlend,
+                weatherAmount: component.weatherAmount,
+                atmosphereAmount: component.atmosphereAmount,
+                cloudCoverage: component.cloudCoverage,
+                cloudStyle: component.cloudStyle.rawValue,
+                temperature: component.temperature,
+                mood: component.mood,
+                moonIntensity: component.moonIntensity,
+                moonSizeDegrees: component.moonSizeDegrees,
+                starIntensity: component.starIntensity,
+                fogAmount: component.fogAmount,
+                fogHeight: component.fogHeight,
+                fogDistance: component.fogDistance,
                 intensity: component.intensity,
                 skyTint: Vector3DTO(component.skyTint),
                 turbidity: component.turbidity,
@@ -473,9 +618,17 @@ private func componentsDocument(for entity: Entity, ecs: SceneECS) -> Components
                 cloudsThickness: component.cloudsThickness,
                 cloudsBrightness: component.cloudsBrightness,
                 cloudsSunInfluence: component.cloudsSunInfluence,
-                hdriHandle: component.hdriHandle,
-                realtimeUpdate: component.realtimeUpdate
+                hdriHandle: component.hdriHandle
             )
+        },
+        environmentState: ecs.get(EnvironmentStateComponent.self, for: entity).map {
+            EnvironmentStateComponentDTO(component: $0)
+        },
+        skyIBLState: ecs.get(SkyIBLStateComponent.self, for: entity).map {
+            SkyIBLStateComponentDTO(component: $0)
+        },
+        environment: ecs.get(EnvironmentComponent.self, for: entity).map {
+            EnvironmentComponentDTO(component: $0)
         },
         skyLightTag: ecs.get(SkyLightTag.self, for: entity).map { _ in TagComponentDTO() },
         skySunTag: ecs.get(SkySunTag.self, for: entity).map { _ in TagComponentDTO() }
@@ -563,49 +716,64 @@ private func applyComponentsDocument(_ components: ComponentsDocument,
     if let characterController = components.characterController {
         ecs.add(characterController.toComponent(), to: entity)
     }
-    if let sky = components.sky {
-        ecs.add(SkyComponent(environmentMapHandle: sky.environmentMapHandle), to: entity)
-    }
     if let skyLight = components.skyLight {
-        ecs.add(
-            SkyLightComponent(
-                mode: SkyMode(rawValue: skyLight.mode) ?? .hdri,
-                enabled: skyLight.enabled,
-                intensity: skyLight.intensity,
-                skyTint: skyLight.skyTint.toSIMD(),
-                turbidity: skyLight.turbidity,
-                azimuthDegrees: skyLight.azimuthDegrees,
-                elevationDegrees: skyLight.elevationDegrees,
-                sunSizeDegrees: skyLight.sunSizeDegrees,
-                zenithTint: skyLight.zenithTint.toSIMD(),
-                horizonTint: skyLight.horizonTint.toSIMD(),
-                gradientStrength: skyLight.gradientStrength,
-                hazeDensity: skyLight.hazeDensity,
-                hazeFalloff: skyLight.hazeFalloff,
-                hazeHeight: skyLight.hazeHeight,
-                ozoneStrength: skyLight.ozoneStrength,
-                ozoneTint: skyLight.ozoneTint.toSIMD(),
-                sunHaloSize: skyLight.sunHaloSize,
-                sunHaloIntensity: skyLight.sunHaloIntensity,
-                sunHaloSoftness: skyLight.sunHaloSoftness,
-                cloudsEnabled: skyLight.cloudsEnabled,
-                cloudsCoverage: skyLight.cloudsCoverage,
-                cloudsSoftness: skyLight.cloudsSoftness,
-                cloudsScale: skyLight.cloudsScale,
-                cloudsSpeed: skyLight.cloudsSpeed,
-                cloudsWindDirection: SIMD2<Float>(skyLight.cloudsWindX, skyLight.cloudsWindY),
-                cloudsHeight: skyLight.cloudsHeight,
-                cloudsThickness: skyLight.cloudsThickness,
-                cloudsBrightness: skyLight.cloudsBrightness,
-                cloudsSunInfluence: skyLight.cloudsSunInfluence,
-                hdriHandle: skyLight.hdriHandle,
-                needsRebuild: true,
-                rebuildRequested: false,
-                realtimeUpdate: skyLight.realtimeUpdate,
-                lastRebuildTime: 0.0
-            ),
-            to: entity
+        let component = SkyLightComponent(
+            mode: SkyMode(rawValue: skyLight.mode) ?? .hdri,
+            enabled: skyLight.enabled,
+            hdriHandle: skyLight.hdriHandle,
+            timeOfDay: skyLight.timeOfDay,
+            weatherType: AtmosphereWeatherType(rawValue: skyLight.weatherType) ?? .clear,
+            secondaryWeatherType: AtmosphereWeatherType(rawValue: skyLight.secondaryWeatherType) ?? .clear,
+            weatherBlend: skyLight.weatherBlend,
+            weatherAmount: skyLight.weatherAmount,
+            atmosphereAmount: skyLight.atmosphereAmount,
+            cloudCoverage: skyLight.cloudCoverage,
+            cloudStyle: AtmosphereCloudStyle(rawValue: skyLight.cloudStyle) ?? .puffy,
+            temperature: skyLight.temperature,
+            mood: skyLight.mood,
+            moonIntensity: skyLight.moonIntensity,
+            moonSizeDegrees: skyLight.moonSizeDegrees,
+            starIntensity: skyLight.starIntensity,
+            fogAmount: skyLight.fogAmount,
+            fogHeight: skyLight.fogHeight,
+            fogDistance: skyLight.fogDistance,
+            intensity: skyLight.intensity,
+            skyTint: skyLight.skyTint.toSIMD(),
+            turbidity: skyLight.turbidity,
+            azimuthDegrees: skyLight.azimuthDegrees,
+            elevationDegrees: skyLight.elevationDegrees,
+            sunSizeDegrees: skyLight.sunSizeDegrees,
+            zenithTint: skyLight.zenithTint.toSIMD(),
+            horizonTint: skyLight.horizonTint.toSIMD(),
+            gradientStrength: skyLight.gradientStrength,
+            hazeDensity: skyLight.hazeDensity,
+            hazeFalloff: skyLight.hazeFalloff,
+            hazeHeight: skyLight.hazeHeight,
+            ozoneStrength: skyLight.ozoneStrength,
+            ozoneTint: skyLight.ozoneTint.toSIMD(),
+            sunHaloSize: skyLight.sunHaloSize,
+            sunHaloIntensity: skyLight.sunHaloIntensity,
+            sunHaloSoftness: skyLight.sunHaloSoftness,
+            cloudsEnabled: skyLight.cloudsEnabled,
+            cloudsCoverage: skyLight.cloudsCoverage,
+            cloudsSoftness: skyLight.cloudsSoftness,
+            cloudsScale: skyLight.cloudsScale,
+            cloudsSpeed: skyLight.cloudsSpeed,
+            cloudsWindDirection: SIMD2<Float>(skyLight.cloudsWindX, skyLight.cloudsWindY),
+            cloudsHeight: skyLight.cloudsHeight,
+            cloudsThickness: skyLight.cloudsThickness,
+            cloudsBrightness: skyLight.cloudsBrightness,
+            cloudsSunInfluence: skyLight.cloudsSunInfluence
         )
+        ecs.add(component, to: entity)
+        ecs.add(components.environmentState?.toComponent() ?? EnvironmentStateComponent(seededFromAuthored: component), to: entity)
+        ecs.add(components.skyIBLState?.toComponent() ?? SkyIBLStateComponent(realtimeUpdate: skyLight.realtimeUpdate ?? true), to: entity)
+    }
+    if let environmentDTO = components.environment {
+        let environment = environmentDTO.toComponent()
+        ecs.add(environment, to: entity)
+        ecs.add(EnvironmentRuntimeStateComponent.default(from: environment), to: entity)
+        ecs.add(EnvironmentIBLStateComponent.defaultNeedsRebuild, to: entity)
     }
     if components.skyLightTag != nil {
         ecs.add(SkyLightTag(), to: entity)
@@ -662,9 +830,9 @@ private func setActiveSky(ecs: SceneECS, entity: Entity, logger: EngineLogger) {
         }
     }
     ecs.add(SkyLightTag(), to: entity)
-    if var sky = ecs.get(SkyLightComponent.self, for: entity) {
-        sky.needsRebuild = true
-        ecs.add(sky, to: entity)
+    if var iblState = ecs.get(SkyIBLStateComponent.self, for: entity) {
+        iblState.needsRebuild = true
+        ecs.add(iblState, to: entity)
         logger.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
     logger.logInfo("Sky active set: \(entity.id.uuidString)", category: .scene)
@@ -940,6 +1108,11 @@ public func MCEEditorEntityExists(_ contextPtr: UnsafeRawPointer?, _ entityId: U
     EditorSceneQueries.entityExists(contextPtr, entityId)
 }
 
+@_cdecl("MCEEditorEntityIsAutoDrivenSkySun")
+public func MCEEditorEntityIsAutoDrivenSkySun(_ contextPtr: UnsafeRawPointer?, _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    EditorSceneQueries.entityIsAutoDrivenSkySun(contextPtr, entityId)
+}
+
 @_cdecl("MCEEditorSetEntityName")
 public func MCEEditorSetEntityName(_ contextPtr: UnsafeRawPointer?,
                                    _ entityId: UnsafePointer<CChar>?,
@@ -986,6 +1159,27 @@ public func MCEEditorCreateMeshEntityFromHandleWithMaterials(_ contextPtr: Unsaf
                                                              _ outId: UnsafeMutablePointer<CChar>?,
                                                              _ outIdSize: Int32) -> Int32 {
     EditorEntityCommands.createMeshEntityFromHandleWithMaterials(contextPtr, meshHandle, outId, outIdSize)
+}
+
+@_cdecl("MCEEditorCreateImportedMeshEntity")
+public func MCEEditorCreateImportedMeshEntity(_ contextPtr: UnsafeRawPointer?,
+                                              _ meshHandle: UnsafePointer<CChar>?,
+                                              _ skeletonHandle: UnsafePointer<CChar>?,
+                                              _ defaultClipHandle: UnsafePointer<CChar>?,
+                                              _ submeshMaterialHandles: UnsafePointer<CChar>?,
+                                              _ meshPath: UnsafePointer<CChar>?,
+                                              _ outId: UnsafeMutablePointer<CChar>?,
+                                              _ outIdSize: Int32) -> Int32 {
+    EditorEntityCommands.createImportedMeshEntity(
+        contextPtr,
+        meshHandle,
+        skeletonHandle,
+        defaultClipHandle,
+        submeshMaterialHandles,
+        meshPath,
+        outId,
+        outIdSize
+    )
 }
 
 @_cdecl("MCEEditorInstantiatePrefabFromHandle")
@@ -1128,6 +1322,13 @@ public func MCEEditorCreateSkyEntity(_ contextPtr: UnsafeRawPointer?,
     EditorEntityCommands.createSkyEntity(contextPtr, outId, outIdSize)
 }
 
+@_cdecl("MCEEditorCreateEnvironmentEntity")
+public func MCEEditorCreateEnvironmentEntity(_ contextPtr: UnsafeRawPointer?,
+                                             _ outId: UnsafeMutablePointer<CChar>?,
+                                             _ outIdSize: Int32) -> Int32 {
+    EditorEntityCommands.createEnvironmentEntity(contextPtr, outId, outIdSize)
+}
+
 @_cdecl("MCEEditorCreateCameraEntity")
 public func MCEEditorCreateCameraEntity(_ contextPtr: UnsafeRawPointer?,
                                         _ outId: UnsafeMutablePointer<CChar>?,
@@ -1200,6 +1401,16 @@ public func MCEEditorRemoveComponent(_ contextPtr: UnsafeRawPointer?,
         ecs.remove(ScriptComponent.self, from: entity)
     case .characterController:
         ecs.remove(CharacterControllerComponent.self, from: entity)
+    case .skinnedMesh:
+        ecs.remove(SkinnedMeshComponent.self, from: entity)
+    case .animator:
+        ecs.remove(AnimatorComponent.self, from: entity)
+    case .reflectionProbe:
+        ecs.remove(ReflectionProbeComponent.self, from: entity)
+    case .environment:
+        ecs.remove(EnvironmentComponent.self, from: entity)
+        ecs.remove(EnvironmentRuntimeStateComponent.self, from: entity)
+        ecs.remove(EnvironmentIBLStateComponent.self, from: entity)
     }
     context.bridgeServices.notifySceneMutation()
     return 1
@@ -1751,6 +1962,16 @@ public func MCEEditorSetCharacterControllerEntityRefs(_ contextPtr: UnsafeRawPoi
     } else {
         controller.visualEntityId = nil
     }
+    if let visualID = controller.visualEntityId,
+       let visualEntity = ecs.entity(with: visualID) {
+        if ecs.get(AnimatorComponent.self, for: visualEntity) != nil {
+            controller.animatorEntityId = visualEntity.id
+        } else {
+            controller.animatorEntityId = firstAnimatorInSubtree(root: visualEntity, ecs: ecs)?.id
+        }
+    } else {
+        controller.animatorEntityId = nil
+    }
     if let cameraPivotEntityId, cameraPivotEntityId.pointee != 0 {
         controller.cameraPivotEntityId = UUID(uuidString: String(cString: cameraPivotEntityId))
     } else {
@@ -1861,6 +2082,15 @@ public func MCEEditorCharacterControllerCreateRecommendedHierarchy(_ contextPtr:
     if controller.visualEntityId != visualEntity.id {
         controller.visualEntityId = visualEntity.id
         didMutate = true
+    }
+    if controller.animatorEntityId == nil || (controller.animatorEntityId.flatMap { ecs.entity(with: $0) } == nil) {
+        if ecs.get(AnimatorComponent.self, for: visualEntity) != nil {
+            controller.animatorEntityId = visualEntity.id
+            didMutate = true
+        } else if let discovered = firstAnimatorInSubtree(root: visualEntity, ecs: ecs) {
+            controller.animatorEntityId = discovered.id
+            didMutate = true
+        }
     }
 
     let pivotRefEntity = controller.cameraPivotEntityId.flatMap { ecs.entity(with: $0) }
@@ -2341,6 +2571,53 @@ public func MCEEditorSetCamera(_ contextPtr: UnsafeRawPointer?,
     context.bridgeServices.notifySceneMutation()
 }
 
+@_cdecl("MCEEditorGetCameraExposure")
+public func MCEEditorGetCameraExposure(_ contextPtr: UnsafeRawPointer?,
+                                       _ entityId: UnsafePointer<CChar>?,
+                                       _ autoExposureEnabled: UnsafeMutablePointer<UInt32>?,
+                                       _ manualExposure: UnsafeMutablePointer<Float>?,
+                                       _ exposureCompensation: UnsafeMutablePointer<Float>?,
+                                       _ autoExposureMin: UnsafeMutablePointer<Float>?,
+                                       _ autoExposureMax: UnsafeMutablePointer<Float>?,
+                                       _ adaptationSpeed: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let camera = ecs.get(CameraComponent.self, for: entity) else { return 0 }
+    autoExposureEnabled?.pointee = camera.autoExposureEnabled ? 1 : 0
+    manualExposure?.pointee = camera.manualExposure
+    exposureCompensation?.pointee = camera.exposureCompensation
+    autoExposureMin?.pointee = camera.autoExposureMin
+    autoExposureMax?.pointee = camera.autoExposureMax
+    adaptationSpeed?.pointee = camera.adaptationSpeed
+    return 1
+}
+
+@_cdecl("MCEEditorSetCameraExposure")
+public func MCEEditorSetCameraExposure(_ contextPtr: UnsafeRawPointer?,
+                                       _ entityId: UnsafePointer<CChar>?,
+                                       _ autoExposureEnabled: UInt32,
+                                       _ manualExposure: Float,
+                                       _ exposureCompensation: Float,
+                                       _ autoExposureMin: Float,
+                                       _ autoExposureMax: Float,
+                                       _ adaptationSpeed: Float) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var camera = ecs.get(CameraComponent.self, for: entity) else { return }
+
+    camera.autoExposureEnabled = autoExposureEnabled != 0
+    camera.manualExposure = max(manualExposure, 0.0001)
+    camera.exposureCompensation = exposureCompensation
+    camera.autoExposureMin = max(autoExposureMin, 0.0001)
+    camera.autoExposureMax = max(autoExposureMax, camera.autoExposureMin)
+    camera.adaptationSpeed = max(adaptationSpeed, 0.0)
+    ecs.add(camera, to: entity)
+    context.bridgeServices.notifySceneMutation()
+}
+
 @_cdecl("MCEEditorSetTransformFromMatrix")
 public func MCEEditorSetTransformFromMatrix(_ contextPtr: UnsafeRawPointer?,
                                             _ entityId: UnsafePointer<CChar>?,
@@ -2392,9 +2669,9 @@ public func MCEEditorDebugPhysicsRaycastFromCamera(_ contextPtr: UnsafeRawPointe
         let offsetZ = SIMD3<Float>(0.0, 0.0, pointSize)
         let normalLength: Float = 0.25
         let color = SIMD4<Float>(0.95, 0.8, 0.2, 1.0)
-        debugDraw.submitLine(hit.position - offsetX, hit.position + offsetX, color: color)
-        debugDraw.submitLine(hit.position - offsetZ, hit.position + offsetZ, color: color)
-        debugDraw.submitLine(hit.position, hit.position + hit.normal * normalLength, color: color)
+        debugDraw.submitLine(category: .generic, hit.position - offsetX, hit.position + offsetX, color: color)
+        debugDraw.submitLine(category: .generic, hit.position - offsetZ, hit.position + offsetZ, color: color)
+        debugDraw.submitLine(category: .generic, hit.position, hit.position + hit.normal * normalLength, color: color)
     }
     if !hadPhysics {
         scene.stopPhysics()
@@ -2491,6 +2768,556 @@ public func MCEEditorSetMaterialComponent(_ contextPtr: UnsafeRawPointer?,
     context.bridgeServices.notifySceneMutation()
 }
 
+@_cdecl("MCEEditorGetSkinnedMesh")
+public func MCEEditorGetSkinnedMesh(_ contextPtr: UnsafeRawPointer?,
+                                    _ entityId: UnsafePointer<CChar>?,
+                                    _ skeletonHandle: UnsafeMutablePointer<CChar>?,
+                                    _ skeletonHandleSize: Int32,
+                                    _ jointCount: UnsafeMutablePointer<Int32>?,
+                                    _ isValid: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let skinned = ecs.get(SkinnedMeshComponent.self, for: entity) else { return 0 }
+    let skeletonString = skinned.skeletonHandle?.rawValue.uuidString ?? ""
+    _ = writeCString(skeletonString, to: skeletonHandle, max: skeletonHandleSize)
+    if let handle = skinned.skeletonHandle,
+       let skeleton = context.engineContext.assets.skeleton(handle: handle) {
+        jointCount?.pointee = Int32(skeleton.joints.count)
+        isValid?.pointee = skeleton.joints.isEmpty ? 0 : 1
+    } else {
+        jointCount?.pointee = 0
+        isValid?.pointee = 0
+    }
+    return 1
+}
+
+@_cdecl("MCEEditorSetSkinnedMesh")
+public func MCEEditorSetSkinnedMesh(_ contextPtr: UnsafeRawPointer?,
+                                    _ entityId: UnsafePointer<CChar>?,
+                                    _ skeletonHandle: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    let skeletonString = skeletonHandle != nil ? String(cString: skeletonHandle!) : ""
+    var component = ecs.get(SkinnedMeshComponent.self, for: entity) ?? SkinnedMeshComponent()
+    component.skeletonHandle = handleFromString(skeletonString)
+    ecs.add(component, to: entity)
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetAnimator")
+public func MCEEditorGetAnimator(_ contextPtr: UnsafeRawPointer?,
+                                 _ entityId: UnsafePointer<CChar>?,
+                                 _ clipHandle: UnsafeMutablePointer<CChar>?,
+                                 _ clipHandleSize: Int32,
+                                 _ playbackTime: UnsafeMutablePointer<Float>?,
+                                 _ playbackSpeed: UnsafeMutablePointer<Float>?,
+                                 _ isPlaying: UnsafeMutablePointer<UInt32>?,
+                                 _ isLooping: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity) else { return 0 }
+    let clipString = animator.clipHandle?.rawValue.uuidString ?? ""
+    _ = writeCString(clipString, to: clipHandle, max: clipHandleSize)
+    playbackTime?.pointee = animator.playbackTime
+    playbackSpeed?.pointee = animator.playbackSpeed
+    isPlaying?.pointee = animator.isPlaying ? 1 : 0
+    isLooping?.pointee = animator.isLooping ? 1 : 0
+    return 1
+}
+
+@_cdecl("MCEEditorSetAnimator")
+public func MCEEditorSetAnimator(_ contextPtr: UnsafeRawPointer?,
+                                 _ entityId: UnsafePointer<CChar>?,
+                                 _ clipHandle: UnsafePointer<CChar>?,
+                                 _ playbackTime: Float,
+                                 _ playbackSpeed: Float,
+                                 _ isPlaying: UInt32,
+                                 _ isLooping: UInt32) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    let clipString = clipHandle != nil ? String(cString: clipHandle!) : ""
+    var component = ecs.get(AnimatorComponent.self, for: entity) ?? AnimatorComponent()
+    let previousClipHandle = component.clipHandle
+    let resolvedClipHandle = handleFromString(clipString)
+    component.evaluationMode = .clip
+    component.clipHandle = resolvedClipHandle
+    component.graphHandle = nil
+    component.graphRuntimeState = nil
+    component.playbackTime = max(0.0, playbackTime)
+    component.playbackSpeed = max(0.0, playbackSpeed)
+    component.isPlaying = isPlaying != 0
+    component.isLooping = isLooping != 0
+    ecs.add(component, to: entity)
+#if DEBUG
+    if previousClipHandle != resolvedClipHandle {
+        let previousPath = previousClipHandle.flatMap { context.bridgeServices.assetURL(for: $0)?.path } ?? "<none>"
+        let selectedPath = resolvedClipHandle.flatMap { context.bridgeServices.assetURL(for: $0)?.path } ?? "<none>"
+        EngineLoggerContext.log(
+            "Animator clip selection updated entity=\(entity.id.uuidString)\npreviousClipHandle=\(previousClipHandle?.rawValue.uuidString ?? "<none>")\npreviousClipPath=\(previousPath)\nselectedClipHandle=\(resolvedClipHandle?.rawValue.uuidString ?? "<none>")\nselectedClipPath=\(selectedPath)",
+            level: .debug,
+            category: .assets
+        )
+    }
+#endif
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetAnimatorMode")
+public func MCEEditorGetAnimatorMode(_ contextPtr: UnsafeRawPointer?,
+                                     _ entityId: UnsafePointer<CChar>?,
+                                     _ modeOut: UnsafeMutablePointer<Int32>?,
+                                     _ graphHandle: UnsafeMutablePointer<CChar>?,
+                                     _ graphHandleSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity) else { return 0 }
+    modeOut?.pointee = animator.evaluationMode == .graph ? 1 : 0
+    _ = writeCString(animator.graphHandle?.rawValue.uuidString ?? "", to: graphHandle, max: graphHandleSize)
+    return 1
+}
+
+@_cdecl("MCEEditorSetAnimatorGraph")
+public func MCEEditorSetAnimatorGraph(_ contextPtr: UnsafeRawPointer?,
+                                      _ entityId: UnsafePointer<CChar>?,
+                                      _ graphHandle: UnsafePointer<CChar>?,
+                                      _ playbackTime: Float,
+                                      _ playbackSpeed: Float,
+                                      _ isPlaying: UInt32,
+                                      _ isLooping: UInt32) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    let graphString = graphHandle != nil ? String(cString: graphHandle!) : ""
+    var component = ecs.get(AnimatorComponent.self, for: entity) ?? AnimatorComponent()
+    component.evaluationMode = .graph
+    component.graphHandle = handleFromString(graphString)
+    component.clipHandle = nil
+    component.graphRuntimeState = nil
+    component.playbackTime = max(0.0, playbackTime)
+    component.playbackSpeed = max(0.0, playbackSpeed)
+    component.isPlaying = isPlaying != 0
+    component.isLooping = isLooping != 0
+    ecs.add(component, to: entity)
+    context.bridgeServices.notifySceneMutation()
+}
+
+private func graphRuntimeSnapshot(context: MCEContext,
+                                  animator: AnimatorComponent) -> (CompiledAnimationGraph, AnimationGraphRuntimeInstanceState)? {
+    guard animator.evaluationMode == .graph,
+          let graphHandle = animator.graphHandle,
+          let compiledGraph = context.engineContext.assets.compiledAnimationGraph(handle: graphHandle) else { return nil }
+    var runtimeState = animator.graphRuntimeState ?? AnimationGraphRuntimeInstanceState()
+    if runtimeState.graphHandle != graphHandle ||
+        !runtimeState.hasStorage(parameterCount: compiledGraph.parameters.count,
+                                 localVariableCount: compiledGraph.localVariables.count) {
+        runtimeState.resetDefaults(from: compiledGraph, graphHandle: graphHandle)
+    }
+    return (compiledGraph, runtimeState)
+}
+
+@_cdecl("MCEEditorGetAnimatorGraphParameterCount")
+public func MCEEditorGetAnimatorGraphParameterCount(_ contextPtr: UnsafeRawPointer?,
+                                                    _ entityId: UnsafePointer<CChar>?) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (compiledGraph, _) = graphRuntimeSnapshot(context: context, animator: animator) else { return 0 }
+    return Int32(compiledGraph.parameters.count)
+}
+
+@_cdecl("MCEEditorGetAnimatorGraphParameterAt")
+public func MCEEditorGetAnimatorGraphParameterAt(_ contextPtr: UnsafeRawPointer?,
+                                                 _ entityId: UnsafePointer<CChar>?,
+                                                 _ index: Int32,
+                                                 _ nameBuffer: UnsafeMutablePointer<CChar>?, _ nameBufferSize: Int32,
+                                                 _ typeOut: UnsafeMutablePointer<Int32>?,
+                                                 _ defaultFloatOut: UnsafeMutablePointer<Float>?,
+                                                 _ defaultBoolOut: UnsafeMutablePointer<UInt32>?,
+                                                 _ defaultIntOut: UnsafeMutablePointer<Int32>?,
+                                                 _ floatValueOut: UnsafeMutablePointer<Float>?,
+                                                 _ boolValueOut: UnsafeMutablePointer<UInt32>?,
+                                                 _ intValueOut: UnsafeMutablePointer<Int32>?,
+                                                 _ triggerValueOut: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (compiledGraph, runtimeState) = graphRuntimeSnapshot(context: context, animator: animator) else { return 0 }
+    let i = Int(index)
+    guard i >= 0, i < compiledGraph.parameters.count else { return 0 }
+    let parameter = compiledGraph.parameters[i]
+    _ = writeCString(parameter.name, to: nameBuffer, max: nameBufferSize)
+    switch parameter.type {
+    case .float: typeOut?.pointee = 0
+    case .bool: typeOut?.pointee = 1
+    case .int: typeOut?.pointee = 2
+    case .trigger: typeOut?.pointee = 3
+    }
+    defaultFloatOut?.pointee = parameter.defaultFloat
+    defaultBoolOut?.pointee = parameter.defaultBool ? 1 : 0
+    defaultIntOut?.pointee = Int32(clamping: parameter.defaultInt)
+    floatValueOut?.pointee = runtimeState.floatParameterValues[i]
+    boolValueOut?.pointee = runtimeState.boolParameterValues[i] ? 1 : 0
+    intValueOut?.pointee = Int32(clamping: runtimeState.intParameterValues[i])
+    let triggerValue = runtimeState.triggerParameterValues[i] || runtimeState.triggerLatchedParameterIndices.contains(i)
+    triggerValueOut?.pointee = triggerValue ? 1 : 0
+    return 1
+}
+
+private func mutateAnimatorGraphRuntime(context: MCEContext,
+                                        entity: Entity,
+                                        mutation: (_ runtimeState: inout AnimationGraphRuntimeInstanceState,
+                                                   _ compiledGraph: CompiledAnimationGraph) -> Bool) -> Bool {
+    guard let ecs = editorECS(context),
+          var animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (compiledGraph, runtimeSnapshot) = graphRuntimeSnapshot(context: context, animator: animator) else { return false }
+    var runtimeState = runtimeSnapshot
+    guard mutation(&runtimeState, compiledGraph) else { return false }
+    animator.graphRuntimeState = runtimeState
+    ecs.add(animator, to: entity)
+    return true
+}
+
+@_cdecl("MCEEditorSetAnimatorGraphParameterFloat")
+public func MCEEditorSetAnimatorGraphParameterFloat(_ contextPtr: UnsafeRawPointer?,
+                                                    _ entityId: UnsafePointer<CChar>?,
+                                                    _ index: Int32,
+                                                    _ value: Float) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return 0 }
+    let didMutate = mutateAnimatorGraphRuntime(context: context, entity: entity) { runtimeState, compiledGraph in
+        let i = Int(index)
+        guard i >= 0, i < compiledGraph.parameters.count else { return false }
+        runtimeState.setFloat(index: i, value: value)
+        return true
+    }
+    return didMutate ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetAnimatorGraphParameterBool")
+public func MCEEditorSetAnimatorGraphParameterBool(_ contextPtr: UnsafeRawPointer?,
+                                                   _ entityId: UnsafePointer<CChar>?,
+                                                   _ index: Int32,
+                                                   _ value: UInt32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return 0 }
+    let didMutate = mutateAnimatorGraphRuntime(context: context, entity: entity) { runtimeState, compiledGraph in
+        let i = Int(index)
+        guard i >= 0, i < compiledGraph.parameters.count else { return false }
+        runtimeState.setBool(index: i, value: value != 0)
+        return true
+    }
+    return didMutate ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetAnimatorGraphParameterInt")
+public func MCEEditorSetAnimatorGraphParameterInt(_ contextPtr: UnsafeRawPointer?,
+                                                  _ entityId: UnsafePointer<CChar>?,
+                                                  _ index: Int32,
+                                                  _ value: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return 0 }
+    let didMutate = mutateAnimatorGraphRuntime(context: context, entity: entity) { runtimeState, compiledGraph in
+        let i = Int(index)
+        guard i >= 0, i < compiledGraph.parameters.count else { return false }
+        runtimeState.setInt(index: i, value: Int(value))
+        return true
+    }
+    return didMutate ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetAnimatorGraphParameterTrigger")
+public func MCEEditorSetAnimatorGraphParameterTrigger(_ contextPtr: UnsafeRawPointer?,
+                                                      _ entityId: UnsafePointer<CChar>?,
+                                                      _ index: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return 0 }
+    let didMutate = mutateAnimatorGraphRuntime(context: context, entity: entity) { runtimeState, compiledGraph in
+        let i = Int(index)
+        guard i >= 0, i < compiledGraph.parameters.count else { return false }
+        runtimeState.setTrigger(index: i)
+        return true
+    }
+    return didMutate ? 1 : 0
+}
+
+@_cdecl("MCEEditorGetAnimatorGraphLocalVariableCount")
+public func MCEEditorGetAnimatorGraphLocalVariableCount(_ contextPtr: UnsafeRawPointer?,
+                                                        _ entityId: UnsafePointer<CChar>?) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (compiledGraph, _) = graphRuntimeSnapshot(context: context, animator: animator) else { return 0 }
+    return Int32(compiledGraph.localVariables.count)
+}
+
+@_cdecl("MCEEditorGetAnimatorGraphLocalVariableAt")
+public func MCEEditorGetAnimatorGraphLocalVariableAt(_ contextPtr: UnsafeRawPointer?,
+                                                     _ entityId: UnsafePointer<CChar>?,
+                                                     _ index: Int32,
+                                                     _ nameBuffer: UnsafeMutablePointer<CChar>?, _ nameBufferSize: Int32,
+                                                     _ typeOut: UnsafeMutablePointer<Int32>?,
+                                                     _ defaultFloatOut: UnsafeMutablePointer<Float>?,
+                                                     _ defaultBoolOut: UnsafeMutablePointer<UInt32>?,
+                                                     _ defaultIntOut: UnsafeMutablePointer<Int32>?,
+                                                     _ floatValueOut: UnsafeMutablePointer<Float>?,
+                                                     _ boolValueOut: UnsafeMutablePointer<UInt32>?,
+                                                     _ intValueOut: UnsafeMutablePointer<Int32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (compiledGraph, runtimeState) = graphRuntimeSnapshot(context: context, animator: animator) else { return 0 }
+    let i = Int(index)
+    guard i >= 0, i < compiledGraph.localVariables.count else { return 0 }
+    let localVariable = compiledGraph.localVariables[i]
+    _ = writeCString(localVariable.name, to: nameBuffer, max: nameBufferSize)
+    switch localVariable.type {
+    case .float: typeOut?.pointee = 0
+    case .bool: typeOut?.pointee = 1
+    case .int: typeOut?.pointee = 2
+    }
+    defaultFloatOut?.pointee = localVariable.defaultFloat
+    defaultBoolOut?.pointee = localVariable.defaultBool ? 1 : 0
+    defaultIntOut?.pointee = Int32(clamping: localVariable.defaultInt)
+    floatValueOut?.pointee = runtimeState.floatLocalVariableValues[i]
+    boolValueOut?.pointee = runtimeState.boolLocalVariableValues[i] ? 1 : 0
+    intValueOut?.pointee = Int32(clamping: runtimeState.intLocalVariableValues[i])
+    return 1
+}
+
+@_cdecl("MCEEditorGetAnimatorGraphStateMachineRuntime")
+public func MCEEditorGetAnimatorGraphStateMachineRuntime(_ contextPtr: UnsafeRawPointer?,
+                                                         _ entityId: UnsafePointer<CChar>?,
+                                                         _ stateMachineNodeID: UnsafePointer<CChar>?,
+                                                         _ currentStateBuffer: UnsafeMutablePointer<CChar>?,
+                                                         _ currentStateBufferSize: Int32,
+                                                         _ nextStateBuffer: UnsafeMutablePointer<CChar>?,
+                                                         _ nextStateBufferSize: Int32,
+                                                         _ transitionElapsedOut: UnsafeMutablePointer<Float>?,
+                                                         _ transitionDurationOut: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (_, runtimeState) = graphRuntimeSnapshot(context: context, animator: animator),
+          let stateMachineNodeID,
+          let nodeUUID = UUID(uuidString: String(cString: stateMachineNodeID)) else { return 0 }
+    guard let currentStateID = runtimeState.stateMachineCurrentStateByNodeID[nodeUUID] else { return 0 }
+    _ = writeCString(currentStateID.uuidString, to: currentStateBuffer, max: currentStateBufferSize)
+    let nextStateID = runtimeState.stateMachineNextStateByNodeID[nodeUUID]
+    _ = writeCString(nextStateID?.uuidString ?? "", to: nextStateBuffer, max: nextStateBufferSize)
+    transitionElapsedOut?.pointee = runtimeState.stateMachineTransitionElapsedByNodeID[nodeUUID] ?? 0.0
+    transitionDurationOut?.pointee = runtimeState.stateMachineTransitionDurationByNodeID[nodeUUID] ?? 0.0
+    return 1
+}
+
+@_cdecl("MCEEditorSetAnimatorGraphDebugTraceEnabled")
+public func MCEEditorSetAnimatorGraphDebugTraceEnabled(_ contextPtr: UnsafeRawPointer?,
+                                                       _ entityId: UnsafePointer<CChar>?,
+                                                       _ enabled: UInt32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let entity = entity(from: entityId, context: context) else { return 0 }
+    let didMutate = mutateAnimatorGraphRuntime(context: context, entity: entity) { runtimeState, _ in
+        runtimeState.captureDebugTrace = (enabled != 0)
+        if enabled == 0 {
+            runtimeState.debugTraceEntries.removeAll(keepingCapacity: true)
+        }
+        return true
+    }
+    return didMutate ? 1 : 0
+}
+
+@_cdecl("MCEEditorGetAnimatorGraphDebugTraceCount")
+public func MCEEditorGetAnimatorGraphDebugTraceCount(_ contextPtr: UnsafeRawPointer?,
+                                                     _ entityId: UnsafePointer<CChar>?) -> Int32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (_, runtimeState) = graphRuntimeSnapshot(context: context, animator: animator) else { return 0 }
+    return Int32(runtimeState.debugTraceEntries.count)
+}
+
+@_cdecl("MCEEditorGetAnimatorGraphDebugTraceEntryAt")
+public func MCEEditorGetAnimatorGraphDebugTraceEntryAt(_ contextPtr: UnsafeRawPointer?,
+                                                       _ entityId: UnsafePointer<CChar>?,
+                                                       _ index: Int32,
+                                                       _ nodeIDBuffer: UnsafeMutablePointer<CChar>?, _ nodeIDBufferSize: Int32,
+                                                       _ nodeTypeBuffer: UnsafeMutablePointer<CChar>?, _ nodeTypeBufferSize: Int32,
+                                                       _ nodeTitleBuffer: UnsafeMutablePointer<CChar>?, _ nodeTitleBufferSize: Int32,
+                                                       _ outputSummaryBuffer: UnsafeMutablePointer<CChar>?, _ outputSummaryBufferSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (_, runtimeState) = graphRuntimeSnapshot(context: context, animator: animator) else { return 0 }
+    let i = Int(index)
+    guard i >= 0, i < runtimeState.debugTraceEntries.count else { return 0 }
+    let entry = runtimeState.debugTraceEntries[i]
+    _ = writeCString(entry.nodeID.uuidString, to: nodeIDBuffer, max: nodeIDBufferSize)
+    _ = writeCString(entry.nodeType, to: nodeTypeBuffer, max: nodeTypeBufferSize)
+    _ = writeCString(entry.nodeTitle, to: nodeTitleBuffer, max: nodeTitleBufferSize)
+    _ = writeCString(entry.outputSummary, to: outputSummaryBuffer, max: outputSummaryBufferSize)
+    return 1
+}
+
+@_cdecl("MCEEditorGetAnimatorGraphRuntimeDebug")
+public func MCEEditorGetAnimatorGraphRuntimeDebug(_ contextPtr: UnsafeRawPointer?,
+                                                  _ entityId: UnsafePointer<CChar>?,
+                                                  _ currentStateBuffer: UnsafeMutablePointer<CChar>?,
+                                                  _ currentStateBufferSize: Int32,
+                                                  _ nextStateBuffer: UnsafeMutablePointer<CChar>?,
+                                                  _ nextStateBufferSize: Int32,
+                                                  _ rootMotionBoneBuffer: UnsafeMutablePointer<CChar>?,
+                                                  _ rootMotionBoneBufferSize: Int32,
+                                                  _ rootMotionTranslationBoneBuffer: UnsafeMutablePointer<CChar>?,
+                                                  _ rootMotionTranslationBoneBufferSize: Int32,
+                                                  _ rootMotionRotationBoneBuffer: UnsafeMutablePointer<CChar>?,
+                                                  _ rootMotionRotationBoneBufferSize: Int32,
+                                                  _ rootMotionConsumeBoneBuffer: UnsafeMutablePointer<CChar>?,
+                                                  _ rootMotionConsumeBoneBufferSize: Int32,
+                                                  _ speedOut: UnsafeMutablePointer<Float>?,
+                                                  _ groundedOut: UnsafeMutablePointer<UInt32>?,
+                                                  _ moveXOut: UnsafeMutablePointer<Float>?,
+                                                  _ moveYOut: UnsafeMutablePointer<Float>?,
+                                                  _ jumpTriggerOut: UnsafeMutablePointer<UInt32>?,
+                                                  _ rootMotionEnabledOut: UnsafeMutablePointer<UInt32>?,
+                                                  _ usesRootMotionOut: UnsafeMutablePointer<UInt32>?,
+                                                  _ rootMotionDeltaMagnitudeOut: UnsafeMutablePointer<Float>?,
+                                                  _ rootMotionJointIndexOut: UnsafeMutablePointer<Int32>?,
+                                                  _ rootMotionTranslationJointIndexOut: UnsafeMutablePointer<Int32>?,
+                                                  _ rootMotionRotationJointIndexOut: UnsafeMutablePointer<Int32>?,
+                                                  _ rootMotionConsumeJointIndexOut: UnsafeMutablePointer<Int32>?,
+                                                  _ rootMotionTrackConsumedOut: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity),
+          let (compiledGraph, runtimeState) = graphRuntimeSnapshot(context: context, animator: animator) else { return 0 }
+
+    var stateNamesByID: [UUID: String] = [:]
+    for node in compiledGraph.nodes {
+        guard let machine = node.stateMachine else { continue }
+        for state in machine.states {
+            stateNamesByID[state.id] = state.name
+        }
+    }
+
+    let sortedCurrentStates = runtimeState.stateMachineCurrentStateByNodeID.sorted { $0.key.uuidString < $1.key.uuidString }
+    let currentStateName: String
+    let nextStateName: String
+    if let firstCurrent = sortedCurrentStates.first {
+        currentStateName = stateNamesByID[firstCurrent.value] ?? firstCurrent.value.uuidString
+        if let nextID = runtimeState.stateMachineNextStateByNodeID[firstCurrent.key] {
+            nextStateName = stateNamesByID[nextID] ?? nextID.uuidString
+        } else {
+            nextStateName = ""
+        }
+    } else {
+        currentStateName = ""
+        nextStateName = ""
+    }
+
+    _ = writeCString(currentStateName, to: currentStateBuffer, max: currentStateBufferSize)
+    _ = writeCString(nextStateName, to: nextStateBuffer, max: nextStateBufferSize)
+    let rootMotionBoneName = animator.poseRuntimeState?.rootMotionBoneName ?? ""
+    let rootMotionTranslationBoneName = animator.poseRuntimeState?.rootMotionTranslationBoneName ?? ""
+    let rootMotionRotationBoneName = animator.poseRuntimeState?.rootMotionRotationBoneName ?? ""
+    let rootMotionConsumeBoneName = animator.poseRuntimeState?.rootMotionConsumeBoneName ?? ""
+    _ = writeCString(rootMotionBoneName, to: rootMotionBoneBuffer, max: rootMotionBoneBufferSize)
+    _ = writeCString(rootMotionTranslationBoneName, to: rootMotionTranslationBoneBuffer, max: rootMotionTranslationBoneBufferSize)
+    _ = writeCString(rootMotionRotationBoneName, to: rootMotionRotationBoneBuffer, max: rootMotionRotationBoneBufferSize)
+    _ = writeCString(rootMotionConsumeBoneName, to: rootMotionConsumeBoneBuffer, max: rootMotionConsumeBoneBufferSize)
+
+    func parameterIndex(named name: String) -> Int? {
+        compiledGraph.parameters.firstIndex { $0.name == name }
+    }
+
+    let speedIndex = parameterIndex(named: "speed")
+    let groundedIndex = parameterIndex(named: "grounded")
+    let moveXIndex = parameterIndex(named: "moveX")
+    let moveYIndex = parameterIndex(named: "moveY")
+    let jumpTriggerIndex = parameterIndex(named: "jumpTrigger")
+
+    speedOut?.pointee = speedIndex.map { runtimeState.floatParameterValues[$0] } ?? 0.0
+    groundedOut?.pointee = (groundedIndex.map { runtimeState.boolParameterValues[$0] } ?? false) ? 1 : 0
+    moveXOut?.pointee = moveXIndex.map { runtimeState.floatParameterValues[$0] } ?? 0.0
+    moveYOut?.pointee = moveYIndex.map { runtimeState.floatParameterValues[$0] } ?? 0.0
+    let jumpLatched: Bool = {
+        guard let jumpTriggerIndex else { return false }
+        return runtimeState.triggerParameterValues[jumpTriggerIndex]
+            || runtimeState.triggerLatchedParameterIndices.contains(jumpTriggerIndex)
+    }()
+    jumpTriggerOut?.pointee = jumpLatched ? 1 : 0
+    rootMotionEnabledOut?.pointee = animator.enableRootMotion ? 1 : 0
+    usesRootMotionOut?.pointee = (animator.poseRuntimeState?.usesRootMotion ?? false) ? 1 : 0
+    rootMotionDeltaMagnitudeOut?.pointee = simd_length(animator.poseRuntimeState?.rootMotionDelta.deltaPos ?? .zero)
+    rootMotionJointIndexOut?.pointee = Int32(animator.poseRuntimeState?.rootMotionJointIndex ?? -1)
+    rootMotionTranslationJointIndexOut?.pointee = Int32(animator.poseRuntimeState?.rootMotionTranslationJointIndex ?? -1)
+    rootMotionRotationJointIndexOut?.pointee = Int32(animator.poseRuntimeState?.rootMotionRotationJointIndex ?? -1)
+    rootMotionConsumeJointIndexOut?.pointee = Int32(animator.poseRuntimeState?.rootMotionConsumeJointIndex ?? -1)
+    rootMotionTrackConsumedOut?.pointee = (animator.poseRuntimeState?.rootMotionTrackConsumed ?? false) ? 1 : 0
+    return 1
+}
+
+@_cdecl("MCEEditorGetAnimatorRootMotionEnabled")
+public func MCEEditorGetAnimatorRootMotionEnabled(_ contextPtr: UnsafeRawPointer?,
+                                                   _ entityId: UnsafePointer<CChar>?,
+                                                   _ enabledOut: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity) else { return 0 }
+    enabledOut?.pointee = animator.enableRootMotion ? 1 : 0
+    return 1
+}
+
+@_cdecl("MCEEditorSetAnimatorRootMotionEnabled")
+public func MCEEditorSetAnimatorRootMotionEnabled(_ contextPtr: UnsafeRawPointer?,
+                                                   _ entityId: UnsafePointer<CChar>?,
+                                                   _ enabled: UInt32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var animator = ecs.get(AnimatorComponent.self, for: entity) else { return 0 }
+    animator.enableRootMotion = enabled != 0
+    ecs.add(animator, to: entity)
+    if !context.bridgeServices.isPlaying {
+        context.bridgeServices.notifySceneMutation()
+    }
+    return 1
+}
+
+@_cdecl("MCEEditorGetAnimatorRuntimeStats")
+public func MCEEditorGetAnimatorRuntimeStats(_ contextPtr: UnsafeRawPointer?,
+                                             _ entityId: UnsafePointer<CChar>?,
+                                             _ evaluatedJointCount: UnsafeMutablePointer<Int32>?,
+                                             _ hasPoseState: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let animator = ecs.get(AnimatorComponent.self, for: entity) else { return 0 }
+    let count = animator.poseRuntimeState?.globalPose.count ?? 0
+    evaluatedJointCount?.pointee = Int32(count)
+    hasPoseState?.pointee = animator.poseRuntimeState == nil ? 0 : 1
+    return 1
+}
+
 @_cdecl("MCEEditorGetLight")
 public func MCEEditorGetLight(_ contextPtr: UnsafeRawPointer?,
                               _ entityId: UnsafePointer<CChar>?, _ type: UnsafeMutablePointer<Int32>?,
@@ -2578,6 +3405,9 @@ public func MCEEditorSetLight(_ contextPtr: UnsafeRawPointer?,
 @_cdecl("MCEEditorGetSkyLight")
 public func MCEEditorGetSkyLight(_ contextPtr: UnsafeRawPointer?,
                                  _ entityId: UnsafePointer<CChar>?, _ mode: UnsafeMutablePointer<Int32>?, _ enabled: UnsafeMutablePointer<UInt32>?,
+                                 _ timeOfDay: UnsafeMutablePointer<Float>?, _ weatherType: UnsafeMutablePointer<Int32>?, _ secondaryWeatherType: UnsafeMutablePointer<Int32>?, _ weatherBlend: UnsafeMutablePointer<Float>?, _ weatherAmount: UnsafeMutablePointer<Float>?,
+                                 _ atmosphereAmount: UnsafeMutablePointer<Float>?, _ cloudCoverage: UnsafeMutablePointer<Float>?, _ cloudStyle: UnsafeMutablePointer<Int32>?,
+                                 _ temperature: UnsafeMutablePointer<Float>?, _ mood: UnsafeMutablePointer<Float>?,
                                  _ intensity: UnsafeMutablePointer<Float>?, _ tintX: UnsafeMutablePointer<Float>?, _ tintY: UnsafeMutablePointer<Float>?, _ tintZ: UnsafeMutablePointer<Float>?,
                                  _ turbidity: UnsafeMutablePointer<Float>?, _ azimuth: UnsafeMutablePointer<Float>?, _ elevation: UnsafeMutablePointer<Float>?, _ sunSize: UnsafeMutablePointer<Float>?,
                                  _ zenithTintX: UnsafeMutablePointer<Float>?, _ zenithTintY: UnsafeMutablePointer<Float>?, _ zenithTintZ: UnsafeMutablePointer<Float>?,
@@ -2591,6 +3421,7 @@ public func MCEEditorGetSkyLight(_ contextPtr: UnsafeRawPointer?,
                                  _ cloudsWindX: UnsafeMutablePointer<Float>?, _ cloudsWindY: UnsafeMutablePointer<Float>?,
                                  _ cloudsHeight: UnsafeMutablePointer<Float>?, _ cloudsThickness: UnsafeMutablePointer<Float>?,
                                  _ cloudsBrightness: UnsafeMutablePointer<Float>?, _ cloudsSunInfluence: UnsafeMutablePointer<Float>?,
+                                 _ fogAmount: UnsafeMutablePointer<Float>?, _ fogHeight: UnsafeMutablePointer<Float>?, _ fogDistance: UnsafeMutablePointer<Float>?,
                                  _ autoRebuild: UnsafeMutablePointer<UInt32>?, _ needsRebuild: UnsafeMutablePointer<UInt32>?,
                                  _ hdriHandle: UnsafeMutablePointer<CChar>?, _ hdriHandleSize: Int32) -> UInt32 {
     guard let context = resolveContext(contextPtr),
@@ -2599,6 +3430,16 @@ public func MCEEditorGetSkyLight(_ contextPtr: UnsafeRawPointer?,
           let sky = ecs.get(SkyLightComponent.self, for: entity) else { return 0 }
     mode?.pointee = Int32(sky.mode.rawValue)
     enabled?.pointee = sky.enabled ? 1 : 0
+    timeOfDay?.pointee = sky.timeOfDay
+    weatherType?.pointee = Int32(sky.weatherType.rawValue)
+    secondaryWeatherType?.pointee = Int32(sky.secondaryWeatherType.rawValue)
+    weatherBlend?.pointee = sky.weatherBlend
+    weatherAmount?.pointee = sky.weatherAmount
+    atmosphereAmount?.pointee = sky.atmosphereAmount
+    cloudCoverage?.pointee = sky.cloudCoverage
+    cloudStyle?.pointee = Int32(sky.cloudStyle.rawValue)
+    temperature?.pointee = sky.temperature
+    mood?.pointee = sky.mood
     intensity?.pointee = sky.intensity
     tintX?.pointee = sky.skyTint.x
     tintY?.pointee = sky.skyTint.y
@@ -2635,16 +3476,161 @@ public func MCEEditorGetSkyLight(_ contextPtr: UnsafeRawPointer?,
     cloudsThickness?.pointee = sky.cloudsThickness
     cloudsBrightness?.pointee = sky.cloudsBrightness
     cloudsSunInfluence?.pointee = sky.cloudsSunInfluence
-    autoRebuild?.pointee = sky.realtimeUpdate ? 1 : 0
-    needsRebuild?.pointee = sky.needsRebuild ? 1 : 0
+    fogAmount?.pointee = sky.fogAmount
+    fogHeight?.pointee = sky.fogHeight
+    fogDistance?.pointee = sky.fogDistance
+    let iblState = ecs.get(SkyIBLStateComponent.self, for: entity) ?? SkyIBLStateComponent()
+    autoRebuild?.pointee = iblState.realtimeUpdate ? 1 : 0
+    needsRebuild?.pointee = iblState.needsRebuild ? 1 : 0
     let hdriString = sky.hdriHandle?.rawValue.uuidString ?? ""
     _ = writeCString(hdriString, to: hdriHandle, max: hdriHandleSize)
     return 1
 }
 
+private func clampSkyFacade(_ value: Float, min minValue: Float, max maxValue: Float) -> Float {
+    Swift.max(minValue, Swift.min(maxValue, value))
+}
+
+/// Temporary compatibility bridge for edit-mode preview only.
+/// Wave 1 treats authored sky state plus `EnvironmentStateComponent` as the
+/// authoritative model. These legacy procedural fields are still populated here
+/// only so the current shader-facing path can preview authored edits before the
+/// renderer fully stops reading them.
+private func applyAtmospherePreviewCompatibility(to sky: inout SkyLightComponent) {
+    let timeOfDay = clampSkyFacade(sky.timeOfDay, min: 0.0, max: 24.0)
+    let weatherBlend = clampSkyFacade(sky.weatherBlend, min: 0.0, max: 1.0)
+    let weatherAmount = clampSkyFacade(sky.weatherAmount, min: 0.0, max: 1.0)
+    let atmosphereAmount = clampSkyFacade(sky.atmosphereAmount, min: 0.0, max: 1.0)
+    let cloudCoverage = clampSkyFacade(sky.cloudCoverage, min: 0.0, max: 1.0)
+    let temperature = clampSkyFacade(sky.temperature, min: -1.0, max: 1.0)
+    let mood = clampSkyFacade(sky.mood, min: -1.0, max: 1.0)
+    let resolvedWeather = SkySystem.resolvedWeatherProfile(primary: sky.weatherType,
+                                                           secondary: sky.secondaryWeatherType,
+                                                           blend: weatherBlend)
+
+    sky.timeOfDay = timeOfDay
+    sky.weatherBlend = weatherBlend
+    sky.weatherAmount = weatherAmount
+    sky.atmosphereAmount = atmosphereAmount
+    sky.cloudCoverage = cloudCoverage
+    sky.temperature = temperature
+    sky.mood = mood
+
+    let normalizedTime = timeOfDay / 24.0
+    sky.azimuthDegrees = fmodf(normalizedTime * 360.0 + 90.0, 360.0)
+    let solarAngle = ((timeOfDay - 6.0) / 12.0) * Float.pi
+    let solarHeight = sin(solarAngle)
+    sky.elevationDegrees = clampSkyFacade(solarHeight * 88.0, min: -12.0, max: 88.0)
+    sky.sunSizeDegrees = clampSkyFacade(0.52 + weatherAmount * 0.08, min: 0.35, max: 0.9)
+
+    var targetTurbidity = simd_mix(2.0 + atmosphereAmount * 4.0,
+                                   resolvedWeather.turbidity,
+                                   weatherAmount)
+    var targetCloudCoverage = simd_mix(cloudCoverage,
+                                       max(cloudCoverage, resolvedWeather.cloudCoverageFloor),
+                                       weatherAmount)
+    var targetCloudSoftness = simd_mix(0.55, resolvedWeather.cloudSoftness, weatherAmount)
+    var targetCloudScale = simd_mix(1.0, resolvedWeather.cloudScale, weatherAmount)
+    var targetCloudThickness = simd_mix(0.32, resolvedWeather.cloudThickness, weatherAmount)
+    var targetCloudBrightness = simd_mix(0.95, resolvedWeather.cloudBrightness, weatherAmount)
+    var targetCloudSunInfluence = simd_mix(0.9, resolvedWeather.cloudSunInfluence, weatherAmount)
+    var targetCloudSpeed = simd_mix(0.02, resolvedWeather.cloudSpeed, weatherAmount)
+    var targetHaze = max(atmosphereAmount, resolvedWeather.hazeFloor * weatherAmount)
+    var targetIntensity = simd_mix(1.0, resolvedWeather.intensity, weatherAmount)
+
+    switch sky.cloudStyle {
+    case .clear:
+        targetCloudCoverage = 0.0
+        targetCloudThickness = 0.22
+    case .wispy:
+        targetCloudSoftness = max(targetCloudSoftness, 0.68)
+        targetCloudScale *= 1.5
+        targetCloudThickness = min(targetCloudThickness, 0.24)
+        targetCloudBrightness *= 1.05
+    case .puffy:
+        targetCloudSoftness = max(targetCloudSoftness, 0.55)
+    case .layered:
+        targetCloudSoftness = max(targetCloudSoftness, 0.72)
+        targetCloudScale *= 1.25
+        targetCloudThickness = max(targetCloudThickness, 0.44)
+    case .overcast:
+        targetCloudCoverage = max(targetCloudCoverage, 0.84)
+        targetCloudSoftness = max(targetCloudSoftness, 0.82)
+        targetCloudThickness = max(targetCloudThickness, 0.55)
+        targetCloudSunInfluence = min(targetCloudSunInfluence, 0.4)
+    case .storm:
+        targetCloudCoverage = max(targetCloudCoverage, 0.88)
+        targetCloudScale *= 1.35
+        targetCloudThickness = max(targetCloudThickness, 0.65)
+        targetCloudBrightness *= 0.88
+        targetCloudSunInfluence = min(targetCloudSunInfluence, 0.28)
+        targetCloudSpeed = max(targetCloudSpeed, 0.03)
+    case .custom:
+        break
+    }
+
+    let warmth = temperature * 0.18
+    let moodShadow = clampSkyFacade(-mood, min: 0.0, max: 1.0)
+    let moodLift = clampSkyFacade(mood, min: 0.0, max: 1.0)
+
+    sky.intensity = clampSkyFacade(targetIntensity + mood * 0.16, min: 0.45, max: 1.35)
+    sky.skyTint = SIMD3<Float>(1.0 + warmth * 0.45,
+                               1.0 + moodLift * 0.04,
+                               1.0 - warmth * 0.35 - moodShadow * 0.05)
+    sky.zenithTint = SIMD3<Float>(0.24 + warmth * 0.05 - moodShadow * 0.08,
+                                  0.42 + moodLift * 0.05 - moodShadow * 0.06,
+                                  0.78 - warmth * 0.08 + moodLift * 0.08)
+    sky.horizonTint = SIMD3<Float>(0.92 + warmth * 0.09,
+                                   0.78 + warmth * 0.03 - moodShadow * 0.05,
+                                   0.64 - warmth * 0.08 - moodShadow * 0.03)
+    sky.gradientStrength = clampSkyFacade(0.82 + atmosphereAmount * 0.32 + moodLift * 0.12, min: 0.35, max: 1.5)
+    sky.hazeDensity = clampSkyFacade(targetHaze * 1.15, min: 0.0, max: 1.25)
+    sky.hazeFalloff = clampSkyFacade(1.8 + targetHaze * 1.7 + moodShadow * 0.35, min: 0.75, max: 4.5)
+    sky.hazeHeight = clampSkyFacade((atmosphereAmount - 0.5) * 0.2, min: -0.3, max: 0.3)
+    sky.turbidity = clampSkyFacade(targetTurbidity + atmosphereAmount * 1.2, min: 1.0, max: 10.0)
+    sky.ozoneStrength = clampSkyFacade(0.42 - warmth * 0.12 + moodLift * 0.08, min: 0.0, max: 1.5)
+    sky.ozoneTint = SIMD3<Float>(0.58 - warmth * 0.04,
+                                 0.72 - warmth * 0.03,
+                                 0.96 + moodLift * 0.05)
+
+    let lowSunFactor = clampSkyFacade(1.0 - max(sky.elevationDegrees, 0.0) / 90.0, min: 0.0, max: 1.0)
+    sky.sunHaloSize = clampSkyFacade(2.0 + atmosphereAmount * 0.9 + weatherAmount * 0.45, min: 0.5, max: 4.5)
+    sky.sunHaloIntensity = clampSkyFacade(0.3 + atmosphereAmount * 0.22 + lowSunFactor * 0.25 - moodShadow * 0.08, min: 0.0, max: 1.5)
+    sky.sunHaloSoftness = clampSkyFacade(1.1 + atmosphereAmount * 0.5 + weatherAmount * 0.25, min: 0.4, max: 2.4)
+
+    sky.cloudsEnabled = targetCloudCoverage > 0.02 || sky.cloudStyle != .clear
+    sky.cloudsCoverage = clampSkyFacade(targetCloudCoverage, min: 0.0, max: 1.0)
+    sky.cloudsSoftness = clampSkyFacade(targetCloudSoftness, min: 0.01, max: 1.0)
+    sky.cloudsScale = clampSkyFacade(targetCloudScale, min: 0.01, max: 4.0)
+    sky.cloudsSpeed = clampSkyFacade(targetCloudSpeed, min: -0.25, max: 0.25)
+    sky.cloudsHeight = clampSkyFacade(0.22 + moodLift * 0.04, min: 0.0, max: 1.0)
+    sky.cloudsThickness = clampSkyFacade(targetCloudThickness, min: 0.08, max: 1.0)
+    sky.cloudsBrightness = clampSkyFacade(targetCloudBrightness + moodLift * 0.06 - moodShadow * 0.05, min: 0.2, max: 1.6)
+    sky.cloudsSunInfluence = clampSkyFacade(targetCloudSunInfluence, min: 0.0, max: 2.0)
+}
+
+/// Keeps edit-time preview state aligned with the authored atmosphere owner
+/// without requiring the editor to own the runtime simulation model.
+private func syncEnvironmentPreviewState(for sky: SkyLightComponent,
+                                         previous: EnvironmentStateComponent?) -> EnvironmentStateComponent {
+    var environment = previous ?? EnvironmentStateComponent(seededFromAuthored: sky)
+    environment.currentTimeOfDay = clampSkyFacade(sky.timeOfDay, min: 0.0, max: 24.0)
+    environment.currentWeatherType = sky.weatherType
+    environment.targetWeatherType = sky.secondaryWeatherType
+    environment.weatherTransitionProgress = clampSkyFacade(sky.weatherBlend, min: 0.0, max: 1.0)
+    environment.weatherAmount = clampSkyFacade(sky.weatherAmount, min: 0.0, max: 1.0)
+    if environment.timeControlMode != .scripted {
+        environment.scriptedTimeOfDayOverride = nil
+    }
+    return environment
+}
+
 @_cdecl("MCEEditorSetSkyLight")
 public func MCEEditorSetSkyLight(_ contextPtr: UnsafeRawPointer?,
                                  _ entityId: UnsafePointer<CChar>?, _ mode: Int32, _ enabled: UInt32,
+                                 _ timeOfDay: Float, _ weatherType: Int32, _ secondaryWeatherType: Int32, _ weatherBlend: Float, _ weatherAmount: Float,
+                                 _ atmosphereAmount: Float, _ cloudCoverage: Float, _ cloudStyle: Int32,
+                                 _ temperature: Float, _ mood: Float,
                                  _ intensity: Float, _ tintX: Float, _ tintY: Float, _ tintZ: Float,
                                  _ turbidity: Float, _ azimuth: Float, _ elevation: Float, _ sunSize: Float,
                                  _ zenithTintX: Float, _ zenithTintY: Float, _ zenithTintZ: Float,
@@ -2658,6 +3644,7 @@ public func MCEEditorSetSkyLight(_ contextPtr: UnsafeRawPointer?,
                                  _ cloudsWindX: Float, _ cloudsWindY: Float,
                                  _ cloudsHeight: Float, _ cloudsThickness: Float,
                                  _ cloudsBrightness: Float, _ cloudsSunInfluence: Float,
+                                 _ fogAmount: Float, _ fogHeight: Float, _ fogDistance: Float,
                                  _ autoRebuild: UInt32,
                                  _ hdriHandle: UnsafePointer<CChar>?) {
     guard let context = resolveContext(contextPtr),
@@ -2668,6 +3655,16 @@ public func MCEEditorSetSkyLight(_ contextPtr: UnsafeRawPointer?,
     var sky = previous
     sky.mode = SkyMode(rawValue: UInt32(max(0, mode))) ?? .hdri
     sky.enabled = enabled != 0
+    sky.timeOfDay = clampSkyFacade(timeOfDay, min: 0.0, max: 24.0)
+    sky.weatherType = AtmosphereWeatherType(rawValue: UInt32(max(0, weatherType))) ?? .clear
+    sky.secondaryWeatherType = AtmosphereWeatherType(rawValue: UInt32(max(0, secondaryWeatherType))) ?? .clear
+    sky.weatherBlend = clampSkyFacade(weatherBlend, min: 0.0, max: 1.0)
+    sky.weatherAmount = clampSkyFacade(weatherAmount, min: 0.0, max: 1.0)
+    sky.atmosphereAmount = clampSkyFacade(atmosphereAmount, min: 0.0, max: 1.0)
+    sky.cloudCoverage = clampSkyFacade(cloudCoverage, min: 0.0, max: 1.0)
+    sky.cloudStyle = AtmosphereCloudStyle(rawValue: UInt32(max(0, cloudStyle))) ?? .puffy
+    sky.temperature = clampSkyFacade(temperature, min: -1.0, max: 1.0)
+    sky.mood = clampSkyFacade(mood, min: -1.0, max: 1.0)
     sky.intensity = max(0.0, intensity)
     sky.skyTint = SIMD3<Float>(max(0.0, tintX), max(0.0, tintY), max(0.0, tintZ))
     sky.turbidity = max(1.0, turbidity)
@@ -2695,19 +3692,33 @@ public func MCEEditorSetSkyLight(_ contextPtr: UnsafeRawPointer?,
     sky.cloudsThickness = max(0.0, min(cloudsThickness, 1.0))
     sky.cloudsBrightness = max(0.0, cloudsBrightness)
     sky.cloudsSunInfluence = max(0.0, cloudsSunInfluence)
-    sky.realtimeUpdate = autoRebuild != 0
+    sky.fogAmount = max(0.0, min(fogAmount, 1.0))
+    sky.fogHeight = fogHeight
+    sky.fogDistance = max(0.0, fogDistance)
+    let preserveLegacyProceduralOverrides = sky.weatherType == .custom
+        && sky.secondaryWeatherType == .custom
+        && sky.cloudStyle == .custom
+    if sky.mode == .procedural && !preserveLegacyProceduralOverrides {
+        applyAtmospherePreviewCompatibility(to: &sky)
+    }
     if let hdriHandle {
         let hdriString = String(cString: hdriHandle)
         sky.hdriHandle = handleFromString(hdriString)
     } else {
         sky.hdriHandle = nil
     }
-    if SkySystem.requiresIBLRebuild(previous: previous, next: sky) {
-        sky.needsRebuild = true
-        sky.rebuildRequested = false
-    }
     ecs.add(sky, to: entity)
-    if sky.needsRebuild {
+    let previousEnvironment = ecs.get(EnvironmentStateComponent.self, for: entity)
+    let updatedEnvironment = syncEnvironmentPreviewState(for: sky, previous: previousEnvironment)
+    ecs.add(updatedEnvironment, to: entity)
+    var iblState = ecs.get(SkyIBLStateComponent.self, for: entity) ?? SkyIBLStateComponent()
+    iblState.realtimeUpdate = autoRebuild != 0
+    if SkySystem.requiresIBLRebuild(previous: previous, next: sky) {
+        iblState.needsRebuild = true
+        iblState.rebuildRequested = false
+    }
+    ecs.add(iblState, to: entity)
+    if iblState.needsRebuild {
         context.engineContext.log.logInfo("Sky regenerate requested: \(entity.id.uuidString)", category: .scene)
     }
     context.bridgeServices.notifySceneMutation()
@@ -2719,11 +3730,11 @@ public func MCEEditorRequestSkyRebuild(_ contextPtr: UnsafeRawPointer?,
     guard let context = resolveContext(contextPtr),
           !context.bridgeServices.isPlaying,
           let ecs = editorECS(context),
-          let entity = entity(from: entityId, context: context),
-          var sky = ecs.get(SkyLightComponent.self, for: entity) else { return }
-    sky.needsRebuild = true
-    sky.rebuildRequested = true
-    ecs.add(sky, to: entity)
+          let entity = entity(from: entityId, context: context) else { return }
+    var iblState = ecs.get(SkyIBLStateComponent.self, for: entity) ?? SkyIBLStateComponent()
+    iblState.needsRebuild = true
+    iblState.rebuildRequested = true
+    ecs.add(iblState, to: entity)
     context.bridgeServices.notifySceneMutation()
 }
 
@@ -2732,11 +3743,921 @@ public func MCEEditorRequestActiveSkyRebuild(_ contextPtr: UnsafeRawPointer?) {
     guard let context = resolveContext(contextPtr),
           !context.bridgeServices.isPlaying,
           let ecs = editorECS(context),
-          let (entity, sky) = ecs.activeSkyLight() else { return }
-    var updated = sky
+          let (entity, _) = ecs.activeSkyLight() else { return }
+    var updated = ecs.get(SkyIBLStateComponent.self, for: entity) ?? SkyIBLStateComponent()
     updated.needsRebuild = true
     ecs.add(updated, to: entity)
     context.bridgeServices.notifySceneMutation()
+}
+
+private func ensureEnvironmentRuntimeState(_ ecs: SceneECS, entity: Entity, environment: EnvironmentComponent) -> EnvironmentRuntimeStateComponent {
+    if let runtime = ecs.get(EnvironmentRuntimeStateComponent.self, for: entity) {
+        return runtime
+    }
+    let runtime = EnvironmentRuntimeStateComponent.default(from: environment)
+    ecs.add(runtime, to: entity)
+    return runtime
+}
+
+private func markEnvironmentIBLNeedsRebuild(_ ecs: SceneECS, entity: Entity, requested: Bool = false) {
+    var state = ecs.get(EnvironmentIBLStateComponent.self, for: entity) ?? EnvironmentIBLStateComponent.defaultNeedsRebuild
+    state.dirty = true
+    state.needsRebuild = true
+    state.rebuildRequested = state.rebuildRequested || requested
+    state.lastFailureMessage = nil
+    ecs.add(state, to: entity)
+}
+
+private func markEnvironmentIBLDirty(_ ecs: SceneECS, entity: Entity) {
+    var state = ecs.get(EnvironmentIBLStateComponent.self, for: entity) ?? EnvironmentIBLStateComponent.defaultNeedsRebuild
+    state.dirty = true
+    state.lastFailureMessage = nil
+    ecs.add(state, to: entity)
+}
+
+@_cdecl("MCEEditorGetEnvironmentLookBridge")
+public func MCEEditorGetEnvironmentLookBridge(_ contextPtr: UnsafeRawPointer?,
+                                              _ entityId: UnsafePointer<CChar>?,
+                                              _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity),
+          let outValue else { return 0 }
+    let output = outValue.assumingMemoryBound(to: MCEEnvironmentLookBridge.self)
+    output.pointee = MCEEnvironmentLookBridge(
+        preset: Int32(environment.look.preset.rawValue),
+        mood: environment.look.mood,
+        warmth: environment.look.warmth,
+        cinematicAmount: environment.look.cinematicAmount
+    )
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentLookBridge")
+public func MCEEditorSetEnvironmentLookBridge(_ contextPtr: UnsafeRawPointer?,
+                                              _ entityId: UnsafePointer<CChar>?,
+                                              _ value: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let value else { return }
+    let input = value.assumingMemoryBound(to: MCEEnvironmentLookBridge.self).pointee
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look = EnvironmentLookConfig(
+        preset: EnvironmentLookPreset(rawValue: UInt32(max(0, input.preset))) ?? .custom,
+        mood: clampSkyFacade(input.mood, min: -1.0, max: 1.0),
+        warmth: clampSkyFacade(input.warmth, min: -1.0, max: 1.0),
+        cinematicAmount: clampSkyFacade(input.cinematicAmount, min: 0.0, max: 1.0)
+    )
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentSourceBridge")
+public func MCEEditorGetEnvironmentSourceBridge(_ contextPtr: UnsafeRawPointer?,
+                                                _ entityId: UnsafePointer<CChar>?,
+                                                _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity),
+          let outValue else { return 0 }
+    let parts = environment.source.hdriTextureHandle.map { uuidParts($0.rawValue) } ?? (0, 0)
+    let output = outValue.assumingMemoryBound(to: MCEEnvironmentSourceBridge.self)
+    output.pointee = MCEEnvironmentSourceBridge(
+        enabled: environment.enabled ? 1 : 0,
+        mode: Int32(environment.source.mode.rawValue),
+        hasHdriHandle: environment.source.hdriTextureHandle == nil ? 0 : 1,
+        hdriHandleHigh: parts.high,
+        hdriHandleLow: parts.low
+    )
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentSourceBridge")
+public func MCEEditorSetEnvironmentSourceBridge(_ contextPtr: UnsafeRawPointer?,
+                                                _ entityId: UnsafePointer<CChar>?,
+                                                _ value: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let value else { return }
+    let input = value.assumingMemoryBound(to: MCEEnvironmentSourceBridge.self).pointee
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.enabled = input.enabled != 0
+    environment.source.mode = EnvironmentSourceMode(rawValue: UInt32(max(0, input.mode))) ?? .hdri
+    environment.source.hdriTextureHandle = input.hasHdriHandle == 0
+        ? nil
+        : AssetHandle(rawValue: uuidFromParts(high: input.hdriHandleHigh, low: input.hdriHandleLow))
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    markEnvironmentIBLDirty(ecs, entity: entity)
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentTimeBridge")
+public func MCEEditorGetEnvironmentTimeBridge(_ contextPtr: UnsafeRawPointer?,
+                                              _ entityId: UnsafePointer<CChar>?,
+                                              _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity),
+          let outValue else { return 0 }
+    let runtime = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    let output = outValue.assumingMemoryBound(to: MCEEnvironmentTimeBridge.self)
+    output.pointee = MCEEnvironmentTimeBridge(
+        defaultTimeOfDay: environment.celestial.defaultTimeOfDay,
+        previewTimeOfDay: runtime.currentTimeOfDay,
+        timeControlMode: Int32(runtime.timeControlMode.rawValue),
+        dayLengthSeconds: runtime.dayLengthSeconds,
+        timeScale: runtime.timeScale
+    )
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentTimeBridge")
+public func MCEEditorSetEnvironmentTimeBridge(_ contextPtr: UnsafeRawPointer?,
+                                              _ entityId: UnsafePointer<CChar>?,
+                                              _ value: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let value else { return }
+    let input = value.assumingMemoryBound(to: MCEEnvironmentTimeBridge.self).pointee
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.celestial.defaultTimeOfDay = clampSkyFacade(input.defaultTimeOfDay, min: 0.0, max: 24.0)
+    ecs.add(environment, to: entity)
+
+    var runtime = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    runtime.currentTimeOfDay = clampSkyFacade(input.previewTimeOfDay, min: 0.0, max: 24.0)
+    runtime.timeControlMode = EnvironmentTimeControlMode(rawValue: UInt32(max(0, input.timeControlMode))) ?? .fixed
+    runtime.dayLengthSeconds = max(1.0, input.dayLengthSeconds)
+    runtime.timeScale = input.timeScale.isFinite ? input.timeScale : 1.0
+    if runtime.timeControlMode != .scripted {
+        runtime.scriptedTimeOfDayOverride = nil
+    }
+    ecs.add(runtime, to: entity)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentAtmosphereBridge")
+public func MCEEditorGetEnvironmentAtmosphereBridge(_ contextPtr: UnsafeRawPointer?,
+                                                    _ entityId: UnsafePointer<CChar>?,
+                                                    _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity),
+          let outValue else { return 0 }
+    let output = outValue.assumingMemoryBound(to: MCEEnvironmentAtmosphereBridge.self)
+    output.pointee = MCEEnvironmentAtmosphereBridge(
+        amount: environment.atmosphere.amount,
+        haze: environment.atmosphere.haze,
+        density: environment.atmosphere.density,
+        temperature: environment.atmosphere.temperature,
+        mood: environment.atmosphere.mood
+    )
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentAtmosphereBridge")
+public func MCEEditorSetEnvironmentAtmosphereBridge(_ contextPtr: UnsafeRawPointer?,
+                                                    _ entityId: UnsafePointer<CChar>?,
+                                                    _ value: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let value else { return }
+    let input = value.assumingMemoryBound(to: MCEEnvironmentAtmosphereBridge.self).pointee
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.atmosphere.amount = clampSkyFacade(input.amount, min: 0.0, max: 1.0)
+    environment.atmosphere.haze = clampSkyFacade(input.haze, min: 0.0, max: 1.0)
+    environment.atmosphere.density = max(0.0, input.density)
+    environment.atmosphere.temperature = clampSkyFacade(input.temperature, min: -1.0, max: 1.0)
+    environment.atmosphere.mood = clampSkyFacade(input.mood, min: -1.0, max: 1.0)
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentCelestialBridge")
+public func MCEEditorGetEnvironmentCelestialBridge(_ contextPtr: UnsafeRawPointer?,
+                                                   _ entityId: UnsafePointer<CChar>?,
+                                                   _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity),
+          let outValue else { return 0 }
+    let output = outValue.assumingMemoryBound(to: MCEEnvironmentCelestialBridge.self)
+    output.pointee = MCEEnvironmentCelestialBridge(
+        moonIntensity: environment.celestial.moonIntensity,
+        moonSizeDegrees: environment.celestial.moonSizeDegrees,
+        starIntensity: environment.celestial.starIntensity,
+        starRichness: environment.celestial.starRichness,
+        milkyWayIntensity: environment.celestial.milkyWayIntensity,
+        milkyWayChroma: environment.celestial.milkyWayChroma,
+        milkyWayRotation: environment.celestial.milkyWayRotation,
+        nightBrightness: environment.celestial.nightBrightness
+    )
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentCelestialBridge")
+public func MCEEditorSetEnvironmentCelestialBridge(_ contextPtr: UnsafeRawPointer?,
+                                                   _ entityId: UnsafePointer<CChar>?,
+                                                   _ value: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let value else { return }
+    let input = value.assumingMemoryBound(to: MCEEnvironmentCelestialBridge.self).pointee
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.celestial.moonIntensity = max(0.0, input.moonIntensity)
+    environment.celestial.moonSizeDegrees = max(0.01, input.moonSizeDegrees)
+    environment.celestial.starIntensity = max(0.0, input.starIntensity)
+    environment.celestial.starRichness = clampSkyFacade(input.starRichness, min: 0.0, max: 3.0)
+    environment.celestial.milkyWayIntensity = clampSkyFacade(input.milkyWayIntensity, min: 0.0, max: 3.0)
+    environment.celestial.milkyWayChroma = clampSkyFacade(input.milkyWayChroma, min: 0.0, max: 3.0)
+    environment.celestial.milkyWayRotation = input.milkyWayRotation.isFinite ? input.milkyWayRotation : 0.0
+    environment.celestial.nightBrightness = clampSkyFacade(input.nightBrightness, min: 0.0, max: 3.0)
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentWeatherCloudBridge")
+public func MCEEditorGetEnvironmentWeatherCloudBridge(_ contextPtr: UnsafeRawPointer?,
+                                                      _ entityId: UnsafePointer<CChar>?,
+                                                      _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity),
+          let outValue else { return 0 }
+    let output = outValue.assumingMemoryBound(to: MCEEnvironmentWeatherCloudBridge.self)
+    output.pointee = MCEEnvironmentWeatherCloudBridge(
+        weatherPrimary: Int32(environment.weather.primaryType.rawValue),
+        weatherSecondary: Int32(environment.weather.secondaryType.rawValue),
+        weatherBlend: environment.weather.blend,
+        weatherAmount: environment.weather.amount,
+        cloudCoverage: environment.clouds.coverage,
+        cloudStyle: Int32(environment.clouds.style.rawValue),
+        cloudRenderMode: Int32(environment.clouds.renderMode.rawValue)
+    )
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentWeatherCloudBridge")
+public func MCEEditorSetEnvironmentWeatherCloudBridge(_ contextPtr: UnsafeRawPointer?,
+                                                      _ entityId: UnsafePointer<CChar>?,
+                                                      _ value: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let value else { return }
+    let input = value.assumingMemoryBound(to: MCEEnvironmentWeatherCloudBridge.self).pointee
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.weather.primaryType = EnvironmentWeatherType(rawValue: UInt32(max(0, input.weatherPrimary))) ?? .clear
+    environment.weather.secondaryType = EnvironmentWeatherType(rawValue: UInt32(max(0, input.weatherSecondary))) ?? .clear
+    environment.weather.blend = clampSkyFacade(input.weatherBlend, min: 0.0, max: 1.0)
+    environment.weather.amount = clampSkyFacade(input.weatherAmount, min: 0.0, max: 1.0)
+    environment.clouds.coverage = clampSkyFacade(input.cloudCoverage, min: 0.0, max: 1.0)
+    environment.clouds.style = EnvironmentCloudStyle(rawValue: UInt32(max(0, input.cloudStyle))) ?? .puffy
+    environment.clouds.renderMode = EnvironmentCloudRenderMode(rawValue: UInt32(max(0, input.cloudRenderMode))) ?? .both
+    ecs.add(environment, to: entity)
+
+    var runtime = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    runtime.currentWeatherType = environment.weather.primaryType
+    runtime.targetWeatherType = environment.weather.secondaryType
+    runtime.weatherBlend = environment.weather.blend
+    runtime.weatherAmount = environment.weather.amount
+    ecs.add(runtime, to: entity)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentFogBridge")
+public func MCEEditorGetEnvironmentFogBridge(_ contextPtr: UnsafeRawPointer?,
+                                             _ entityId: UnsafePointer<CChar>?,
+                                             _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity),
+          let outValue else { return 0 }
+    let output = outValue.assumingMemoryBound(to: MCEEnvironmentFogBridge.self)
+    output.pointee = MCEEnvironmentFogBridge(
+        amount: environment.fog.amount,
+        height: environment.fog.height,
+        distance: environment.fog.distance
+    )
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentFogBridge")
+public func MCEEditorSetEnvironmentFogBridge(_ contextPtr: UnsafeRawPointer?,
+                                             _ entityId: UnsafePointer<CChar>?,
+                                             _ value: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let value else { return }
+    let input = value.assumingMemoryBound(to: MCEEnvironmentFogBridge.self).pointee
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.fog.amount = clampSkyFacade(input.amount, min: 0.0, max: 1.0)
+    environment.fog.height = input.height
+    environment.fog.distance = max(0.0, input.distance)
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentIBLStatusBridge")
+public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointer?,
+                                                   _ entityId: UnsafePointer<CChar>?,
+                                                   _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity),
+          let outValue else { return 0 }
+    let state = ecs.get(EnvironmentIBLStateComponent.self, for: entity) ?? EnvironmentIBLStateComponent.defaultNeedsRebuild
+    let output = outValue.assumingMemoryBound(to: MCEEnvironmentIBLBridge.self)
+    output.pointee = MCEEnvironmentIBLBridge(
+        realtimeUpdate: environment.ibl.realtimeUpdate ? 1 : 0,
+        autoRebuildOnChange: environment.ibl.autoRebuildOnChange ? 1 : 0,
+        needsRebuild: state.needsRebuild ? 1 : 0,
+        dirty: state.dirty ? 1 : 0,
+        isRebuilding: state.isRebuilding ? 1 : 0,
+        currentRebuildQuality: environmentIBLQualityCode(state.currentRebuildQuality),
+        lastBuiltQuality: environmentIBLQualityCode(state.lastBuiltQuality),
+        hasFailure: (state.lastFailureMessage?.isEmpty == false) ? 1 : 0
+    )
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentIBLConfigBridge")
+public func MCEEditorSetEnvironmentIBLConfigBridge(_ contextPtr: UnsafeRawPointer?,
+                                                  _ entityId: UnsafePointer<CChar>?,
+                                                  _ value: UnsafeRawPointer?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let value else { return }
+    let input = value.assumingMemoryBound(to: MCEEnvironmentIBLBridge.self).pointee
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.ibl.realtimeUpdate = input.realtimeUpdate != 0
+    environment.ibl.autoRebuildOnChange = input.autoRebuildOnChange != 0
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    if ecs.get(EnvironmentIBLStateComponent.self, for: entity) == nil {
+        ecs.add(EnvironmentIBLStateComponent.defaultNeedsRebuild, to: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentLook")
+public func MCEEditorGetEnvironmentLook(_ contextPtr: UnsafeRawPointer?,
+                                        _ entityId: UnsafePointer<CChar>?,
+                                        _ preset: UnsafeMutablePointer<Int32>?,
+                                        _ mood: UnsafeMutablePointer<Float>?,
+                                        _ warmth: UnsafeMutablePointer<Float>?,
+                                        _ cinematicAmount: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
+    preset?.pointee = Int32(environment.look.preset.rawValue)
+    mood?.pointee = environment.look.mood
+    warmth?.pointee = environment.look.warmth
+    cinematicAmount?.pointee = environment.look.cinematicAmount
+    return 1
+}
+
+@_cdecl("MCEEditorApplyEnvironmentPreset")
+public func MCEEditorApplyEnvironmentPreset(_ contextPtr: UnsafeRawPointer?,
+                                            _ entityId: UnsafePointer<CChar>?,
+                                            _ presetRawValue: Int32) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    let preset = EnvironmentLookPreset(rawValue: UInt32(max(0, presetRawValue))) ?? .custom
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    if preset == .custom {
+        environment.look.preset = .custom
+        ecs.add(environment, to: entity)
+        _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+        context.bridgeServices.notifySceneMutation()
+        return
+    }
+    preset.apply(to: &environment)
+    ecs.add(environment, to: entity)
+    ecs.add(EnvironmentRuntimeStateComponent.default(from: environment), to: entity)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLNeedsRebuild(ecs, entity: entity)
+    } else {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentSource")
+public func MCEEditorGetEnvironmentSource(_ contextPtr: UnsafeRawPointer?,
+                                          _ entityId: UnsafePointer<CChar>?,
+                                          _ enabled: UnsafeMutablePointer<UInt32>?,
+                                          _ mode: UnsafeMutablePointer<Int32>?,
+                                          _ hdriHandle: UnsafeMutablePointer<CChar>?,
+                                          _ hdriHandleSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
+    enabled?.pointee = environment.enabled ? 1 : 0
+    mode?.pointee = Int32(environment.source.mode.rawValue)
+    _ = writeCString(environment.source.hdriTextureHandle?.rawValue.uuidString ?? "", to: hdriHandle, max: hdriHandleSize)
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentSource")
+public func MCEEditorSetEnvironmentSource(_ contextPtr: UnsafeRawPointer?,
+                                          _ entityId: UnsafePointer<CChar>?,
+                                          _ enabled: UInt32,
+                                          _ mode: Int32,
+                                          _ hdriHandle: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.enabled = enabled != 0
+    environment.source.mode = EnvironmentSourceMode(rawValue: UInt32(max(0, mode))) ?? .hdri
+    if let hdriHandle {
+        environment.source.hdriTextureHandle = handleFromString(String(cString: hdriHandle))
+    } else {
+        environment.source.hdriTextureHandle = nil
+    }
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    markEnvironmentIBLDirty(ecs, entity: entity)
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentCelestial")
+public func MCEEditorGetEnvironmentCelestial(_ contextPtr: UnsafeRawPointer?,
+                                             _ entityId: UnsafePointer<CChar>?,
+                                             _ defaultTimeOfDay: UnsafeMutablePointer<Float>?,
+                                             _ previewTimeOfDay: UnsafeMutablePointer<Float>?,
+                                             _ moonIntensity: UnsafeMutablePointer<Float>?,
+                                             _ moonSizeDegrees: UnsafeMutablePointer<Float>?,
+                                             _ starIntensity: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
+    let runtime = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    defaultTimeOfDay?.pointee = environment.celestial.defaultTimeOfDay
+    previewTimeOfDay?.pointee = runtime.currentTimeOfDay
+    moonIntensity?.pointee = environment.celestial.moonIntensity
+    moonSizeDegrees?.pointee = environment.celestial.moonSizeDegrees
+    starIntensity?.pointee = environment.celestial.starIntensity
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentCelestial")
+public func MCEEditorSetEnvironmentCelestial(_ contextPtr: UnsafeRawPointer?,
+                                             _ entityId: UnsafePointer<CChar>?,
+                                             _ defaultTimeOfDay: Float,
+                                             _ moonIntensity: Float,
+                                             _ moonSizeDegrees: Float,
+                                             _ starIntensity: Float) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.celestial.defaultTimeOfDay = clampSkyFacade(defaultTimeOfDay, min: 0.0, max: 24.0)
+    environment.celestial.moonIntensity = max(0.0, moonIntensity)
+    environment.celestial.moonSizeDegrees = max(0.01, moonSizeDegrees)
+    environment.celestial.starIntensity = max(0.0, starIntensity)
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorSetEnvironmentPreviewTime")
+public func MCEEditorSetEnvironmentPreviewTime(_ contextPtr: UnsafeRawPointer?,
+                                               _ entityId: UnsafePointer<CChar>?,
+                                               _ previewTimeOfDay: Float) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return }
+    var runtime = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    runtime.currentTimeOfDay = clampSkyFacade(previewTimeOfDay, min: 0.0, max: 24.0)
+    if runtime.timeControlMode != .scripted {
+        runtime.scriptedTimeOfDayOverride = nil
+    }
+    ecs.add(runtime, to: entity)
+    if environment.source.mode == .procedural, environment.ibl.realtimeUpdate {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentWeather")
+public func MCEEditorGetEnvironmentWeather(_ contextPtr: UnsafeRawPointer?,
+                                           _ entityId: UnsafePointer<CChar>?,
+                                           _ primaryType: UnsafeMutablePointer<Int32>?,
+                                           _ secondaryType: UnsafeMutablePointer<Int32>?,
+                                           _ blend: UnsafeMutablePointer<Float>?,
+                                           _ amount: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
+    primaryType?.pointee = Int32(environment.weather.primaryType.rawValue)
+    secondaryType?.pointee = Int32(environment.weather.secondaryType.rawValue)
+    blend?.pointee = environment.weather.blend
+    amount?.pointee = environment.weather.amount
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentWeather")
+public func MCEEditorSetEnvironmentWeather(_ contextPtr: UnsafeRawPointer?,
+                                           _ entityId: UnsafePointer<CChar>?,
+                                           _ primaryType: Int32,
+                                           _ secondaryType: Int32,
+                                           _ blend: Float,
+                                           _ amount: Float) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.weather.primaryType = EnvironmentWeatherType(rawValue: UInt32(max(0, primaryType))) ?? .clear
+    environment.weather.secondaryType = EnvironmentWeatherType(rawValue: UInt32(max(0, secondaryType))) ?? .clear
+    environment.weather.blend = clampSkyFacade(blend, min: 0.0, max: 1.0)
+    environment.weather.amount = clampSkyFacade(amount, min: 0.0, max: 1.0)
+    ecs.add(environment, to: entity)
+    var runtime = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    runtime.currentWeatherType = environment.weather.primaryType
+    runtime.targetWeatherType = environment.weather.secondaryType
+    runtime.weatherBlend = environment.weather.blend
+    runtime.weatherAmount = environment.weather.amount
+    ecs.add(runtime, to: entity)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentAtmosphere")
+public func MCEEditorGetEnvironmentAtmosphere(_ contextPtr: UnsafeRawPointer?,
+                                              _ entityId: UnsafePointer<CChar>?,
+                                              _ amount: UnsafeMutablePointer<Float>?,
+                                              _ haze: UnsafeMutablePointer<Float>?,
+                                              _ density: UnsafeMutablePointer<Float>?,
+                                              _ temperature: UnsafeMutablePointer<Float>?,
+                                              _ mood: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
+    amount?.pointee = environment.atmosphere.amount
+    haze?.pointee = environment.atmosphere.haze
+    density?.pointee = environment.atmosphere.density
+    temperature?.pointee = environment.atmosphere.temperature
+    mood?.pointee = environment.atmosphere.mood
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentAtmosphere")
+public func MCEEditorSetEnvironmentAtmosphere(_ contextPtr: UnsafeRawPointer?,
+                                              _ entityId: UnsafePointer<CChar>?,
+                                              _ amount: Float,
+                                              _ haze: Float,
+                                              _ density: Float,
+                                              _ temperature: Float,
+                                              _ mood: Float) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.atmosphere.amount = clampSkyFacade(amount, min: 0.0, max: 1.0)
+    environment.atmosphere.haze = clampSkyFacade(haze, min: 0.0, max: 1.0)
+    environment.atmosphere.density = max(0.0, density)
+    environment.atmosphere.temperature = clampSkyFacade(temperature, min: -1.0, max: 1.0)
+    environment.atmosphere.mood = clampSkyFacade(mood, min: -1.0, max: 1.0)
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentClouds")
+public func MCEEditorGetEnvironmentClouds(_ contextPtr: UnsafeRawPointer?,
+                                          _ entityId: UnsafePointer<CChar>?,
+                                          _ coverage: UnsafeMutablePointer<Float>?,
+                                          _ style: UnsafeMutablePointer<Int32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
+    coverage?.pointee = environment.clouds.coverage
+    style?.pointee = Int32(environment.clouds.style.rawValue)
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentClouds")
+public func MCEEditorSetEnvironmentClouds(_ contextPtr: UnsafeRawPointer?,
+                                          _ entityId: UnsafePointer<CChar>?,
+                                          _ coverage: Float,
+                                          _ style: Int32) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.clouds.coverage = clampSkyFacade(coverage, min: 0.0, max: 1.0)
+    environment.clouds.style = EnvironmentCloudStyle(rawValue: UInt32(max(0, style))) ?? .puffy
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    if environment.source.mode == .procedural {
+        markEnvironmentIBLDirty(ecs, entity: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentFog")
+public func MCEEditorGetEnvironmentFog(_ contextPtr: UnsafeRawPointer?,
+                                       _ entityId: UnsafePointer<CChar>?,
+                                       _ amount: UnsafeMutablePointer<Float>?,
+                                       _ height: UnsafeMutablePointer<Float>?,
+                                       _ distance: UnsafeMutablePointer<Float>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
+    amount?.pointee = environment.fog.amount
+    height?.pointee = environment.fog.height
+    distance?.pointee = environment.fog.distance
+    return 1
+}
+
+@_cdecl("MCEEditorSetEnvironmentFog")
+public func MCEEditorSetEnvironmentFog(_ contextPtr: UnsafeRawPointer?,
+                                       _ entityId: UnsafePointer<CChar>?,
+                                       _ amount: Float,
+                                       _ height: Float,
+                                       _ distance: Float) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.look.preset = .custom
+    environment.fog.amount = clampSkyFacade(amount, min: 0.0, max: 1.0)
+    environment.fog.height = height
+    environment.fog.distance = max(0.0, distance)
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetEnvironmentIBL")
+public func MCEEditorGetEnvironmentIBL(_ contextPtr: UnsafeRawPointer?,
+                                       _ entityId: UnsafePointer<CChar>?,
+                                       _ realtimeUpdate: UnsafeMutablePointer<UInt32>?,
+                                       _ autoRebuildOnChange: UnsafeMutablePointer<UInt32>?,
+                                       _ needsRebuild: UnsafeMutablePointer<UInt32>?,
+                                       _ dirty: UnsafeMutablePointer<UInt32>?,
+                                       _ isRebuilding: UnsafeMutablePointer<UInt32>?,
+                                       _ currentRebuildQuality: UnsafeMutablePointer<Int32>?,
+                                       _ lastBuiltQuality: UnsafeMutablePointer<Int32>?,
+                                       _ lastFailureMessage: UnsafeMutablePointer<CChar>?,
+                                       _ lastFailureMessageSize: Int32) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
+    let state = ecs.get(EnvironmentIBLStateComponent.self, for: entity) ?? EnvironmentIBLStateComponent.defaultNeedsRebuild
+    realtimeUpdate?.pointee = environment.ibl.realtimeUpdate ? 1 : 0
+    autoRebuildOnChange?.pointee = environment.ibl.autoRebuildOnChange ? 1 : 0
+    needsRebuild?.pointee = state.needsRebuild ? 1 : 0
+    dirty?.pointee = state.dirty ? 1 : 0
+    isRebuilding?.pointee = state.isRebuilding ? 1 : 0
+    currentRebuildQuality?.pointee = environmentIBLQualityCode(state.currentRebuildQuality)
+    lastBuiltQuality?.pointee = environmentIBLQualityCode(state.lastBuiltQuality)
+    _ = writeCString(state.lastFailureMessage ?? "", to: lastFailureMessage, max: lastFailureMessageSize)
+    return 1
+}
+
+private func environmentIBLQualityCode(_ quality: EnvironmentIBLRebuildQuality?) -> Int32 {
+    guard let quality else { return -1 }
+    switch quality {
+    case .interactive:
+        return 0
+    case .final:
+        return 1
+    }
+}
+
+@_cdecl("MCEEditorSetEnvironmentIBL")
+public func MCEEditorSetEnvironmentIBL(_ contextPtr: UnsafeRawPointer?,
+                                       _ entityId: UnsafePointer<CChar>?,
+                                       _ realtimeUpdate: UInt32,
+                                       _ autoRebuildOnChange: UInt32) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
+    environment.ibl.realtimeUpdate = realtimeUpdate != 0
+    environment.ibl.autoRebuildOnChange = autoRebuildOnChange != 0
+    ecs.add(environment, to: entity)
+    _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
+    if ecs.get(EnvironmentIBLStateComponent.self, for: entity) == nil {
+        ecs.add(EnvironmentIBLStateComponent.defaultNeedsRebuild, to: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorRequestEnvironmentIBLRebuild")
+public func MCEEditorRequestEnvironmentIBLRebuild(_ contextPtr: UnsafeRawPointer?,
+                                                 _ entityId: UnsafePointer<CChar>?) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          !context.bridgeServices.isSimulating,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context) else { return }
+    markEnvironmentIBLNeedsRebuild(ecs, entity: entity, requested: true)
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetReflectionProbe")
+public func MCEEditorGetReflectionProbe(_ contextPtr: UnsafeRawPointer?,
+                                        _ entityId: UnsafePointer<CChar>?,
+                                        _ enabled: UnsafeMutablePointer<UInt32>?,
+                                        _ boxExtentsX: UnsafeMutablePointer<Float>?,
+                                        _ boxExtentsY: UnsafeMutablePointer<Float>?,
+                                        _ boxExtentsZ: UnsafeMutablePointer<Float>?,
+                                        _ blendDistance: UnsafeMutablePointer<Float>?,
+                                        _ priority: UnsafeMutablePointer<Int32>?,
+                                        _ intensity: UnsafeMutablePointer<Float>?,
+                                        _ captureResolution: UnsafeMutablePointer<Int32>?,
+                                        _ rebuildMode: UnsafeMutablePointer<Int32>?,
+                                        _ includeSky: UnsafeMutablePointer<UInt32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          let probe = ecs.get(ReflectionProbeComponent.self, for: entity) else { return 0 }
+    enabled?.pointee = probe.enabled ? 1 : 0
+    boxExtentsX?.pointee = probe.boxExtents.x
+    boxExtentsY?.pointee = probe.boxExtents.y
+    boxExtentsZ?.pointee = probe.boxExtents.z
+    blendDistance?.pointee = probe.blendDistance
+    priority?.pointee = probe.priority
+    intensity?.pointee = probe.intensity
+    captureResolution?.pointee = probe.captureResolution
+    rebuildMode?.pointee = Int32(probe.rebuildMode.rawValue)
+    includeSky?.pointee = probe.includeSky ? 1 : 0
+    return 1
+}
+
+@_cdecl("MCEEditorSetReflectionProbe")
+public func MCEEditorSetReflectionProbe(_ contextPtr: UnsafeRawPointer?,
+                                        _ entityId: UnsafePointer<CChar>?,
+                                        _ enabled: UInt32,
+                                        _ boxExtentsX: Float,
+                                        _ boxExtentsY: Float,
+                                        _ boxExtentsZ: Float,
+                                        _ blendDistance: Float,
+                                        _ priority: Int32,
+                                        _ intensity: Float,
+                                        _ captureResolution: Int32,
+                                        _ rebuildMode: Int32,
+                                        _ includeSky: UInt32) {
+    guard let context = resolveContext(contextPtr),
+          !context.bridgeServices.isPlaying,
+          let ecs = editorECS(context),
+          let entity = entity(from: entityId, context: context),
+          var probe = ecs.get(ReflectionProbeComponent.self, for: entity) else { return }
+
+    probe.enabled = enabled != 0
+    probe.boxExtents = SIMD3<Float>(max(boxExtentsX, 0.0), max(boxExtentsY, 0.0), max(boxExtentsZ, 0.0))
+    probe.blendDistance = max(blendDistance, 0.0)
+    probe.priority = priority
+    probe.intensity = max(intensity, 0.0)
+    probe.captureResolution = max(captureResolution, 16)
+    probe.rebuildMode = ReflectionProbeRebuildMode(rawValue: UInt32(max(rebuildMode, 0))) ?? .onPlay
+    probe.includeSky = includeSky != 0
+    ecs.add(probe, to: entity)
+    if ecs.has(PrefabInstanceComponent.self, entity) {
+        var overrides = ecs.get(PrefabOverrideComponent.self, for: entity) ?? PrefabOverrideComponent()
+        overrides.overridden.insert(.reflectionProbe)
+        ecs.add(overrides, to: entity)
+    }
+    context.bridgeServices.notifySceneMutation()
+}
+
+@_cdecl("MCEEditorGetReflectionProbeRuntimeStatus")
+public func MCEEditorGetReflectionProbeRuntimeStatus(_ contextPtr: UnsafeRawPointer?,
+                                                     _ entityId: UnsafePointer<CChar>?,
+                                                     _ statusOut: UnsafeMutablePointer<Int32>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          context.bridgeServices.isPlaying,
+          let runtimeScene = context.bridgeServices.runtimeScene,
+          let renderer = context.engineContext.renderer,
+          let entity = entity(from: entityId, context: context),
+          let status = renderer.reflectionProbeBakeStatus(scene: runtimeScene, entityID: entity.id) else {
+        return 0
+    }
+    statusOut?.pointee = status.rawValue
+    return 1
+}
+
+@_cdecl("MCEEditorRequestReflectionProbeRebuild")
+public func MCEEditorRequestReflectionProbeRebuild(_ contextPtr: UnsafeRawPointer?,
+                                                   _ entityId: UnsafePointer<CChar>?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          context.bridgeServices.isPlaying,
+          let runtimeScene = context.bridgeServices.runtimeScene,
+          let renderer = context.engineContext.renderer,
+          let entity = entity(from: entityId, context: context) else { return 0 }
+    renderer.queueReflectionProbeRebuilds(scene: runtimeScene, entities: [entity], force: true)
+    return 1
+}
+
+@_cdecl("MCEEditorRequestAllReflectionProbeRebuilds")
+public func MCEEditorRequestAllReflectionProbeRebuilds(_ contextPtr: UnsafeRawPointer?) -> UInt32 {
+    guard let context = resolveContext(contextPtr),
+          context.bridgeServices.isPlaying,
+          let runtimeScene = context.bridgeServices.runtimeScene,
+          let renderer = context.engineContext.renderer else { return 0 }
+    renderer.queueReflectionProbeRebuilds(scene: runtimeScene, entities: nil, force: true)
+    return 1
 }
 
 @_cdecl("MCEEditorSkyEntityCount")

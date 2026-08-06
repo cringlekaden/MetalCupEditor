@@ -140,12 +140,6 @@ final class EditorSceneController {
             resetSimulation()
         }
         let document = try SceneSerializer.load(from: url)
-        if let settings = document.rendererSettingsOverride {
-            engineContext?.rendererSettings = settings.makeRendererSettings()
-        }
-        if let settings = document.physicsSettingsOverride {
-            engineContext?.physicsSettings = settings.makePhysicsSettings()
-        }
         let scene = SerializedScene(
             document: document,
             prefabSystem: prefabSystem,

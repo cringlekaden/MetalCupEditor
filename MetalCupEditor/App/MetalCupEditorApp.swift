@@ -16,15 +16,13 @@ struct MetalCupEditorApp: App {
             title: "MetalCup Editor",
             resizable: true,
             centered: true,
-            preferredFramesPerSecond: 60,
+            preferredFramesPerSecond: 120,
             colorPixelFormat: .bgra8Unorm,
             depthStencilPixelFormat: .invalid,
             resourcesFolderName: "Resources",
             assetsRootURL: nil
         )
         self.engineApp = EditorApplication(specification: spec)
-        let appId = ObjectIdentifier(engineApp)
-        engineApp.engineContext.log.logDebug("MetalCupEditorApp init engineApp=\(appId)", category: .editor)
     }
     
     var body: some SwiftUI.Scene {

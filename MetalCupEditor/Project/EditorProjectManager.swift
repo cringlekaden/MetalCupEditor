@@ -622,6 +622,18 @@ final class EditorProjectManager {
     func setEditorDebugOutlineEnabled(_ value: Bool) { uiState.setEditorDebugOutlineEnabled(value) }
     func editorDebugPhysicsEnabled() -> Bool { uiState.editorDebugPhysicsEnabled() }
     func setEditorDebugPhysicsEnabled(_ value: Bool) { uiState.setEditorDebugPhysicsEnabled(value) }
+    func viewportDebugStyle(_ category: ViewportDebugVisualizationCategory) -> ViewportDebugStyle {
+        uiState.viewportDebugStyle(category)
+    }
+    func setViewportDebugStyle(_ style: ViewportDebugStyle, category: ViewportDebugVisualizationCategory) {
+        uiState.setViewportDebugStyle(style, category: category)
+    }
+    func viewportProbeBlendShellSettings() -> ViewportProbeBlendShellSettings {
+        uiState.viewportProbeBlendShellSettings()
+    }
+    func setViewportProbeBlendShellSettings(_ settings: ViewportProbeBlendShellSettings) {
+        uiState.setViewportProbeBlendShellSettings(settings)
+    }
 
     func metaURLForAsset(assetURL: URL, relativePath: String) -> URL? {
         assetRegistry?.metaURLForAsset(assetURL: assetURL, relativePath: relativePath)
@@ -719,7 +731,7 @@ final class EditorProjectManager {
         }
 
         let markerURL = projectAssetsURL.appendingPathComponent(".mce_defaults_version.json")
-        let version = "1"
+        let version = "2"
         var templatePaths: [String] = []
         var needsScan = true
 
@@ -834,6 +846,8 @@ final class EditorProjectManager {
             return "Skeletons"
         case .animationClip:
             return "Animations"
+        case .animationGraph:
+            return "AnimationGraphs"
         case .audio:
             return "Audio"
         case .unknown:
@@ -1105,6 +1119,11 @@ public func MCESceneIsSimulating(_ contextPtr: UnsafeMutableRawPointer) -> UInt3
 @_cdecl("MCESceneIsDirty")
 public func MCESceneIsDirty(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
     return resolveContext(contextPtr).editorProjectManager.isSceneDirty() ? 1 : 0
+}
+
+@_cdecl("MCESceneNotifyMutation")
+public func MCESceneNotifyMutation(_ contextPtr: UnsafeMutableRawPointer) {
+    resolveContext(contextPtr).editorProjectManager.notifySceneMutation()
 }
 
 @_cdecl("MCEProjectSaveAll")
@@ -1526,5 +1545,166 @@ public func MCEEditorSetDebugPhysicsEnabled(_ contextPtr: UnsafeMutableRawPointe
     let next = value != 0
     if manager.editorDebugPhysicsEnabled() == next { return }
     manager.setEditorDebugPhysicsEnabled(next)
+    manager.saveSettings()
+}
+
+private func resolveViewportDebugCategory(_ rawValue: Int32) -> ViewportDebugVisualizationCategory? {
+    ViewportDebugVisualizationCategory(rawValue: rawValue)
+}
+
+@_cdecl("MCEEditorGetViewportDebugCategoryEnabled")
+public func MCEEditorGetViewportDebugCategoryEnabled(_ contextPtr: UnsafeMutableRawPointer,
+                                                     _ categoryRawValue: Int32) -> UInt32 {
+    guard let category = resolveViewportDebugCategory(categoryRawValue) else { return 0 }
+    return resolveContext(contextPtr).editorProjectManager.viewportDebugStyle(category).enabled ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetViewportDebugCategoryEnabled")
+public func MCEEditorSetViewportDebugCategoryEnabled(_ contextPtr: UnsafeMutableRawPointer,
+                                                     _ categoryRawValue: Int32,
+                                                     _ value: UInt32) {
+    guard let category = resolveViewportDebugCategory(categoryRawValue) else { return }
+    let manager = resolveContext(contextPtr).editorProjectManager
+    var style = manager.viewportDebugStyle(category)
+    let next = value != 0
+    if style.enabled == next { return }
+    style.enabled = next
+    manager.setViewportDebugStyle(style, category: category)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportDebugCategoryColor")
+public func MCEEditorGetViewportDebugCategoryColor(_ contextPtr: UnsafeMutableRawPointer,
+                                                   _ categoryRawValue: Int32,
+                                                   _ rOut: UnsafeMutablePointer<Float>?,
+                                                   _ gOut: UnsafeMutablePointer<Float>?,
+                                                   _ bOut: UnsafeMutablePointer<Float>?) {
+    guard let category = resolveViewportDebugCategory(categoryRawValue) else { return }
+    let style = resolveContext(contextPtr).editorProjectManager.viewportDebugStyle(category)
+    rOut?.pointee = style.colorR
+    gOut?.pointee = style.colorG
+    bOut?.pointee = style.colorB
+}
+
+@_cdecl("MCEEditorSetViewportDebugCategoryColor")
+public func MCEEditorSetViewportDebugCategoryColor(_ contextPtr: UnsafeMutableRawPointer,
+                                                   _ categoryRawValue: Int32,
+                                                   _ r: Float,
+                                                   _ g: Float,
+                                                   _ b: Float) {
+    guard let category = resolveViewportDebugCategory(categoryRawValue) else { return }
+    let manager = resolveContext(contextPtr).editorProjectManager
+    var style = manager.viewportDebugStyle(category)
+    if style.colorR == r, style.colorG == g, style.colorB == b { return }
+    style.colorR = r
+    style.colorG = g
+    style.colorB = b
+    manager.setViewportDebugStyle(style, category: category)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportDebugCategoryOpacity")
+public func MCEEditorGetViewportDebugCategoryOpacity(_ contextPtr: UnsafeMutableRawPointer,
+                                                     _ categoryRawValue: Int32) -> Float {
+    guard let category = resolveViewportDebugCategory(categoryRawValue) else { return 0.0 }
+    return resolveContext(contextPtr).editorProjectManager.viewportDebugStyle(category).opacity
+}
+
+@_cdecl("MCEEditorSetViewportDebugCategoryOpacity")
+public func MCEEditorSetViewportDebugCategoryOpacity(_ contextPtr: UnsafeMutableRawPointer,
+                                                     _ categoryRawValue: Int32,
+                                                     _ value: Float) {
+    guard let category = resolveViewportDebugCategory(categoryRawValue) else { return }
+    let manager = resolveContext(contextPtr).editorProjectManager
+    var style = manager.viewportDebugStyle(category)
+    let next = max(0.0, min(1.0, value))
+    if style.opacity == next { return }
+    style.opacity = next
+    manager.setViewportDebugStyle(style, category: category)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportDebugCategoryThickness")
+public func MCEEditorGetViewportDebugCategoryThickness(_ contextPtr: UnsafeMutableRawPointer,
+                                                       _ categoryRawValue: Int32) -> Float {
+    guard let category = resolveViewportDebugCategory(categoryRawValue) else { return 0.0 }
+    return resolveContext(contextPtr).editorProjectManager.viewportDebugStyle(category).thickness
+}
+
+@_cdecl("MCEEditorSetViewportDebugCategoryThickness")
+public func MCEEditorSetViewportDebugCategoryThickness(_ contextPtr: UnsafeMutableRawPointer,
+                                                       _ categoryRawValue: Int32,
+                                                       _ value: Float) {
+    guard let category = resolveViewportDebugCategory(categoryRawValue) else { return }
+    let manager = resolveContext(contextPtr).editorProjectManager
+    var style = manager.viewportDebugStyle(category)
+    let next = max(0.0, value)
+    if style.thickness == next { return }
+    style.thickness = next
+    manager.setViewportDebugStyle(style, category: category)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportWorldIconsOpacity")
+public func MCEEditorGetViewportWorldIconsOpacity(_ contextPtr: UnsafeMutableRawPointer) -> Float {
+    resolveContext(contextPtr).editorProjectManager.viewportDebugStyle(.worldIcons).opacity
+}
+
+@_cdecl("MCEEditorSetViewportWorldIconsOpacity")
+public func MCEEditorSetViewportWorldIconsOpacity(_ contextPtr: UnsafeMutableRawPointer, _ value: Float) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    var style = manager.viewportDebugStyle(.worldIcons)
+    let next = max(0.0, min(1.0, value))
+    if style.opacity == next { return }
+    style.opacity = next
+    manager.setViewportDebugStyle(style, category: .worldIcons)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportProbeShellShowInnerBox")
+public func MCEEditorGetViewportProbeShellShowInnerBox(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.viewportProbeBlendShellSettings().showInnerBox ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetViewportProbeShellShowInnerBox")
+public func MCEEditorSetViewportProbeShellShowInnerBox(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    var settings = manager.viewportProbeBlendShellSettings()
+    let next = value != 0
+    if settings.showInnerBox == next { return }
+    settings.showInnerBox = next
+    manager.setViewportProbeBlendShellSettings(settings)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportProbeShellShowOuterBox")
+public func MCEEditorGetViewportProbeShellShowOuterBox(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.viewportProbeBlendShellSettings().showOuterBox ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetViewportProbeShellShowOuterBox")
+public func MCEEditorSetViewportProbeShellShowOuterBox(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    var settings = manager.viewportProbeBlendShellSettings()
+    let next = value != 0
+    if settings.showOuterBox == next { return }
+    settings.showOuterBox = next
+    manager.setViewportProbeBlendShellSettings(settings)
+    manager.saveSettings()
+}
+
+@_cdecl("MCEEditorGetViewportProbeShellShowConnectorLines")
+public func MCEEditorGetViewportProbeShellShowConnectorLines(_ contextPtr: UnsafeMutableRawPointer) -> UInt32 {
+    resolveContext(contextPtr).editorProjectManager.viewportProbeBlendShellSettings().showConnectorLines ? 1 : 0
+}
+
+@_cdecl("MCEEditorSetViewportProbeShellShowConnectorLines")
+public func MCEEditorSetViewportProbeShellShowConnectorLines(_ contextPtr: UnsafeMutableRawPointer, _ value: UInt32) {
+    let manager = resolveContext(contextPtr).editorProjectManager
+    var settings = manager.viewportProbeBlendShellSettings()
+    let next = value != 0
+    if settings.showConnectorLines == next { return }
+    settings.showConnectorLines = next
+    manager.setViewportProbeBlendShellSettings(settings)
     manager.saveSettings()
 }

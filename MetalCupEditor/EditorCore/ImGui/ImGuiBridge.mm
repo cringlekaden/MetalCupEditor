@@ -5,6 +5,9 @@
 #import "ImGuiBridge.h"
 
 // ImGui
+#ifndef IMGUI_DEFINE_MATH_OPERATORS
+#define IMGUI_DEFINE_MATH_OPERATORS
+#endif
 #import "../../ImGui/imgui.h"
 #import "../../ImGui/backends/imgui_impl_osx.h"
 #import "../../ImGui/backends/imgui_impl_metal.h"
@@ -15,18 +18,110 @@
 #import "../../EditorUI/Panels/InspectorPanel.h"
 #import "../../EditorUI/Panels/ContentBrowserPanel.h"
 #import "../../EditorUI/Panels/PanelState.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphModels.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphBlendSpaceWorkspace.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphPanel.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphSidebar.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphUIStateStore.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphNodeCanvas.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphNodeEditorStore.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphStateMachineWorkspace.h"
+#import "../../EditorUI/AnimationGraph/AnimationGraphWorkspaceRouter.h"
 #import "../../EditorUI/EditorIcons.h"
 #import "../Bridge/RendererSettingsBridge.h"
 #import "../Bridge/PhysicsSettingsBridge.h"
 #import "../../EditorUI/Widgets/UIWidgets.h"
 #import <Cocoa/Cocoa.h>
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <ctime>
 #include <cmath>
+#include <fstream>
+#include <regex>
 #include <string>
 #include <vector>
+#include <unordered_set>
+#include <unordered_map>
 #include <sys/stat.h>
+
+namespace AnimationGraphBreadcrumbs {
+void DrawWorkspaceBreadcrumbs(const std::string &graphHandle,
+                              const AnimationGraphWorkspacePath &path,
+                              const AnimationGraphSnapshot &snapshot);
+}
+
+extern "C" uint32_t MCEEditorGetViewportDebugCategoryEnabled(MCE_CTX, int32_t categoryRawValue);
+extern "C" void MCEEditorSetViewportDebugCategoryEnabled(MCE_CTX, int32_t categoryRawValue, uint32_t value);
+extern "C" void MCEEditorGetViewportDebugCategoryColor(MCE_CTX, int32_t categoryRawValue, float *rOut, float *gOut, float *bOut);
+extern "C" void MCEEditorSetViewportDebugCategoryColor(MCE_CTX, int32_t categoryRawValue, float r, float g, float b);
+extern "C" float MCEEditorGetViewportDebugCategoryOpacity(MCE_CTX, int32_t categoryRawValue);
+extern "C" void MCEEditorSetViewportDebugCategoryOpacity(MCE_CTX, int32_t categoryRawValue, float value);
+extern "C" float MCEEditorGetViewportDebugCategoryThickness(MCE_CTX, int32_t categoryRawValue);
+extern "C" void MCEEditorSetViewportDebugCategoryThickness(MCE_CTX, int32_t categoryRawValue, float value);
+extern "C" float MCEEditorGetViewportWorldIconsOpacity(MCE_CTX);
+extern "C" void MCEEditorSetViewportWorldIconsOpacity(MCE_CTX, float value);
+extern "C" uint32_t MCEEditorGetViewportProbeShellShowInnerBox(MCE_CTX);
+extern "C" void MCEEditorSetViewportProbeShellShowInnerBox(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetViewportProbeShellShowOuterBox(MCE_CTX);
+extern "C" void MCEEditorSetViewportProbeShellShowOuterBox(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetViewportProbeShellShowConnectorLines(MCE_CTX);
+extern "C" void MCEEditorSetViewportProbeShellShowConnectorLines(MCE_CTX, uint32_t value);
+
+namespace ViewportDebugCategory {
+static constexpr int32_t WorldIcons = 0;
+static constexpr int32_t CameraFrustums = 1;
+static constexpr int32_t ReflectionProbeInfluence = 2;
+static constexpr int32_t ReflectionProbeBlendShell = 3;
+static constexpr int32_t ReflectionProbeLinks = 4;
+static constexpr int32_t Physics = 5;
+static constexpr int32_t GenericLines = 6;
+static constexpr int32_t GenericShapes = 7;
+}
+
+static void DrawViewportDebugStyleControls(void *context,
+                                           const char *tableId,
+                                           int32_t category,
+                                           const char *enabledLabel,
+                                           const char *colorLabel,
+                                           const char *thicknessLabel,
+                                           const char *opacityLabel,
+                                           const char *enabledTooltip,
+                                           const char *colorTooltip,
+                                           const char *thicknessTooltip,
+                                           const char *opacityTooltip) {
+    if (!EditorUI::BeginPropertyTable(tableId)) {
+        return;
+    }
+
+    bool enabled = MCEEditorGetViewportDebugCategoryEnabled(context, category) != 0;
+    EditorUI::SetNextPropertyInfoTooltip(enabledTooltip);
+    if (EditorUI::PropertyBool(enabledLabel, &enabled)) {
+        MCEEditorSetViewportDebugCategoryEnabled(context, category, enabled ? 1 : 0);
+    }
+
+    float color[3] = { 1.0f, 1.0f, 1.0f };
+    MCEEditorGetViewportDebugCategoryColor(context, category, &color[0], &color[1], &color[2]);
+    EditorUI::SetNextPropertyInfoTooltip(colorTooltip);
+    if (EditorUI::PropertyColor3(colorLabel, color)) {
+        MCEEditorSetViewportDebugCategoryColor(context, category, color[0], color[1], color[2]);
+    }
+
+    float thickness = MCEEditorGetViewportDebugCategoryThickness(context, category);
+    EditorUI::SetNextPropertyInfoTooltip(thicknessTooltip);
+    if (EditorUI::PropertyFloat(thicknessLabel, &thickness, 0.005f, 0.0f, 0.25f, "%.3f", true, false)) {
+        MCEEditorSetViewportDebugCategoryThickness(context, category, thickness);
+    }
+
+    float opacity = MCEEditorGetViewportDebugCategoryOpacity(context, category);
+    EditorUI::SetNextPropertyInfoTooltip(opacityTooltip);
+    if (EditorUI::PropertyFloat(opacityLabel, &opacity, 0.025f, 0.0f, 1.0f, "%.2f", true, false)) {
+        MCEEditorSetViewportDebugCategoryOpacity(context, category, opacity);
+    }
+
+    EditorUI::EndPropertyTable();
+}
+
 
 static std::string ResolveEditorIconFontPath(const char *fileName) {
     if (!fileName || fileName[0] == 0) {
@@ -92,15 +187,25 @@ extern "C" void MCESceneResume(MCE_CTX);
 extern "C" uint32_t MCESceneIsPlaying(MCE_CTX);
 extern "C" uint32_t MCESceneIsPaused(MCE_CTX);
 extern "C" uint32_t MCESceneIsDirty(MCE_CTX);
+extern "C" void MCESceneNotifyMutation(MCE_CTX);
 extern "C" uint32_t MCEEditorDebugPhysicsRaycastFromCamera(MCE_CTX, float maxDistance);
 extern "C" int32_t MCEEditorCreateMeshEntityFromHandle(MCE_CTX,  const char *meshHandle, char *outId, int32_t outIdSize);
 extern "C" int32_t MCEEditorCreateMeshEntityFromHandleWithMaterials(MCE_CTX,  const char *meshHandle, char *outId, int32_t outIdSize);
+extern "C" int32_t MCEEditorCreateImportedMeshEntity(MCE_CTX, const char *meshHandle, const char *skeletonHandle, const char *defaultClipHandle, const char *submeshMaterialHandles, const char *meshPath, char *outId, int32_t outIdSize);
 extern "C" uint32_t MCEEditorPopNextAlert(MCE_CTX,  char *buffer, int32_t bufferSize);
 extern "C" uint32_t MCEEditorGetImGuiIniPath(MCE_CTX, char *buffer, int32_t bufferSize);
 extern "C" uint32_t MCEEditorGetPanelVisibility(MCE_CTX,  const char *panelId, uint32_t defaultValue);
 extern "C" void MCEEditorSetPanelVisibility(MCE_CTX,  const char *panelId, uint32_t visible);
 extern "C" uint32_t MCEEditorGetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t defaultValue);
 extern "C" void MCEEditorSetHeaderOpen(MCE_CTX,  const char *headerId, uint32_t open);
+extern "C" uint32_t MCEEditorGetAssetDisplayName(MCE_CTX, const char *handle, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEEditorGetAssetsRootPath(MCE_CTX,  char *buffer, int32_t bufferSize);
+extern "C" int32_t MCEEditorGetAssetCount(MCE_CTX);
+extern "C" uint32_t MCEEditorGetAssetAt(MCE_CTX,  int32_t index,
+                                        char *handleBuffer, int32_t handleBufferSize,
+                                        int32_t *typeOut,
+                                        char *pathBuffer, int32_t pathBufferSize,
+                                        char *nameBuffer, int32_t nameBufferSize);
 extern "C" void MCEEditorSaveSettings(MCE_CTX);
 extern "C" int32_t MCEEditorGetThemeMode(MCE_CTX);
 extern "C" void MCEEditorSetThemeMode(MCE_CTX, int32_t value);
@@ -140,8 +245,199 @@ extern "C" uint32_t MCEEditorGetDebugOutlineEnabled(MCE_CTX);
 extern "C" void MCEEditorSetDebugOutlineEnabled(MCE_CTX, uint32_t value);
 extern "C" uint32_t MCEEditorGetDebugPhysicsEnabled(MCE_CTX);
 extern "C" void MCEEditorSetDebugPhysicsEnabled(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetViewportDebugCategoryEnabled(MCE_CTX, int32_t categoryRawValue);
+extern "C" void MCEEditorSetViewportDebugCategoryEnabled(MCE_CTX, int32_t categoryRawValue, uint32_t value);
+extern "C" void MCEEditorGetViewportDebugCategoryColor(MCE_CTX, int32_t categoryRawValue, float *rOut, float *gOut, float *bOut);
+extern "C" void MCEEditorSetViewportDebugCategoryColor(MCE_CTX, int32_t categoryRawValue, float r, float g, float b);
+extern "C" float MCEEditorGetViewportDebugCategoryOpacity(MCE_CTX, int32_t categoryRawValue);
+extern "C" void MCEEditorSetViewportDebugCategoryOpacity(MCE_CTX, int32_t categoryRawValue, float value);
+extern "C" float MCEEditorGetViewportDebugCategoryThickness(MCE_CTX, int32_t categoryRawValue);
+extern "C" void MCEEditorSetViewportDebugCategoryThickness(MCE_CTX, int32_t categoryRawValue, float value);
+extern "C" float MCEEditorGetViewportWorldIconsOpacity(MCE_CTX);
+extern "C" void MCEEditorSetViewportWorldIconsOpacity(MCE_CTX, float value);
+extern "C" uint32_t MCEEditorGetViewportProbeShellShowInnerBox(MCE_CTX);
+extern "C" void MCEEditorSetViewportProbeShellShowInnerBox(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetViewportProbeShellShowOuterBox(MCE_CTX);
+extern "C" void MCEEditorSetViewportProbeShellShowOuterBox(MCE_CTX, uint32_t value);
+extern "C" uint32_t MCEEditorGetViewportProbeShellShowConnectorLines(MCE_CTX);
+extern "C" void MCEEditorSetViewportProbeShellShowConnectorLines(MCE_CTX, uint32_t value);
 extern "C" uint32_t MCEEditorGetLastSelectedEntityId(MCE_CTX,  char *buffer, int32_t bufferSize);
 extern "C" void MCEEditorSetLastSelectedEntityId(MCE_CTX,  const char *value);
+extern "C" uint32_t MCEEditorConsumeOpenAnimationGraphEditor(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEEditorGetAnimationGraphInfo(MCE_CTX, const char *handle,
+                                                    char *nameBuffer, int32_t nameBufferSize,
+                                                    char *outputNodeIdBuffer, int32_t outputNodeIdBufferSize,
+                                                    int32_t *parameterCountOut,
+                                                    int32_t *nodeCountOut,
+                                                    int32_t *linkCountOut);
+extern "C" int32_t MCEEditorGetAnimationGraphLocalVariableCount(MCE_CTX, const char *handle);
+extern "C" uint32_t MCEEditorGetAnimationGraphParameterAt(MCE_CTX, const char *handle, int32_t index,
+                                                           char *nameBuffer, int32_t nameBufferSize,
+                                                           int32_t *typeOut,
+                                                           float *defaultFloatOut,
+                                                           uint32_t *defaultBoolOut,
+                                                           int32_t *defaultIntOut);
+extern "C" uint32_t MCEEditorGetAnimationGraphLocalVariableAt(MCE_CTX, const char *handle, int32_t index,
+                                                               char *nameBuffer, int32_t nameBufferSize,
+                                                               int32_t *typeOut,
+                                                               float *defaultFloatOut,
+                                                               uint32_t *defaultBoolOut,
+                                                               int32_t *defaultIntOut);
+extern "C" uint32_t MCEEditorGetAnimationGraphNodeAt(MCE_CTX, const char *handle, int32_t index,
+                                                      char *nodeIdBuffer, int32_t nodeIdBufferSize,
+                                                      int32_t *typeOut,
+                                                      char *titleBuffer, int32_t titleBufferSize,
+                                                      float *posXOut, float *posYOut,
+                                                      char *clipHandleBuffer, int32_t clipHandleBufferSize,
+                                                      uint32_t *isOutputOut);
+extern "C" uint32_t MCEEditorGetAnimationGraphLinkAt(MCE_CTX, const char *handle, int32_t index,
+                                                      char *linkIdBuffer, int32_t linkIdBufferSize,
+                                                      char *fromNodeIdBuffer, int32_t fromNodeIdBufferSize,
+                                                      int32_t *fromSlotOut,
+                                                      char *toNodeIdBuffer, int32_t toNodeIdBufferSize,
+                                                      int32_t *toSlotOut);
+extern "C" uint32_t MCEEditorSetAnimationGraphMetadata(MCE_CTX, const char *handle, const char *name, const char *outputNodeId);
+extern "C" uint32_t MCEEditorAddAnimationGraphParameter(MCE_CTX, const char *handle, const char *name, int32_t type, float defaultFloat, uint32_t defaultBool, int32_t defaultInt);
+extern "C" uint32_t MCEEditorUpdateAnimationGraphParameter(MCE_CTX, const char *handle, int32_t index, const char *name, int32_t type, float defaultFloat, uint32_t defaultBool, int32_t defaultInt);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphParameter(MCE_CTX, const char *handle, int32_t index);
+extern "C" uint32_t MCEEditorAddAnimationGraphLocalVariable(MCE_CTX, const char *handle, const char *name, int32_t type, float defaultFloat, uint32_t defaultBool, int32_t defaultInt);
+extern "C" uint32_t MCEEditorUpdateAnimationGraphLocalVariable(MCE_CTX, const char *handle, int32_t index, const char *name, int32_t type, float defaultFloat, uint32_t defaultBool, int32_t defaultInt);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphLocalVariable(MCE_CTX, const char *handle, int32_t index);
+extern "C" uint32_t MCEEditorAddAnimationGraphNode(MCE_CTX, const char *handle, int32_t type, const char *title, float posX, float posY, const char *clipHandle, char *outNodeId, int32_t outNodeIdSize);
+extern "C" uint32_t MCEEditorUpdateAnimationGraphNode(MCE_CTX, const char *handle, const char *nodeId, const char *title, float posX, float posY, const char *clipHandle);
+extern "C" uint32_t MCEEditorSetAnimationGraphNodeParameterName(MCE_CTX, const char *handle, const char *nodeId, const char *parameterName);
+extern "C" uint32_t MCEEditorGetAnimationGraphBlend1DNode(MCE_CTX, const char *handle, const char *nodeId,
+                                                           char *parameterNameBuffer, int32_t parameterNameBufferSize,
+                                                           int32_t *sampleCountOut);
+extern "C" uint32_t MCEEditorGetAnimationGraphBlend1DSampleAt(MCE_CTX, const char *handle, const char *nodeId, int32_t index,
+                                                               char *clipHandleBuffer, int32_t clipHandleBufferSize,
+                                                               float *thresholdOut);
+extern "C" uint32_t MCEEditorSetAnimationGraphBlend1DNode(MCE_CTX, const char *handle, const char *nodeId, const char *parameterName);
+extern "C" uint32_t MCEEditorAddAnimationGraphBlend1DSample(MCE_CTX, const char *handle, const char *nodeId, const char *clipHandle, float threshold);
+extern "C" uint32_t MCEEditorUpdateAnimationGraphBlend1DSample(MCE_CTX, const char *handle, const char *nodeId, int32_t index, const char *clipHandle, float threshold);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphBlend1DSample(MCE_CTX, const char *handle, const char *nodeId, int32_t index);
+extern "C" uint32_t MCEEditorGetAnimationGraphBlend2DNode(MCE_CTX, const char *handle, const char *nodeId,
+                                                           char *parameterXNameBuffer, int32_t parameterXNameBufferSize,
+                                                           char *parameterYNameBuffer, int32_t parameterYNameBufferSize,
+                                                           int32_t *sampleCountOut);
+extern "C" uint32_t MCEEditorGetAnimationGraphBlend2DSampleAt(MCE_CTX, const char *handle, const char *nodeId, int32_t index,
+                                                               char *clipHandleBuffer, int32_t clipHandleBufferSize,
+                                                               float *xOut, float *yOut);
+extern "C" uint32_t MCEEditorSetAnimationGraphBlend2DNode(MCE_CTX, const char *handle, const char *nodeId, const char *parameterXName, const char *parameterYName);
+extern "C" uint32_t MCEEditorAddAnimationGraphBlend2DSample(MCE_CTX, const char *handle, const char *nodeId, const char *clipHandle, float x, float y);
+extern "C" uint32_t MCEEditorUpdateAnimationGraphBlend2DSample(MCE_CTX, const char *handle, const char *nodeId, int32_t index, const char *clipHandle, float x, float y);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphBlend2DSample(MCE_CTX, const char *handle, const char *nodeId, int32_t index);
+extern "C" uint32_t MCEEditorGetAnimationGraphStateMachineNode(MCE_CTX, const char *handle, const char *nodeId,
+                                                                char *defaultStateIdBuffer, int32_t defaultStateIdBufferSize,
+                                                                int32_t *stateCountOut,
+                                                                int32_t *transitionCountOut);
+extern "C" uint32_t MCEEditorSetAnimationGraphStateMachineDefaultState(MCE_CTX, const char *handle, const char *nodeId, const char *stateId);
+extern "C" uint32_t MCEEditorGetAnimationGraphStateMachineStateAt(MCE_CTX, const char *handle, const char *nodeId, int32_t index,
+                                                                   char *stateIdBuffer, int32_t stateIdBufferSize,
+                                                                   char *nameBuffer, int32_t nameBufferSize,
+                                                                   char *clipHandleBuffer, int32_t clipHandleBufferSize,
+                                                                   char *nodeRefIdBuffer, int32_t nodeRefIdBufferSize,
+                                                                   uint32_t *isOneShotOut,
+                                                                   uint32_t *usesRootMotionOut);
+extern "C" uint32_t MCEEditorAddAnimationGraphStateMachineState(MCE_CTX, const char *handle, const char *nodeId,
+                                                                 const char *name, const char *clipHandle, const char *nodeRefId,
+                                                                 uint32_t isOneShot,
+                                                                 uint32_t usesRootMotion,
+                                                                 char *outStateId, int32_t outStateIdSize);
+extern "C" uint32_t MCEEditorUpdateAnimationGraphStateMachineState(MCE_CTX, const char *handle, const char *nodeId,
+                                                                    const char *stateId, const char *name, const char *clipHandle, const char *nodeRefId,
+                                                                    uint32_t isOneShot,
+                                                                    uint32_t usesRootMotion);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphStateMachineState(MCE_CTX, const char *handle, const char *nodeId, const char *stateId);
+extern "C" uint32_t MCEEditorGetAnimationGraphStateMachineTransitionAt(MCE_CTX, const char *handle, const char *nodeId, int32_t index,
+                                                                        char *transitionIdBuffer, int32_t transitionIdBufferSize,
+                                                                        char *fromStateIdBuffer, int32_t fromStateIdBufferSize,
+                                                                        char *toStateIdBuffer, int32_t toStateIdBufferSize,
+                                                                        float *durationOut,
+                                                                        uint32_t *hasMinimumNormalizedTimeOut,
+                                                                        float *minimumNormalizedTimeOut,
+                                                                        int32_t *conditionCountOut);
+extern "C" uint32_t MCEEditorAddAnimationGraphStateMachineTransition(MCE_CTX, const char *handle, const char *nodeId,
+                                                                      const char *fromStateId, const char *toStateId,
+                                                                      float duration, uint32_t hasMinimumNormalizedTime, float minimumNormalizedTime,
+                                                                      char *outTransitionId, int32_t outTransitionIdSize);
+extern "C" uint32_t MCEEditorUpdateAnimationGraphStateMachineTransition(MCE_CTX, const char *handle, const char *nodeId,
+                                                                         const char *transitionId, const char *fromStateId, const char *toStateId,
+                                                                         float duration, uint32_t hasMinimumNormalizedTime, float minimumNormalizedTime);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphStateMachineTransition(MCE_CTX, const char *handle, const char *nodeId, const char *transitionId);
+extern "C" uint32_t MCEEditorGetAnimationGraphStateMachineConditionAt(MCE_CTX, const char *handle, const char *nodeId, const char *transitionId, int32_t index,
+                                                                       char *parameterNameBuffer, int32_t parameterNameBufferSize,
+                                                                       char *opBuffer, int32_t opBufferSize,
+                                                                       float *floatValueOut, int32_t *intValueOut, uint32_t *boolValueOut,
+                                                                       uint32_t *hasFloatOut, uint32_t *hasIntOut, uint32_t *hasBoolOut);
+extern "C" uint32_t MCEEditorAddAnimationGraphStateMachineCondition(MCE_CTX, const char *handle, const char *nodeId, const char *transitionId,
+                                                                     const char *parameterName, const char *op,
+                                                                     float floatValue, int32_t intValue, uint32_t boolValue,
+                                                                     uint32_t hasFloat, uint32_t hasInt, uint32_t hasBool);
+extern "C" uint32_t MCEEditorUpdateAnimationGraphStateMachineCondition(MCE_CTX, const char *handle, const char *nodeId, const char *transitionId, int32_t index,
+                                                                        const char *parameterName, const char *op,
+                                                                        float floatValue, int32_t intValue, uint32_t boolValue,
+                                                                        uint32_t hasFloat, uint32_t hasInt, uint32_t hasBool);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphStateMachineCondition(MCE_CTX, const char *handle, const char *nodeId, const char *transitionId, int32_t index);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphNode(MCE_CTX, const char *handle, const char *nodeId);
+extern "C" uint32_t MCEEditorSetAnimationGraphOutputNode(MCE_CTX, const char *handle, const char *nodeId);
+extern "C" uint32_t MCEEditorAddAnimationGraphLink(MCE_CTX, const char *handle, const char *fromNodeId, int32_t fromSlot, const char *toNodeId, int32_t toSlot, char *outLinkId, int32_t outLinkIdSize);
+extern "C" uint32_t MCEEditorRemoveAnimationGraphLink(MCE_CTX, const char *handle, const char *linkId);
+extern "C" uint32_t MCEEditorValidateAnimationGraph(MCE_CTX, const char *handle, uint32_t *validOut, char *messageBuffer, int32_t messageBufferSize);
+extern "C" uint32_t MCEEditorGetAnimationGraphStateMachineTransitionGraphInfo(MCE_CTX, const char *handle, const char *nodeId, const char *transitionId,
+                                                                               uint32_t *hasInlineGraphOut, int32_t *nodeCountOut, int32_t *linkCountOut,
+                                                                               char *outputNodeIdBuffer, int32_t outputNodeIdBufferSize);
+extern "C" uint32_t MCEEditorGetAnimationGraphStateMachineTransitionGraphNodeAt(MCE_CTX, const char *handle, const char *nodeId, const char *transitionId, int32_t index,
+                                                                                 char *nodeIdBuffer, int32_t nodeIdBufferSize,
+                                                                                 char *typeBuffer, int32_t typeBufferSize,
+                                                                                 char *titleBuffer, int32_t titleBufferSize,
+                                                                                 float *posXOut, float *posYOut,
+                                                                                 char *parameterNameBuffer, int32_t parameterNameBufferSize,
+                                                                                 float *floatValueOut, uint32_t *hasFloatValueOut,
+                                                                                 uint32_t *boolValueOut, uint32_t *hasBoolValueOut,
+                                                                                 uint32_t *synchronizeValueOut, uint32_t *hasSynchronizeValueOut);
+extern "C" uint32_t MCEEditorGetAnimationGraphStateMachineTransitionGraphLinkAt(MCE_CTX, const char *handle, const char *nodeId, const char *transitionId, int32_t index,
+                                                                                 char *linkIdBuffer, int32_t linkIdBufferSize,
+                                                                                 char *fromNodeIdBuffer, int32_t fromNodeIdBufferSize, int32_t *fromSlotOut,
+                                                                                 char *toNodeIdBuffer, int32_t toNodeIdBufferSize, int32_t *toSlotOut);
+extern "C" uint32_t MCEEditorGetAnimatorMode(MCE_CTX, const char *entityId, int32_t *modeOut, char *graphHandle, int32_t graphHandleSize);
+extern "C" int32_t MCEEditorGetAnimatorGraphParameterCount(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorGetAnimatorGraphParameterAt(MCE_CTX, const char *entityId, int32_t index,
+                                                          char *nameBuffer, int32_t nameBufferSize,
+                                                          int32_t *typeOut,
+                                                          float *defaultFloatOut,
+                                                          uint32_t *defaultBoolOut,
+                                                          int32_t *defaultIntOut,
+                                                          float *floatValueOut,
+                                                          uint32_t *boolValueOut,
+                                                          int32_t *intValueOut,
+                                                          uint32_t *triggerValueOut);
+extern "C" int32_t MCEEditorGetAnimatorGraphLocalVariableCount(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorGetAnimatorGraphLocalVariableAt(MCE_CTX, const char *entityId, int32_t index,
+                                                              char *nameBuffer, int32_t nameBufferSize,
+                                                              int32_t *typeOut,
+                                                              float *defaultFloatOut,
+                                                              uint32_t *defaultBoolOut,
+                                                              int32_t *defaultIntOut,
+                                                              float *floatValueOut,
+                                                              uint32_t *boolValueOut,
+                                                              int32_t *intValueOut);
+extern "C" uint32_t MCEEditorGetAnimatorGraphStateMachineRuntime(MCE_CTX, const char *entityId, const char *stateMachineNodeId,
+                                                                  char *currentStateBuffer, int32_t currentStateBufferSize,
+                                                                  char *nextStateBuffer, int32_t nextStateBufferSize,
+                                                                  float *transitionElapsedOut,
+                                                                  float *transitionDurationOut);
+extern "C" uint32_t MCEEditorSetAnimatorGraphDebugTraceEnabled(MCE_CTX, const char *entityId, uint32_t enabled);
+extern "C" int32_t MCEEditorGetAnimatorGraphDebugTraceCount(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorGetAnimatorGraphDebugTraceEntryAt(MCE_CTX, const char *entityId, int32_t index,
+                                                                char *nodeIDBuffer, int32_t nodeIDBufferSize,
+                                                                char *nodeTypeBuffer, int32_t nodeTypeBufferSize,
+                                                                char *nodeTitleBuffer, int32_t nodeTitleBufferSize,
+                                                                char *outputSummaryBuffer, int32_t outputSummaryBufferSize);
+extern "C" uint32_t MCEEditorEntityHasComponent(MCE_CTX, const char *entityId, int32_t componentType);
+extern "C" uint32_t MCEEditorGetSkinnedMesh(MCE_CTX, const char *entityId,
+                                            char *skeletonHandle, int32_t skeletonHandleSize,
+                                            int32_t *jointCountOut, uint32_t *isValidSkeletonOut);
 extern "C" int32_t MCEEditorLogCount(MCE_CTX);
 extern "C" uint32_t MCEEditorLogEntryAt(MCE_CTX,  int32_t index, int32_t *levelOut, int32_t *categoryOut, double *timestampOut, char *messageBuffer, int32_t messageBufferSize);
 extern "C" uint64_t MCEEditorLogRevision(MCE_CTX);
@@ -173,8 +469,13 @@ extern "C" uint32_t MCEImportGetMeshHasNormals(MCE_CTX);
 extern "C" uint32_t MCEImportGetMeshHasTangents(MCE_CTX);
 extern "C" uint32_t MCEImportGetCommitHandle(MCE_CTX, char *buffer, int32_t bufferSize);
 extern "C" int32_t MCEImportGetCommitAssetType(MCE_CTX);
+extern "C" uint32_t MCEImportGetCommitMeshPath(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEImportGetCommitSkeletonHandle(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEImportGetCommitDefaultClipHandle(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEImportGetCommitSubmeshMaterialHandles(MCE_CTX, char *buffer, int32_t bufferSize);
 extern "C" void MCEImportClearCommitResult(MCE_CTX);
 extern "C" uint32_t MCEImportGetLastError(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" void *MCEContextGetUIPanelState(MCE_CTX);
 extern bool ImGui_ImplOSX_HandleEvent(NSEvent* event, NSView* view);
 
 extern "C" bool MCEImGuiHandleEvent(void *event, void *view) {
@@ -192,8 +493,10 @@ struct LogEntrySnapshot {
     int32_t category = 0;
     double timestamp = 0.0;
     std::string message;
+    std::string singleLineMessage;
     std::string timeLabel;
     std::string label;
+    std::string displayLabel;
 };
 
 @interface ImGuiBridge () {
@@ -213,6 +516,7 @@ struct LogEntrySnapshot {
     bool _ShowInspectorPanel;
     bool _ShowContentBrowserPanel;
     bool _ShowViewportPanel;
+    bool _ShowAnimationGraphPanel;
     bool _ShowProfilingPanel;
     bool _ShowLogsPanel;
     bool _ShowSettingsModal;
@@ -442,6 +746,72 @@ static const char *LogCategoryLabel(int32_t category) {
     }
 }
 
+static std::string NormalizeLogMessageForDisplay(const char *raw) {
+    if (!raw) { return std::string(); }
+    std::string text(raw);
+    std::string normalized;
+    normalized.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c == '\\' && (i + 1) < text.size()) {
+            const char next = text[i + 1];
+            if (next == 'n' || next == 'r') {
+                normalized.push_back('\n');
+                ++i;
+                continue;
+            }
+            if (next == 't') {
+                normalized.push_back('\t');
+                ++i;
+                continue;
+            }
+        }
+        if (c == '\r') {
+            if ((i + 1) < text.size() && text[i + 1] == '\n') {
+                ++i;
+            }
+            normalized.push_back('\n');
+            continue;
+        }
+        if (static_cast<unsigned char>(c) < 0x20 && c != '\n' && c != '\t') {
+            normalized.push_back(' ');
+            continue;
+        }
+        normalized.push_back(c);
+    }
+    return normalized;
+}
+
+static std::string NormalizeLogMessageToSingleLine(const char *raw) {
+    const std::string text = NormalizeLogMessageForDisplay(raw);
+    std::string normalized;
+    normalized.reserve(text.size());
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        if (c == '\r') {
+            if (i + 1 < text.size() && text[i + 1] == '\n') {
+                ++i;
+            }
+            normalized += " \\n ";
+            continue;
+        }
+        if (c == '\n') {
+            normalized += " \\n ";
+            continue;
+        }
+        if (c == '\t') {
+            normalized += "    ";
+            continue;
+        }
+        if (static_cast<unsigned char>(c) < 0x20) {
+            normalized.push_back(' ');
+            continue;
+        }
+        normalized.push_back(c);
+    }
+    return normalized;
+}
+
 static void RefreshLogSnapshotIfNeeded(ImGuiBridge *bridge) {
     const uint64_t revision = MCEEditorLogRevision(bridge->_context);
     if (revision == bridge->_LogRevision) { return; }
@@ -452,7 +822,7 @@ static void RefreshLogSnapshotIfNeeded(ImGuiBridge *bridge) {
     const int32_t count = MCEEditorLogCount(bridge->_context);
     bridge->_LogEntries.reserve(static_cast<size_t>(count));
     for (int32_t i = 0; i < count; ++i) {
-        char message[512] = {0};
+        char message[8192] = {0};
         int32_t level = 0;
         int32_t category = 0;
         double timestamp = 0.0;
@@ -461,9 +831,11 @@ static void RefreshLogSnapshotIfNeeded(ImGuiBridge *bridge) {
         entry.level = level;
         entry.category = category;
         entry.timestamp = timestamp;
-        entry.message = message;
+        entry.message = NormalizeLogMessageForDisplay(message);
+        entry.singleLineMessage = NormalizeLogMessageToSingleLine(entry.message.c_str());
         entry.timeLabel = FormatClockTime(timestamp);
-        entry.label = "[" + entry.timeLabel + "] [" + LogCategoryLabel(category) + "] " + entry.message;
+        entry.label = "[" + entry.timeLabel + "] [" + LogCategoryLabel(category) + "] " + entry.singleLineMessage;
+        entry.displayLabel = "[" + entry.timeLabel + "] [" + LogCategoryLabel(category) + "] " + entry.message;
         bridge->_LogEntries.push_back(std::move(entry));
     }
 
@@ -545,9 +917,12 @@ static void LoadPanelVisibilityIfNeeded(ImGuiBridge *bridge) {
     bridge->_LoadedPanelVisibility = true;
 
     bridge->_ShowSceneHierarchyPanel = MCEEditorGetPanelVisibility(bridge->_context, "SceneHierarchy", 1) != 0;
-    bridge->_ShowInspectorPanel = MCEEditorGetPanelVisibility(bridge->_context, "Inspector", 1) != 0;
+    const bool propertiesVisible = MCEEditorGetPanelVisibility(bridge->_context, "Properties", 1) != 0;
+    const bool inspectorLegacyVisible = MCEEditorGetPanelVisibility(bridge->_context, "Inspector", propertiesVisible ? 1 : 0) != 0;
+    bridge->_ShowInspectorPanel = propertiesVisible || inspectorLegacyVisible;
     bridge->_ShowContentBrowserPanel = MCEEditorGetPanelVisibility(bridge->_context, "ContentBrowser", 1) != 0;
     bridge->_ShowViewportPanel = MCEEditorGetPanelVisibility(bridge->_context, "Viewport", 1) != 0;
+    bridge->_ShowAnimationGraphPanel = MCEEditorGetPanelVisibility(bridge->_context, "AnimationGraph", 1) != 0;
     bridge->_ShowProfilingPanel = MCEEditorGetPanelVisibility(bridge->_context, "Profiling", 0) != 0;
     bridge->_ShowLogsPanel = MCEEditorGetPanelVisibility(bridge->_context, "Logs", 1) != 0;
 
@@ -581,22 +956,9 @@ static void DrawLogsPanel(ImGuiBridge *bridge, bool *isOpen) {
 
     RefreshLogSnapshotIfNeeded(bridge);
 
-    if (ImGui::Button("Clear")) {
-        MCEEditorLogClear(bridge->_context);
-    }
+    const bool copyClicked = ImGui::Button("Copy Entire Log");
     ImGui::SameLine();
-    if (ImGui::Button("Copy")) {
-        std::string output;
-        RebuildLogFilterIfNeeded(bridge, bridge->_LogFilter, bridge->_LogShowTrace, bridge->_LogShowInfo, bridge->_LogShowWarn, bridge->_LogShowError);
-        output.reserve(static_cast<size_t>(bridge->_LogFilteredIndices.size()) * 80);
-        for (int32_t index : bridge->_LogFilteredIndices) {
-            if (index < 0 || index >= static_cast<int32_t>(bridge->_LogEntries.size())) { continue; }
-            const auto &entry = bridge->_LogEntries[index];
-            output += entry.label;
-            output += "\n";
-        }
-        ImGui::SetClipboardText(output.c_str());
-    }
+    const bool clearClicked = ImGui::Button("Clear");
     ImGui::SameLine();
     ImGui::Checkbox("Auto-scroll", &bridge->_LogAutoScroll);
     ImGui::SameLine();
@@ -611,44 +973,187 @@ static void DrawLogsPanel(ImGuiBridge *bridge, bool *isOpen) {
     ImGui::SameLine();
     ImGui::Checkbox("Error", &bridge->_LogShowError);
 
-    ImGui::Separator();
-    ImGui::BeginChild("LogsScroll", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
-
     RebuildLogFilterIfNeeded(bridge, bridge->_LogFilter, bridge->_LogShowTrace, bridge->_LogShowInfo, bridge->_LogShowWarn, bridge->_LogShowError);
-
     const int32_t filteredCount = static_cast<int32_t>(bridge->_LogFilteredIndices.size());
-    ImGuiListClipper clipper;
-    clipper.Begin(filteredCount);
-    while (clipper.Step()) {
-        for (int32_t row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
-            const int32_t entryIndex = bridge->_LogFilteredIndices[row];
-            if (entryIndex < 0 || entryIndex >= static_cast<int32_t>(bridge->_LogEntries.size())) { continue; }
-            const auto &entry = bridge->_LogEntries[entryIndex];
-            ImVec4 color = ImVec4(0.82f, 0.82f, 0.86f, 1.0f);
-            if (entry.level == 0) {
-                color = ImVec4(0.55f, 0.6f, 0.65f, 1.0f);
-            } else if (entry.level == 2) {
-                color = ImVec4(0.95f, 0.7f, 0.2f, 1.0f);
-            } else if (entry.level == 3) {
-                color = ImVec4(0.95f, 0.4f, 0.35f, 1.0f);
-            }
-            ImGui::PushID(entryIndex);
-            ImGui::PushStyleColor(ImGuiCol_Text, color);
-            bool clicked = ImGui::Selectable(entry.label.c_str(), false, ImGuiSelectableFlags_SpanAllColumns);
-            ImGui::PopStyleColor();
-            ImGui::PopID();
-            if (clicked) {
-                ImGui::SetClipboardText(entry.message.c_str());
-            }
+    const int32_t totalCount = static_cast<int32_t>(bridge->_LogEntries.size());
+
+    if (clearClicked) {
+        MCEEditorLogClear(bridge->_context);
+    }
+    if (copyClicked) {
+        std::string output;
+        output.reserve(static_cast<size_t>(filteredCount) * 80);
+        for (int32_t index : bridge->_LogFilteredIndices) {
+            if (index < 0 || index >= static_cast<int32_t>(bridge->_LogEntries.size())) { continue; }
+            const auto &entry = bridge->_LogEntries[index];
+            output += entry.displayLabel;
+            output += "\n";
         }
+        ImGui::SetClipboardText(output.c_str());
     }
 
-    if (bridge->_LogAutoScroll && ImGui::GetScrollY() >= ImGui::GetScrollMaxY() - 4.0f) {
+    ImGui::Spacing();
+    if (filteredCount != totalCount) {
+        ImGui::TextDisabled("Visible: %d  |  Total: %d", filteredCount, totalCount);
+    } else {
+        ImGui::TextDisabled("Entries: %d", totalCount);
+    }
+
+    ImGui::Separator();
+    ImGui::BeginChild("LogsScroll", ImVec2(0, 0), false, ImGuiWindowFlags_AlwaysVerticalScrollbar);
+    const float scrollY = ImGui::GetScrollY();
+    const float scrollMaxY = ImGui::GetScrollMaxY();
+    const bool wasAtBottom = (scrollMaxY <= 0.0f) || (scrollY >= (scrollMaxY - 4.0f));
+
+    ImGui::PushTextWrapPos(0.0f);
+    for (int32_t row = 0; row < filteredCount; ++row) {
+        const int32_t entryIndex = bridge->_LogFilteredIndices[row];
+        if (entryIndex < 0 || entryIndex >= static_cast<int32_t>(bridge->_LogEntries.size())) { continue; }
+        const auto &entry = bridge->_LogEntries[entryIndex];
+        ImVec4 color = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+        if (entry.level == 0) {
+            color = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+        } else if (entry.level == 2) {
+            color = ImVec4(0.95f, 0.7f, 0.2f, 1.0f);
+        } else if (entry.level == 3) {
+            color = ImVec4(0.95f, 0.4f, 0.35f, 1.0f);
+        }
+        ImGui::PushStyleColor(ImGuiCol_Text, color);
+        ImGui::TextUnformatted(entry.displayLabel.c_str());
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+    }
+    ImGui::PopTextWrapPos();
+
+    if (bridge->_LogAutoScroll && wasAtBottom) {
         ImGui::SetScrollHereY(1.0f);
     }
 
     ImGui::EndChild();
     ImGui::End();
+}
+
+namespace {
+    static int NodeInputCountForType(int32_t type) {
+        switch (type) {
+            case 0: return 1; // OutputPose
+            case 1: return 0; // ClipPlayer
+            case 2: return 1; // Blend1D parameter input
+            case 3: return 2; // Blend2D parameter inputs
+            case 4: return 0; // StateMachine
+            case 24: return 1; // SetLocalFloat
+            case 25: return 1; // SetLocalBool
+            case 26: return 1; // SetLocalInt
+            default: return 0;
+        }
+    }
+
+    static int NodeOutputCountForType(int32_t type) {
+        switch (type) {
+            case 0: return 0; // OutputPose
+            case 24: return 1; // SetLocalFloat passthrough
+            case 25: return 1; // SetLocalBool passthrough
+            case 26: return 1; // SetLocalInt passthrough
+            default: return 1;
+        }
+    }
+
+    static const char *NodeTypeLabel(int32_t type) {
+        switch (type) {
+            case 0: return "Output Pose";
+            case 1: return "Clip Player";
+            case 2: return "Blend1D";
+            case 3: return "Blend2D";
+            case 4: return "State Machine";
+            case 8: return "Parameter Float";
+            case 9: return "Parameter Bool";
+            case 10: return "Parameter Trigger";
+            case 20: return "Parameter Int";
+            case 21: return "Local Float";
+            case 22: return "Local Bool";
+            case 23: return "Local Int";
+            case 24: return "Set Local Float";
+            case 25: return "Set Local Bool";
+            case 26: return "Set Local Int";
+            default: return "Unknown";
+        }
+    }
+
+    static const char *ParameterTypeLabel(int32_t type) {
+        switch (type) {
+            case 0: return "Float";
+            case 1: return "Bool";
+            case 2: return "Int";
+            case 3: return "Trigger";
+            default: return "Float";
+        }
+    }
+
+    static int32_t ScriptSetterToParameterType(const std::string &setterName) {
+        if (setterName == "Float") { return 0; }
+        if (setterName == "Bool") { return 1; }
+        if (setterName == "Trigger") { return 3; }
+        return 0;
+    }
+
+    static std::string TruncatedLabel(const std::string &value, size_t maxChars) {
+        if (value.size() <= maxChars) { return value; }
+        if (maxChars < 4) { return value.substr(0, maxChars); }
+        return value.substr(0, maxChars - 3) + "...";
+    }
+
+    static std::string NodeQuickLine(const AnimationGraphNodeRecord &node) {
+        switch (node.type) {
+            case 1:
+                return node.clipHandle.empty() ? std::string("clip <none>")
+                                               : std::string("clip ") + TruncatedLabel(node.clipHandle, 18);
+            case 2: {
+                const std::string param = node.blend1DParameterName.empty() ? "<param>" : node.blend1DParameterName;
+                return "param " + TruncatedLabel(param, 14) + "  samples " + std::to_string(node.blend1DSamples.size());
+            }
+            case 3: {
+                const std::string x = node.blend2DParameterXName.empty() ? "<x>" : node.blend2DParameterXName;
+                const std::string y = node.blend2DParameterYName.empty() ? "<y>" : node.blend2DParameterYName;
+                return "x " + TruncatedLabel(x, 9) + "  y " + TruncatedLabel(y, 9);
+            }
+            case 4:
+                return "states " + std::to_string(node.stateMachineStates.size()) +
+                    "  trans " + std::to_string(node.stateMachineTransitions.size());
+            default:
+                return "";
+        }
+    }
+
+    static const AnimationGraphNodeRecord *FindNodeById(const AnimationGraphSnapshot &snapshot, const std::string &nodeId) {
+        for (const auto &node : snapshot.nodes) {
+            if (node.id == nodeId) { return &node; }
+        }
+        return nullptr;
+    }
+
+    static const AnimationGraphNodeRecord::StateMachineStateRecord *FindStateInMachine(const AnimationGraphNodeRecord &machineNode,
+                                                                                        const std::string &stateId) {
+        for (const auto &state : machineNode.stateMachineStates) {
+            if (state.id == stateId) { return &state; }
+        }
+        return nullptr;
+    }
+
+    static const AnimationGraphNodeRecord::StateMachineTransitionRecord *FindTransitionInMachine(const AnimationGraphNodeRecord &machineNode,
+                                                                                                  const std::string &transitionId) {
+        for (const auto &transition : machineNode.stateMachineTransitions) {
+            if (transition.id == transitionId) { return &transition; }
+        }
+        return nullptr;
+    }
+    static void DrawAnimationGraphPanel(ImGuiBridge *bridge, bool *isOpen) {
+        if (!isOpen || !*isOpen) {
+            AnimationGraphUIStateStore::PruneStateToActiveGraph("");
+            return;
+        }
+        auto *uiState = static_cast<MCEPanelState::EditorUIPanelState *>(MCEContextGetUIPanelState(bridge->_context));
+        ::DrawAnimationGraphPanel(bridge->_context, uiState->animationGraph, bridge->_SelectedEntityId, isOpen);
+    }
 }
 
 static void DrawSettingsModal(ImGuiBridge *bridge) {
@@ -667,12 +1172,13 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
         { EditorIcons::Id::Material, "UI & Theme" },
         { EditorIcons::Id::Camera, "Viewport" },
         { EditorIcons::Id::Translate, "Gizmos & Snapping" },
+        { EditorIcons::Id::Select, "Selection & Picking" },
         { EditorIcons::Id::Mesh, "Rendering" },
         { EditorIcons::Id::DirectionalLight, "Lighting & Sky / IBL" },
         { EditorIcons::Id::Warning, "Shadows" },
         { EditorIcons::Id::Simulate, "Physics" },
         { EditorIcons::Id::Texture, "Assets & Import" },
-        { EditorIcons::Id::File, "Advanced / Debug" }
+        { EditorIcons::Id::File, "Debug / Experimental" }
     };
     bridge->_SettingsCategoryIndex = std::max(0, std::min(bridge->_SettingsCategoryIndex, static_cast<int>(IM_ARRAYSIZE(kCategories) - 1)));
 
@@ -769,10 +1275,10 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
         ImGui::Spacing();
         ImGui::TextWrapped("Theme settings are saved per-editor project state and applied every frame.");
     } else if (category == 2) {
-        EditorUI::SectionHeader("Viewport");
+        EditorUI::SectionHeader("Viewport / Overlays");
         if (EditorUI::BeginPropertyTable("SettingsViewportTable")) {
             bool showIcons = MCEEditorGetViewportShowWorldIcons(bridge->_context) != 0;
-            EditorUI::SetNextPropertyInfoTooltip("Show camera/light icons in world space (edit mode).\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
+            EditorUI::SetNextPropertyInfoTooltip("Show camera/light/probe icons in world space (edit mode).\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
             if (EditorUI::PropertyBool("Show World Icons", &showIcons)) {
                 MCEEditorSetViewportShowWorldIcons(bridge->_context, showIcons ? 1 : 0);
             }
@@ -800,12 +1306,155 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
             if (EditorUI::PropertyFloat("Max Icon Size (px)", &maxSize, 0.25f, 8.0f, 64.0f, "%.1f", true, false)) {
                 MCEEditorSetViewportWorldIconMaxSize(bridge->_context, maxSize);
             }
-
-            bool frustum = MCEEditorGetViewportShowSelectedCameraFrustum(bridge->_context) != 0;
-            EditorUI::SetNextPropertyInfoTooltip("Show selected camera frustum in edit mode.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
-            if (EditorUI::PropertyBool("Camera Frustums", &frustum)) {
-                MCEEditorSetViewportShowSelectedCameraFrustum(bridge->_context, frustum ? 1 : 0);
+            float iconOpacity = MCEEditorGetViewportWorldIconsOpacity(bridge->_context);
+            EditorUI::SetNextPropertyInfoTooltip("Overall world-icon opacity.\nUnits: normalized alpha.\nPerformance: negligible.\nPersistence: Editor.");
+            if (EditorUI::PropertyFloat("Icon Opacity", &iconOpacity, 0.025f, 0.0f, 1.0f, "%.2f", true, false)) {
+                MCEEditorSetViewportWorldIconsOpacity(bridge->_context, iconOpacity);
             }
+            EditorUI::EndPropertyTable();
+        }
+        EditorUI::StandardSpacing();
+
+        EditorUI::SectionHeader("Camera Frustums");
+        DrawViewportDebugStyleControls(
+            bridge->_context,
+            "SettingsCameraFrustumsTable",
+            ViewportDebugCategory::CameraFrustums,
+            "Enabled",
+            "Color",
+            "Thickness",
+            "Opacity",
+            "Show selected camera frustums in edit mode.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.",
+            "Camera frustum line color.\nUnits: RGB.\nPersistence: Editor.",
+            "Camera frustum line thickness.\nUnits: world debug line width.\nPersistence: Editor.",
+            "Camera frustum opacity.\nUnits: normalized alpha.\nPersistence: Editor."
+        );
+        EditorUI::StandardSpacing();
+
+        EditorUI::SectionHeader("Reflection Probes");
+        ImGui::TextWrapped("These are editor-side viewport debug visuals. They are independent from grid controls and reflection shading.");
+        ImGui::Spacing();
+        if (ImGui::TreeNodeEx("ReflectionProbeInfluenceSettings", ImGuiTreeNodeFlags_DefaultOpen, "Influence")) {
+            DrawViewportDebugStyleControls(
+                bridge->_context,
+                "SettingsProbeInfluenceTable",
+                ViewportDebugCategory::ReflectionProbeInfluence,
+                "Enabled",
+                "Color",
+                "Thickness",
+                "Opacity",
+                "Show reflection probe influence bounds.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.",
+                "Influence box color.\nUnits: RGB.\nPersistence: Editor.",
+                "Influence line thickness.\nUnits: world debug line width.\nPersistence: Editor.",
+                "Influence box opacity.\nUnits: normalized alpha.\nPersistence: Editor."
+            );
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNodeEx("ReflectionProbeBlendShellSettings", ImGuiTreeNodeFlags_DefaultOpen, "Blend Shell")) {
+            DrawViewportDebugStyleControls(
+                bridge->_context,
+                "SettingsProbeBlendShellTable",
+                ViewportDebugCategory::ReflectionProbeBlendShell,
+                "Enabled",
+                "Color",
+                "Thickness",
+                "Opacity",
+                "Show reflection probe blend shell bounds.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.",
+                "Blend shell color.\nUnits: RGB.\nPersistence: Editor.",
+                "Blend shell line thickness.\nUnits: world debug line width.\nPersistence: Editor.",
+                "Blend shell opacity.\nUnits: normalized alpha.\nPersistence: Editor."
+            );
+            if (EditorUI::BeginPropertyTable("SettingsProbeBlendShellFlagsTable")) {
+                bool showInner = MCEEditorGetViewportProbeShellShowInnerBox(bridge->_context) != 0;
+                EditorUI::SetNextPropertyInfoTooltip("Show the inner authored probe influence box inside the shell visualization.\nUnits: boolean.\nPersistence: Editor.");
+                if (EditorUI::PropertyBool("Show Inner Box", &showInner)) {
+                    MCEEditorSetViewportProbeShellShowInnerBox(bridge->_context, showInner ? 1 : 0);
+                }
+                bool showOuter = MCEEditorGetViewportProbeShellShowOuterBox(bridge->_context) != 0;
+                EditorUI::SetNextPropertyInfoTooltip("Show the outer fade extent for the probe shell visualization.\nUnits: boolean.\nPersistence: Editor.");
+                if (EditorUI::PropertyBool("Show Outer Box", &showOuter)) {
+                    MCEEditorSetViewportProbeShellShowOuterBox(bridge->_context, showOuter ? 1 : 0);
+                }
+                bool showConnectors = MCEEditorGetViewportProbeShellShowConnectorLines(bridge->_context) != 0;
+                EditorUI::SetNextPropertyInfoTooltip("Show connector lines between inner influence bounds and outer fade bounds.\nUnits: boolean.\nPersistence: Editor.");
+                if (EditorUI::PropertyBool("Show Connectors", &showConnectors)) {
+                    MCEEditorSetViewportProbeShellShowConnectorLines(bridge->_context, showConnectors ? 1 : 0);
+                }
+                EditorUI::EndPropertyTable();
+            }
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNodeEx("ReflectionProbeLinksSettings", ImGuiTreeNodeFlags_DefaultOpen, "Selection Links")) {
+            DrawViewportDebugStyleControls(
+                bridge->_context,
+                "SettingsProbeLinksTable",
+                ViewportDebugCategory::ReflectionProbeLinks,
+                "Enabled",
+                "Color",
+                "Thickness",
+                "Opacity",
+                "Show object-to-probe selection links and fallback markers.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.",
+                "Selection-link color.\nUnits: RGB.\nPersistence: Editor.",
+                "Selection-link thickness.\nUnits: world debug line width.\nPersistence: Editor.",
+                "Selection-link opacity.\nUnits: normalized alpha.\nPersistence: Editor."
+            );
+            ImGui::TreePop();
+        }
+        EditorUI::StandardSpacing();
+
+        EditorUI::SectionHeader("Physics Overlays");
+        DrawViewportDebugStyleControls(
+            bridge->_context,
+            "SettingsPhysicsOverlaysTable",
+            ViewportDebugCategory::Physics,
+            "Enabled",
+            "Color",
+            "Thickness",
+            "Opacity",
+            "Enable physics debug wireframe overlays.\nUnits: boolean.\nPerformance: medium on heavy scenes.\nPersistence: Editor.",
+            "Physics debug overlay tint.\nUnits: RGB.\nPersistence: Editor.",
+            "Physics debug line thickness.\nUnits: world debug line width.\nPersistence: Editor.",
+            "Physics debug overlay opacity.\nUnits: normalized alpha.\nPersistence: Editor."
+        );
+        EditorUI::StandardSpacing();
+
+        EditorUI::SectionHeader("Generic Debug");
+        if (ImGui::TreeNodeEx("GenericDebugLinesSettings", ImGuiTreeNodeFlags_None, "Generic Lines")) {
+            DrawViewportDebugStyleControls(
+                bridge->_context,
+                "SettingsGenericLinesTable",
+                ViewportDebugCategory::GenericLines,
+                "Enabled",
+                "Color",
+                "Thickness",
+                "Opacity",
+                "Enable generic editor debug lines.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.",
+                "Generic debug line color.\nUnits: RGB.\nPersistence: Editor.",
+                "Generic debug line thickness.\nUnits: world debug line width.\nPersistence: Editor.",
+                "Generic debug line opacity.\nUnits: normalized alpha.\nPersistence: Editor."
+            );
+            ImGui::TreePop();
+        }
+        if (ImGui::TreeNodeEx("GenericDebugShapesSettings", ImGuiTreeNodeFlags_None, "Generic Shapes")) {
+            DrawViewportDebugStyleControls(
+                bridge->_context,
+                "SettingsGenericShapesTable",
+                ViewportDebugCategory::GenericShapes,
+                "Enabled",
+                "Color",
+                "Thickness",
+                "Opacity",
+                "Enable generic editor debug shapes.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.",
+                "Generic debug shape color.\nUnits: RGB.\nPersistence: Editor.",
+                "Generic debug shape thickness.\nUnits: world debug line width.\nPersistence: Editor.",
+                "Generic debug shape opacity.\nUnits: normalized alpha.\nPersistence: Editor."
+            );
+            ImGui::TreePop();
+        }
+        EditorUI::StandardSpacing();
+
+        EditorUI::SectionHeader("Camera Preview");
+        if (EditorUI::BeginPropertyTable("SettingsViewportPreviewTable")) {
 
             bool previewEnabled = MCEEditorGetViewportPreviewEnabled(bridge->_context) != 0;
             EditorUI::SetNextPropertyInfoTooltip("Enable camera preview overlay in viewport.\nUnits: boolean.\nPerformance: moderate extra pass.\nPersistence: Editor.");
@@ -827,6 +1476,10 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
             }
             EditorUI::EndPropertyTable();
         }
+        EditorUI::StandardSpacing();
+        EditorUI::SectionHeader("Viewport Grid");
+        ImGui::TextWrapped("These controls are project renderer settings and apply immediately.");
+        ImGuiRendererSettingsCategoryDraw(bridge->_context, ImGuiRendererSettingsCategoryViewportOverlays);
     } else if (category == 3) {
         EditorUI::SectionHeader("Gizmos & Snapping");
         if (EditorUI::BeginPropertyTable("SettingsGizmoTable")) {
@@ -838,17 +1491,32 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
             EditorUI::EndPropertyTable();
         }
     } else if (category == 4) {
+        EditorUI::SectionHeader("Selection & Picking");
+        if (EditorUI::BeginPropertyTable("SettingsSelectionTable")) {
+            bool outlineVisible = MCERendererGetOutlineEnabled(engineContext) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Selection outline visibility.\nUnits: boolean.\nPerformance: low-to-medium.\nPersistence: Project.");
+            if (EditorUI::PropertyBool("Show Selection Outline", &outlineVisible)) {
+                MCERendererSetOutlineEnabled(engineContext, outlineVisible ? 1 : 0);
+                MCESceneNotifyMutation(bridge->_context);
+            }
+            EditorUI::EndPropertyTable();
+        }
+        EditorUI::StandardSpacing();
+        EditorUI::SectionHeader("Outline Appearance");
+        ImGui::TextWrapped("These controls tune the renderer-side outline style and persist with the scene.");
+        ImGuiRendererSettingsCategoryDraw(bridge->_context, ImGuiRendererSettingsCategorySelection);
+    } else if (category == 5) {
         EditorUI::SectionHeader("Rendering");
         ImGuiRendererSettingsCategoryDraw(bridge->_context, ImGuiRendererSettingsCategoryCore);
-    } else if (category == 5) {
+    } else if (category == 6) {
         EditorUI::SectionHeader("Lighting & Sky / IBL");
         ImGuiRendererSettingsCategoryDraw(bridge->_context, ImGuiRendererSettingsCategoryLighting);
         ImGui::Spacing();
         ImGui::TextWrapped("Directional and spot light direction is transform-driven (local -Z forward).\nSky sun ray direction remains consistent with this convention.");
-    } else if (category == 6) {
+    } else if (category == 7) {
         EditorUI::SectionHeader("Shadows");
         ImGuiRendererSettingsCategoryDraw(bridge->_context, ImGuiRendererSettingsCategoryShadows);
-    } else if (category == 7) {
+    } else if (category == 8) {
         EditorUI::SectionHeader("Physics");
         if (EditorUI::BeginPropertyTable("PhysicsSettingsTable")) {
             bool physicsEnabled = MCEPhysicsGetEnabled(engineContext) != 0;
@@ -906,42 +1574,19 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
             }
             EditorUI::EndPropertyTable();
         }
-    } else if (category == 8) {
+    } else if (category == 9) {
         EditorUI::SectionHeader("Assets & Import");
         ImGui::TextWrapped("Import defaults are configured per import operation. Reimport keeps handles stable.");
         ImGui::Spacing();
         ImGui::TextWrapped("Asset import and registry settings are saved per-project.");
     } else {
-        EditorUI::SectionHeader("Advanced / Debug");
+        EditorUI::SectionHeader("Debug / Experimental");
         if (EditorUI::BeginPropertyTable("SettingsDebugTable")) {
-            bool gridEnabled = MCEEditorGetDebugGridEnabled(bridge->_context) != 0;
-            EditorUI::SetNextPropertyInfoTooltip("Viewport grid visibility.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
-            if (EditorUI::PropertyBool("Grid", &gridEnabled)) {
-                MCEEditorSetDebugGridEnabled(bridge->_context, gridEnabled ? 1 : 0);
-            }
-
-            bool debugDrawEnabled = MCEEditorGetDebugPhysicsEnabled(bridge->_context) != 0;
-            EditorUI::SetNextPropertyInfoTooltip("Physics debug wireframe overlays.\nUnits: boolean.\nPerformance: medium on heavy scenes.\nPersistence: Editor.");
-            if (EditorUI::PropertyBool("Physics Debug Draw", &debugDrawEnabled)) {
-                MCEEditorSetDebugPhysicsEnabled(bridge->_context, debugDrawEnabled ? 1 : 0);
-            }
-
-            bool iconsEnabled = MCEEditorGetViewportShowWorldIcons(bridge->_context) != 0;
-            EditorUI::SetNextPropertyInfoTooltip("World-space camera/light icons.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
-            if (EditorUI::PropertyBool("World Icons", &iconsEnabled)) {
-                MCEEditorSetViewportShowWorldIcons(bridge->_context, iconsEnabled ? 1 : 0);
-            }
-
-            bool outlineEnabled = MCEEditorGetDebugOutlineEnabled(bridge->_context) != 0;
-            EditorUI::SetNextPropertyInfoTooltip("Selected entity outline visibility.\nUnits: boolean.\nPerformance: low-to-medium.\nPersistence: Editor.");
+            bool outlineEnabled = MCERendererGetOutlineEnabled(engineContext) != 0;
+            EditorUI::SetNextPropertyInfoTooltip("Selected entity outline visibility.\nUnits: boolean.\nPerformance: low-to-medium.\nPersistence: Project.");
             if (EditorUI::PropertyBool("Selection Outline", &outlineEnabled)) {
-                MCEEditorSetDebugOutlineEnabled(bridge->_context, outlineEnabled ? 1 : 0);
-            }
-
-            bool frustumEnabled = MCEEditorGetViewportShowSelectedCameraFrustum(bridge->_context) != 0;
-            EditorUI::SetNextPropertyInfoTooltip("Selected camera frustum visualization.\nUnits: boolean.\nPerformance: low overlay cost.\nPersistence: Editor.");
-            if (EditorUI::PropertyBool("Camera Frustum", &frustumEnabled)) {
-                MCEEditorSetViewportShowSelectedCameraFrustum(bridge->_context, frustumEnabled ? 1 : 0);
+                MCERendererSetOutlineEnabled(engineContext, outlineEnabled ? 1 : 0);
+                MCESceneNotifyMutation(bridge->_context);
             }
             EditorUI::EndPropertyTable();
         }
@@ -961,10 +1606,10 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
     ImGui::TextDisabled("Saved per-project/editor as noted.");
     ImGui::SameLine();
     const float closeWidth = 100.0f;
-    const float resetWidth = 150.0f;
+    const float resetWidth = 190.0f;
     const float rightEdge = ImGui::GetContentRegionAvail().x;
     ImGui::SetCursorPosX(std::max(0.0f, rightEdge - closeWidth - resetWidth - ImGui::GetStyle().ItemSpacing.x));
-    if (ImGui::Button("Reset to Defaults", ImVec2(resetWidth, 0.0f))) {
+    if (ImGui::Button("Reset Editor UI & Overlays", ImVec2(resetWidth, 0.0f))) {
         gThemeSettings = EditorThemeSettings();
         MCEEditorSetThemeMode(bridge->_context, gThemeSettings.mode);
         MCEEditorSetThemeAccent(bridge->_context, gThemeSettings.accent[0], gThemeSettings.accent[1], gThemeSettings.accent[2]);
@@ -977,7 +1622,38 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
         MCEEditorSetViewportWorldIconDistanceScale(bridge->_context, 0.75f);
         MCEEditorSetViewportWorldIconMinSize(bridge->_context, 11.0f);
         MCEEditorSetViewportWorldIconMaxSize(bridge->_context, 28.0f);
-        MCEEditorSetViewportShowSelectedCameraFrustum(bridge->_context, 1);
+        MCEEditorSetViewportWorldIconsOpacity(bridge->_context, 1.0f);
+        MCEEditorSetViewportDebugCategoryEnabled(bridge->_context, ViewportDebugCategory::CameraFrustums, 1);
+        MCEEditorSetViewportDebugCategoryColor(bridge->_context, ViewportDebugCategory::CameraFrustums, 1.0f, 0.78f, 0.25f);
+        MCEEditorSetViewportDebugCategoryThickness(bridge->_context, ViewportDebugCategory::CameraFrustums, 0.03f);
+        MCEEditorSetViewportDebugCategoryOpacity(bridge->_context, ViewportDebugCategory::CameraFrustums, 0.95f);
+        MCEEditorSetViewportDebugCategoryEnabled(bridge->_context, ViewportDebugCategory::ReflectionProbeInfluence, 1);
+        MCEEditorSetViewportDebugCategoryColor(bridge->_context, ViewportDebugCategory::ReflectionProbeInfluence, 0.25f, 0.95f, 0.95f);
+        MCEEditorSetViewportDebugCategoryThickness(bridge->_context, ViewportDebugCategory::ReflectionProbeInfluence, 0.04f);
+        MCEEditorSetViewportDebugCategoryOpacity(bridge->_context, ViewportDebugCategory::ReflectionProbeInfluence, 0.95f);
+        MCEEditorSetViewportDebugCategoryEnabled(bridge->_context, ViewportDebugCategory::ReflectionProbeBlendShell, 1);
+        MCEEditorSetViewportDebugCategoryColor(bridge->_context, ViewportDebugCategory::ReflectionProbeBlendShell, 0.25f, 0.95f, 0.95f);
+        MCEEditorSetViewportDebugCategoryThickness(bridge->_context, ViewportDebugCategory::ReflectionProbeBlendShell, 0.03f);
+        MCEEditorSetViewportDebugCategoryOpacity(bridge->_context, ViewportDebugCategory::ReflectionProbeBlendShell, 0.55f);
+        MCEEditorSetViewportProbeShellShowInnerBox(bridge->_context, 1);
+        MCEEditorSetViewportProbeShellShowOuterBox(bridge->_context, 1);
+        MCEEditorSetViewportProbeShellShowConnectorLines(bridge->_context, 1);
+        MCEEditorSetViewportDebugCategoryEnabled(bridge->_context, ViewportDebugCategory::ReflectionProbeLinks, 1);
+        MCEEditorSetViewportDebugCategoryColor(bridge->_context, ViewportDebugCategory::ReflectionProbeLinks, 1.0f, 0.72f, 0.22f);
+        MCEEditorSetViewportDebugCategoryThickness(bridge->_context, ViewportDebugCategory::ReflectionProbeLinks, 0.03f);
+        MCEEditorSetViewportDebugCategoryOpacity(bridge->_context, ViewportDebugCategory::ReflectionProbeLinks, 0.95f);
+        MCEEditorSetViewportDebugCategoryEnabled(bridge->_context, ViewportDebugCategory::Physics, 0);
+        MCEEditorSetViewportDebugCategoryColor(bridge->_context, ViewportDebugCategory::Physics, 0.9f, 0.95f, 0.3f);
+        MCEEditorSetViewportDebugCategoryThickness(bridge->_context, ViewportDebugCategory::Physics, 0.03f);
+        MCEEditorSetViewportDebugCategoryOpacity(bridge->_context, ViewportDebugCategory::Physics, 0.95f);
+        MCEEditorSetViewportDebugCategoryEnabled(bridge->_context, ViewportDebugCategory::GenericLines, 1);
+        MCEEditorSetViewportDebugCategoryColor(bridge->_context, ViewportDebugCategory::GenericLines, 0.95f, 0.95f, 1.0f);
+        MCEEditorSetViewportDebugCategoryThickness(bridge->_context, ViewportDebugCategory::GenericLines, 0.03f);
+        MCEEditorSetViewportDebugCategoryOpacity(bridge->_context, ViewportDebugCategory::GenericLines, 0.95f);
+        MCEEditorSetViewportDebugCategoryEnabled(bridge->_context, ViewportDebugCategory::GenericShapes, 1);
+        MCEEditorSetViewportDebugCategoryColor(bridge->_context, ViewportDebugCategory::GenericShapes, 0.8f, 0.9f, 1.0f);
+        MCEEditorSetViewportDebugCategoryThickness(bridge->_context, ViewportDebugCategory::GenericShapes, 0.03f);
+        MCEEditorSetViewportDebugCategoryOpacity(bridge->_context, ViewportDebugCategory::GenericShapes, 0.9f);
         MCEEditorSetViewportPreviewEnabled(bridge->_context, 1);
         MCEEditorSetViewportPreviewSize(bridge->_context, 0.28f);
         MCEEditorSetViewportPreviewPosition(bridge->_context, 3);
@@ -986,7 +1662,7 @@ static void DrawSettingsModal(ImGuiBridge *bridge) {
         MCEEditorSetDebugPhysicsEnabled(bridge->_context, 0);
     }
     ImGui::SameLine();
-    Info("Reset editor theme and debug-visual toggles to defaults.\nPersistence: Editor.");
+    Info("Reset editor theme, viewport overlay toggles, and debug-visual editor settings to defaults. This does not reset project renderer settings.\nPersistence: Editor.");
     ImGui::SameLine();
     if (ImGui::Button("Close", ImVec2(closeWidth, 0.0f))) {
         ImGui::CloseCurrentPopup();
@@ -1203,8 +1879,25 @@ static void DrawImportModal(void *context) {
             if (commitType == 1) {
                 char handleBuffer[64] = {0};
                 if (MCEImportGetCommitHandle(context, handleBuffer, sizeof(handleBuffer)) != 0) {
+                    char skeletonBuffer[64] = {0};
+                    char defaultClipBuffer[64] = {0};
+                    char materialHandlesBuffer[2048] = {0};
+                    char meshPathBuffer[1024] = {0};
+                    (void)MCEImportGetCommitSkeletonHandle(context, skeletonBuffer, sizeof(skeletonBuffer));
+                    (void)MCEImportGetCommitDefaultClipHandle(context, defaultClipBuffer, sizeof(defaultClipBuffer));
+                    (void)MCEImportGetCommitSubmeshMaterialHandles(context, materialHandlesBuffer, sizeof(materialHandlesBuffer));
+                    (void)MCEImportGetCommitMeshPath(context, meshPathBuffer, sizeof(meshPathBuffer));
                     char createdId[64] = {0};
-                    MCEEditorCreateMeshEntityFromHandleWithMaterials(context, handleBuffer, createdId, sizeof(createdId));
+                    MCEEditorCreateImportedMeshEntity(
+                        context,
+                        handleBuffer,
+                        skeletonBuffer[0] != 0 ? skeletonBuffer : nullptr,
+                        defaultClipBuffer[0] != 0 ? defaultClipBuffer : nullptr,
+                        materialHandlesBuffer[0] != 0 ? materialHandlesBuffer : nullptr,
+                        meshPathBuffer[0] != 0 ? meshPathBuffer : nullptr,
+                        createdId,
+                        sizeof(createdId)
+                    );
                 }
             }
             MCEImportClearCommitResult(context);
@@ -1447,6 +2140,7 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
         _ShowInspectorPanel = true;
         _ShowContentBrowserPanel = true;
         _ShowViewportPanel = true;
+        _ShowAnimationGraphPanel = true;
         _ShowProfilingPanel = false;
         _ShowLogsPanel = true;
         _LoadedPanelVisibility = false;
@@ -1560,9 +2254,6 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
     LoadThemeSettingsIfNeeded(_context);
     ApplyEditorTheme(gThemeSettings);
     void *engineContext = MCEContextGetEngineContext(_context);
-    MCERendererSetOutlineColor(engineContext, gThemeSettings.accent[0], gThemeSettings.accent[1], gThemeSettings.accent[2]);
-    MCERendererSetGridEnabled(engineContext, MCEEditorGetDebugGridEnabled(_context));
-    MCERendererSetOutlineEnabled(engineContext, MCEEditorGetDebugOutlineEnabled(_context));
     MCEPhysicsSetDebugDrawEnabled(engineContext, MCEEditorGetDebugPhysicsEnabled(_context));
     ImGui::NewFrame();
 }
@@ -1588,6 +2279,19 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
     }
 
     LoadPanelVisibilityIfNeeded(self);
+    char pendingAnimationGraphHandle[64] = {0};
+    if (MCEEditorConsumeOpenAnimationGraphEditor(_context, pendingAnimationGraphHandle, sizeof(pendingAnimationGraphHandle)) != 0) {
+        auto *panelState = static_cast<MCEPanelState::EditorUIPanelState *>(MCEContextGetUIPanelState(_context));
+        panelState->animationGraph.activeGraphHandle = pendingAnimationGraphHandle;
+        AnimationGraphWorkspaceRouter::ResetWorkspacePathForHandle(panelState->animationGraph.activeGraphHandle);
+        panelState->animationGraph.pendingWorkspaceNavigationKind = MCEPanelState::AnimationGraphPanelState::WorkspaceNavigationNone;
+        panelState->animationGraph.pendingWorkspaceNodeId.clear();
+        panelState->animationGraph.pendingWorkspaceStateId.clear();
+        panelState->animationGraph.pendingWorkspaceTransitionId.clear();
+        panelState->animationGraph.hasInteractedWithCanvas = false;
+        _ShowAnimationGraphPanel = true;
+        SetPanelVisibility(self, "AnimationGraph", _ShowAnimationGraphPanel);
+    }
 
     if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
         ImGui::TextWrapped("%s", _AlertMessage);
@@ -1668,8 +2372,9 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
         if (ImGui::BeginMenu("View")) {
             EditorUI::PushMenuPopupStyle();
             DrawPanelMenuItem(self, { "Scene Hierarchy", "SceneHierarchy", &_ShowSceneHierarchyPanel });
-            DrawPanelMenuItem(self, { "Inspector", "Inspector", &_ShowInspectorPanel });
+            DrawPanelMenuItem(self, { "Properties", "Properties", &_ShowInspectorPanel });
             DrawPanelMenuItem(self, { "Content Browser", "ContentBrowser", &_ShowContentBrowserPanel });
+            DrawPanelMenuItem(self, { "Animation Graph", "AnimationGraph", &_ShowAnimationGraphPanel });
             DrawPanelMenuItem(self, { "Profiling", "Profiling", &_ShowProfilingPanel });
             DrawPanelMenuItem(self, { "Logs", "Logs", &_ShowLogsPanel });
             DrawPanelMenuItem(self, { "Viewport", "Viewport", &_ShowViewportPanel });
@@ -1806,6 +2511,7 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
         ImGuiInspectorPanelDraw(_context, &inspectorOpen, _SelectedEntityId);
         if (inspectorOpen != _ShowInspectorPanel) {
             _ShowInspectorPanel = inspectorOpen;
+            SetPanelVisibility(self, "Properties", _ShowInspectorPanel);
             SetPanelVisibility(self, "Inspector", _ShowInspectorPanel);
         }
     }
@@ -1852,6 +2558,15 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
                                &_ViewportImageSize);
     } else {
         _ViewportUIHovered = false;
+    }
+
+    bool animationGraphOpen = _ShowAnimationGraphPanel;
+    if (animationGraphOpen) {
+        DrawAnimationGraphPanel(self, &animationGraphOpen);
+        if (animationGraphOpen != _ShowAnimationGraphPanel) {
+            _ShowAnimationGraphPanel = animationGraphOpen;
+            SetPanelVisibility(self, "AnimationGraph", _ShowAnimationGraphPanel);
+        }
     }
 
     ImGui::End(); // DockSpaceHost

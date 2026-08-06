@@ -129,7 +129,8 @@ struct Delegate
     
     // use mouse position to open context menu
     // if nodeIndex != -1, right click happens on the specified node
-    virtual void RightClick(NodeIndex nodeIndex, SlotIndex slotIndexInput, SlotIndex slotIndexOutput) = 0;
+    virtual void RightClick(NodeIndex nodeIndex, SlotIndex slotIndexInput, SlotIndex slotIndexOutput, const ImVec2& graphPosition) = 0;
+    virtual void DoubleClick(NodeIndex nodeIndex) {}
 
     virtual const size_t GetTemplateCount() = 0;
     virtual const Template GetTemplate(TemplateIndex index) = 0;

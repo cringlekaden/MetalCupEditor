@@ -85,6 +85,9 @@ static NodeOperation nodeOperation = NO_None;
 static void HandleZoomScroll(ImRect regionRect, ViewState& viewState, const Options& options)
 {
     ImGuiIO& io = ImGui::GetIO();
+    if (nodeOperation == NO_EditingLink || nodeOperation == NO_MovingNodes || nodeOperation == NO_QuadSelecting) {
+        return;
+    }
 
     if (regionRect.Contains(io.MousePos))
     {
@@ -173,8 +176,8 @@ static void DisplayLinks(Delegate& delegate,
         const auto link = delegate.GetLink(linkIndex);
         const auto nodeInput = delegate.GetNode(link.mInputNodeIndex);
         const auto nodeOutput = delegate.GetNode(link.mOutputNodeIndex);
-        ImVec2 p1 = offset + GetOutputSlotPos(delegate, nodeInput, link.mInputSlotIndex, factor);
-        ImVec2 p2 = offset + GetInputSlotPos(delegate, nodeOutput, link.mOutputSlotIndex, factor);
+        ImVec2 p1 = offset + GetOutputSlotPos(delegate, nodeOutput, link.mOutputSlotIndex, factor);
+        ImVec2 p2 = offset + GetInputSlotPos(delegate, nodeInput, link.mInputSlotIndex, factor);
 
         // con. view clipping
         if ((p1.y < 0.f && p2.y < 0.f) || (p1.y > regionRect.Max.y && p2.y > regionRect.Max.y) ||
@@ -182,12 +185,13 @@ static void DisplayLinks(Delegate& delegate,
             continue;
 
         bool highlightCons = hoveredNode == link.mInputNodeIndex || hoveredNode == link.mOutputNodeIndex;
-        uint32_t col = delegate.GetTemplate(nodeInput.mTemplateIndex).mHeaderColor | (highlightCons ? 0xF0F0F0 : 0);
+        uint32_t col = delegate.GetTemplate(nodeOutput.mTemplateIndex).mHeaderColor | (highlightCons ? 0xF0F0F0 : 0);
         if (options.mDisplayLinksAsCurves)
         {
             // curves
-             drawList->AddBezierCubic(p1, p1 + ImVec2(50, 0) * factor, p2 + ImVec2(-50, 0) * factor, p2, 0xFF000000, options.mLineThickness * 1.5f * factor);
-             drawList->AddBezierCubic(p1, p1 + ImVec2(50, 0) * factor, p2 + ImVec2(-50, 0) * factor, p2, col, options.mLineThickness * 1.5f * factor);
+             const float tangent = ImMax(40.0f, fabsf(p2.x - p1.x) * 0.35f) * factor;
+             drawList->AddBezierCubic(p1, p1 + ImVec2(tangent, 0), p2 + ImVec2(-tangent, 0), p2, 0xFF000000, options.mLineThickness * 1.5f * factor);
+             drawList->AddBezierCubic(p1, p1 + ImVec2(tangent, 0), p2 + ImVec2(-tangent, 0), p2, col, options.mLineThickness * 1.5f * factor);
              /*
             ImVec2 p10 = p1 + ImVec2(20.f * factor, 0.f);
             ImVec2 p20 = p2 - ImVec2(20.f * factor, 0.f);
@@ -438,9 +442,23 @@ static bool HandleConnections(ImDrawList* drawList,
             hoverSlot = true;
             drawList->AddCircleFilled(closestPos, options.mNodeSlotRadius * options.mNodeSlotHoverFactor * 0.75f, IM_COL32(0, 0, 0, 200));
             drawList->AddCircleFilled(closestPos, options.mNodeSlotRadius * options.mNodeSlotHoverFactor, slotColor);
+            drawList->AddCircle(closestPos, options.mNodeSlotRadius * options.mNodeSlotHoverFactor + 1.5f, IM_COL32(255, 255, 255, 180), 12, 2.0f);
             drawList->AddText(io.FontDefault, 16, closestTextPos + ImVec2(1, 1), IM_COL32(0, 0, 0, 255), conText);
             drawList->AddText(io.FontDefault, 16, closestTextPos, IM_COL32(250, 250, 250, 255), conText);
             bool inputToOutput = (!editingInput && !i) || (editingInput && i);
+            if (nodeOperation == NO_EditingLink && inputToOutput) {
+                Link preview;
+                if (editingInput) {
+                    preview = Link{nodeIndex, closestConn, editingNodeIndex, editingSlotIndex};
+                } else {
+                    preview = Link{editingNodeIndex, editingSlotIndex, nodeIndex, closestConn};
+                }
+                if (!delegate.AllowedLink(preview.mOutputNodeIndex, preview.mInputNodeIndex)) {
+                    drawList->AddCircle(closestPos, options.mNodeSlotRadius * (options.mNodeSlotHoverFactor + 0.45f), IM_COL32(235, 85, 85, 255), 16, 2.5f);
+                } else {
+                    drawList->AddCircle(closestPos, options.mNodeSlotRadius * (options.mNodeSlotHoverFactor + 0.45f), IM_COL32(102, 204, 132, 255), 16, 2.5f);
+                }
+            }
             if (nodeOperation == NO_EditingLink && !io.MouseDown[0] && !bDrawOnly)
             {
                 if (inputToOutput)
@@ -472,7 +490,8 @@ static bool HandleConnections(ImDrawList* drawList,
                         for (unsigned int linkIndex = 0; linkIndex < linkCount; linkIndex++)
                         {
                             const auto link = delegate.GetLink(linkIndex);
-                            if (link.mOutputNodeIndex == nl.mOutputNodeIndex && link.mOutputSlotIndex == nl.mOutputSlotIndex)
+                            // Keep output fan-out, but enforce single incoming connection per input slot.
+                            if (link.mInputNodeIndex == nl.mInputNodeIndex && link.mInputSlotIndex == nl.mInputSlotIndex)
                             {
                                 delegate.DelLink(linkIndex);
                                 
@@ -500,7 +519,7 @@ static bool HandleConnections(ImDrawList* drawList,
                     for (unsigned int linkIndex = 0; linkIndex < linkCount; linkIndex++)
                     {
                         const auto link = delegate.GetLink(linkIndex);
-                        if (link.mOutputNodeIndex == nodeIndex && link.mOutputSlotIndex == closestConn)
+                        if (link.mInputNodeIndex == nodeIndex && link.mInputSlotIndex == closestConn)
                         {
                             delegate.DelLink(linkIndex);
                             break;
@@ -669,14 +688,14 @@ static bool DrawNode(ImDrawList* drawList,
     //delegate->DrawNodeImage(drawList, ImRect(imgPos, imgPosMax), marge, nodeIndex);
 
     drawList->AddRectFilled(nodeRectangleMin,
-                            ImVec2(nodeRectangleMax.x, nodeRectangleMin.y + 20),
+                            ImVec2(nodeRectangleMax.x, nodeRectangleMin.y + 24),
                             nodeTemplate.mHeaderColor, options.mRounding);
 
-    drawList->PushClipRect(nodeRectangleMin, ImVec2(nodeRectangleMax.x, nodeRectangleMin.y + 20), true);
-    drawList->AddText(nodeRectangleMin + ImVec2(2, 2), IM_COL32(0, 0, 0, 255), node.mName);
+    drawList->PushClipRect(nodeRectangleMin, ImVec2(nodeRectangleMax.x, nodeRectangleMin.y + 24), true);
+    drawList->AddText(nodeRectangleMin + ImVec2(8, 4), IM_COL32(240, 240, 240, 255), node.mName);
     drawList->PopClipRect();
 
-    ImRect customDrawRect(nodeRectangleMin + ImVec2(options.mRounding, 20 + options.mRounding), nodeRectangleMax - ImVec2(options.mRounding, options.mRounding));
+    ImRect customDrawRect(nodeRectangleMin + ImVec2(options.mRounding, 24 + options.mRounding), nodeRectangleMax - ImVec2(options.mRounding, options.mRounding));
     if (customDrawRect.Max.y > customDrawRect.Min.y && customDrawRect.Max.x > customDrawRect.Min.x)
     {
         delegate.CustomDraw(drawList, customDrawRect, nodeIndex);
@@ -832,14 +851,14 @@ void Show(Delegate& delegate, const Options& options, ViewState& viewState, bool
 
     ImRect regionRect(windowPos, windowPos + canvasSize);
 
-    HandleZoomScroll(regionRect, viewState, options);
     ImVec2 offset = ImGui::GetCursorScreenPos() + viewState.mPosition * viewState.mFactor;
     captureOffset = viewState.mPosition * viewState.mFactor;
 
-    //ImGui::InvisibleButton("GraphEditorButton", canvasSize);
-    ImGui::BeginChild(71711, canvasSize, ImGuiChildFlags_FrameStyle);
+    ImGui::BeginChild(71711, canvasSize, ImGuiChildFlags_FrameStyle, ImGuiWindowFlags_NoScrollbar);
 
-    ImGui::SetCursorPos(windowPos);
+    HandleZoomScroll(regionRect, viewState, options);
+
+    ImGui::SetCursorScreenPos(windowPos);
     ImGui::BeginGroup();
 
     ImGuiIO& io = ImGui::GetIO();
@@ -1007,11 +1026,18 @@ void Show(Delegate& delegate, const Options& options, ViewState& viewState, bool
             nodeOperation = NO_None;
         }
 
+        if (!inMinimap && nodeOperation == NO_None && regionRect.Contains(io.MousePos) &&
+            ImGui::IsMouseDoubleClicked(0) && nodeOver != static_cast<NodeIndex>(-1))
+        {
+            delegate.DoubleClick(nodeOver);
+        }
+
         // right click
         if (!inMinimap && nodeOperation == NO_None && regionRect.Contains(io.MousePos) &&
                 (ImGui::IsMouseClicked(1) /*|| (ImGui::IsWindowFocused() && ImGui::IsKeyPressedMap(ImGuiKey_Tab))*/))
         {
-            delegate.RightClick(nodeOver, inputSlotOver, outputSlotOver);
+            const ImVec2 graphPosition = (io.MousePos - windowPos) / viewState.mFactor - viewState.mPosition;
+            delegate.RightClick(nodeOver, inputSlotOver, outputSlotOver, graphPosition);
         }
 
         // Scrolling

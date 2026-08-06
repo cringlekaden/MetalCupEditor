@@ -29,26 +29,17 @@ void MCERendererSetBloomQualityPreset(MCE_CTX, uint32_t value);
 uint32_t MCERendererGetBloomResolutionScale(MCE_CTX);
 void MCERendererSetBloomResolutionScale(MCE_CTX, uint32_t value);
 
-float MCERendererGetBloomUpsampleScale(MCE_CTX);
-void MCERendererSetBloomUpsampleScale(MCE_CTX, float value);
-
-float MCERendererGetBloomDirtIntensity(MCE_CTX);
-void MCERendererSetBloomDirtIntensity(MCE_CTX, float value);
-
-uint32_t MCERendererGetBlurPasses(MCE_CTX);
-void MCERendererSetBlurPasses(MCE_CTX, uint32_t value);
-
 uint32_t MCERendererGetBloomMaxMips(MCE_CTX);
 void MCERendererSetBloomMaxMips(MCE_CTX, uint32_t value);
 
 uint32_t MCERendererGetTonemap(MCE_CTX);
 void MCERendererSetTonemap(MCE_CTX, uint32_t value);
 
-float MCERendererGetExposure(MCE_CTX);
-void MCERendererSetExposure(MCE_CTX, float value);
-
 float MCERendererGetGamma(MCE_CTX);
 void MCERendererSetGamma(MCE_CTX, float value);
+uint32_t MCERendererGetSceneMSAASampleCount(MCE_CTX);
+uint32_t MCERendererGetMaxSceneMSAASampleCount(MCE_CTX);
+void MCERendererSetSceneMSAASampleCount(MCE_CTX, uint32_t value);
 
 uint32_t MCERendererGetIBLEnabled(MCE_CTX);
 void MCERendererSetIBLEnabled(MCE_CTX, uint32_t value);
@@ -75,6 +66,8 @@ uint32_t MCERendererGetSkipSpecIBLHighRoughness(MCE_CTX);
 void MCERendererSetSkipSpecIBLHighRoughness(MCE_CTX, uint32_t value);
 uint32_t MCERendererGetForwardPlusEnabled(MCE_CTX);
 void MCERendererSetForwardPlusEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetDisableLocalProbeParallaxCorrection(MCE_CTX);
+void MCERendererSetDisableLocalProbeParallaxCorrection(MCE_CTX, uint32_t value);
 uint32_t MCERendererGetForwardPlusMaxLightsPerCluster(MCE_CTX);
 uint32_t MCERendererGetForwardPlusTileOverflowCount(MCE_CTX);
 uint32_t MCERendererGetForwardPlusClusterOverflowCount(MCE_CTX);
@@ -88,6 +81,31 @@ uint32_t MCERendererGetForwardPlusCullingDepthSource(MCE_CTX);
 
 uint32_t MCERendererGetShadingDebugMode(MCE_CTX);
 void MCERendererSetShadingDebugMode(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetDiagnosticOrientationSkyboxEnabled(MCE_CTX);
+void MCERendererSetDiagnosticOrientationSkyboxEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetDiagnosticOrientationGlobalIBLEnabled(MCE_CTX);
+void MCERendererSetDiagnosticOrientationGlobalIBLEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetDiagnosticOrientationLocalProbeEnabled(MCE_CTX);
+void MCERendererSetDiagnosticOrientationLocalProbeEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetAOEnabled(MCE_CTX);
+void MCERendererSetAOEnabled(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetAOMethod(MCE_CTX);
+void MCERendererSetAOMethod(MCE_CTX, uint32_t value);
+uint32_t MCERendererGetAOQuality(MCE_CTX);
+void MCERendererSetAOQuality(MCE_CTX, uint32_t value);
+float MCERendererGetAORadius(MCE_CTX);
+void MCERendererSetAORadius(MCE_CTX, float value);
+float MCERendererGetAOIntensity(MCE_CTX);
+void MCERendererSetAOIntensity(MCE_CTX, float value);
+float MCERendererGetAOPower(MCE_CTX);
+void MCERendererSetAOPower(MCE_CTX, float value);
+float MCERendererGetAOBias(MCE_CTX);
+void MCERendererSetAOBias(MCE_CTX, float value);
+float MCERendererGetAOSharpness(MCE_CTX);
+void MCERendererSetAOSharpness(MCE_CTX, float value);
+
+// Compatibility entry points retained only for external legacy callers.
+// Editor code should use AO* entry points and must not add new SSAO-named usage.
 
 float MCERendererGetIBLSpecularLodExponent(MCE_CTX);
 void MCERendererSetIBLSpecularLodExponent(MCE_CTX, float value);
@@ -103,6 +121,31 @@ float MCERendererGetNormalMapMipBias(MCE_CTX);
 void MCERendererSetNormalMapMipBias(MCE_CTX, float value);
 float MCERendererGetNormalMapMipBiasGrazing(MCE_CTX);
 void MCERendererSetNormalMapMipBiasGrazing(MCE_CTX, float value);
+
+uint32_t MCERendererGetHeightFogEnabled(MCE_CTX);
+void MCERendererSetHeightFogEnabled(MCE_CTX, uint32_t value);
+float MCERendererGetFogAmount(MCE_CTX);
+void MCERendererSetFogAmount(MCE_CTX, float value);
+float MCERendererGetFogHeight(MCE_CTX);
+void MCERendererSetFogHeight(MCE_CTX, float value);
+float MCERendererGetFogDistance(MCE_CTX);
+void MCERendererSetFogDistance(MCE_CTX, float value);
+uint32_t MCERendererGetFogColorMode(MCE_CTX);
+void MCERendererSetFogColorMode(MCE_CTX, uint32_t value);
+void MCERendererGetFogManualColor(MCE_CTX, float *r, float *g, float *b);
+void MCERendererSetFogManualColor(MCE_CTX, float r, float g, float b);
+float MCERendererGetHeightFogBaseHeight(MCE_CTX);
+void MCERendererSetHeightFogBaseHeight(MCE_CTX, float value);
+float MCERendererGetHeightFogDensity(MCE_CTX);
+void MCERendererSetHeightFogDensity(MCE_CTX, float value);
+float MCERendererGetHeightFogHeightFalloff(MCE_CTX);
+void MCERendererSetHeightFogHeightFalloff(MCE_CTX, float value);
+float MCERendererGetHeightFogStartDistance(MCE_CTX);
+void MCERendererSetHeightFogStartDistance(MCE_CTX, float value);
+float MCERendererGetHeightFogDistanceDensity(MCE_CTX);
+void MCERendererSetHeightFogDistanceDensity(MCE_CTX, float value);
+void MCERendererGetHeightFogColor(MCE_CTX, float *r, float *g, float *b);
+void MCERendererSetHeightFogColor(MCE_CTX, float r, float g, float b);
 
 uint32_t MCERendererGetOutlineEnabled(MCE_CTX);
 void MCERendererSetOutlineEnabled(MCE_CTX, uint32_t value);

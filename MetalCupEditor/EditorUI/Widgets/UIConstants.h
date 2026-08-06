@@ -104,9 +104,6 @@ namespace EditorUIConstants {
     constexpr float kRoughnessMin = 0.02f;
     constexpr float kRoughnessMax = 1.0f;
 
-    constexpr float kExposureMin = 0.01f;
-    constexpr float kExposureMax = 10.0f;
-    constexpr float kExposureStep = 0.05f;
     constexpr float kGammaMin = 1.0f;
     constexpr float kGammaMax = 3.0f;
     constexpr float kGammaStep = 0.01f;
@@ -114,16 +111,16 @@ namespace EditorUIConstants {
     constexpr float kBloomThresholdMin = 0.0f;
     constexpr float kBloomThresholdMax = 10.0f;
     constexpr float kBloomThresholdStep = 0.05f;
-    constexpr float kDefaultBloomThreshold = 1.2f;
+    constexpr float kDefaultBloomThreshold = 1.65f;
     constexpr float kBloomKneeMin = 0.0f;
     constexpr float kBloomKneeMax = 1.0f;
     constexpr float kBloomKneeStep = 0.02f;
-    constexpr float kDefaultBloomKnee = 0.2f;
+    constexpr float kDefaultBloomKnee = 0.16f;
     constexpr float kBloomIntensityMin = 0.0f;
     constexpr float kBloomIntensityMax = 5.0f;
     constexpr float kBloomIntensityStep = 0.05f;
-    constexpr float kDefaultBloomIntensity = 0.15f;
-    constexpr int kDefaultBloomResolutionScale = 4;
+    constexpr float kDefaultBloomIntensity = 0.12f;
+    constexpr int kDefaultBloomResolutionScale = 2;
     constexpr int kDefaultBloomQualityPreset = 2;
     constexpr float kBloomUpsampleMin = 0.5f;
     constexpr float kBloomUpsampleMax = 2.0f;
@@ -162,17 +159,16 @@ namespace EditorUIConstants {
     constexpr float kSkyboxMipBiasStep = 0.1f;
     constexpr float kDefaultSkyboxMipBias = 0.0f;
 
-    constexpr float kDefaultExposure = 1.0f;
     constexpr float kDefaultGamma = 2.2f;
 
     constexpr float kShadowSplitLambdaMin = 0.0f;
     constexpr float kShadowSplitLambdaMax = 1.0f;
     constexpr float kShadowSplitLambdaStep = 0.05f;
     constexpr float kShadowDepthBiasMin = 0.0f;
-    constexpr float kShadowDepthBiasMax = 0.01f;
+    constexpr float kShadowDepthBiasMax = 0.003f;
     constexpr float kShadowDepthBiasStep = 0.0001f;
     constexpr float kShadowNormalBiasMin = 0.0f;
-    constexpr float kShadowNormalBiasMax = 1.0f;
+    constexpr float kShadowNormalBiasMax = 0.08f;
     constexpr float kShadowNormalBiasStep = 0.01f;
     constexpr float kShadowPCFRadiusMin = 0.5f;
     constexpr float kShadowPCFRadiusMax = 4.0f;

@@ -17,8 +17,10 @@ namespace ed = ax::NodeEditor;
 struct RenderRequest {
     ed::NodeId editorNodeId;
     std::string nodeId;
+    std::string widgetScopeId;
     const AnimationGraphSchema::AnimGraphNodeSchema *schema = nullptr;
     std::string title;
+    bool isSelected = false;
     std::vector<std::string> summaryLines;
     std::function<ed::PinId(int32_t slot, bool isInput)> makePinId;
     std::function<void(const ed::PinId &pinId,
@@ -26,7 +28,11 @@ struct RenderRequest {
                        bool isInput,
                        const AnimationGraphSchema::AnimGraphPinSchema *pinSchema)> registerPin;
     std::function<void()> renderHeaderExtras;
-    std::function<void()> renderInlineBody;
+    AnimationGraphInlineWidgets::SchemaInlineFieldState inlineFieldState;
+    AnimationGraphInlineWidgets::SchemaInlineFieldContext inlineFieldContext;
+    std::function<bool(AnimationGraphSchema::FieldBinding)> isInlineFieldVisible;
+    std::function<bool(AnimationGraphSchema::FieldBinding)> isInlineFieldDisabled;
+    std::function<void(const AnimationGraphInlineWidgets::SchemaInlineFieldState &state)> commitInlineFieldState;
 };
 
 inline void RenderPin(const AnimationGraphSchema::AnimGraphPinSchema &pinSchema, bool isInput) {
@@ -52,14 +58,36 @@ inline void RenderNodeHeader(const RenderRequest &request) {
     ImGui::TextUnformatted(request.title.c_str());
     ImGui::PopStyleColor();
     if (request.renderHeaderExtras) {
+        ImGui::SameLine(0.0f, 8.0f);
         request.renderHeaderExtras();
     }
 }
 
 inline void RenderNodeBody(const RenderRequest &request) {
-    if (request.renderInlineBody) {
-        request.renderInlineBody();
-    } else {
+    bool changed = false;
+    bool renderedInlineFields = false;
+    if (request.schema != nullptr && !request.schema->inlineFields.empty() && request.commitInlineFieldState) {
+        renderedInlineFields = true;
+        auto fieldState = request.inlineFieldState;
+        auto fieldContext = request.inlineFieldContext;
+        fieldContext.showSelectedOnly = request.isSelected;
+        changed = AnimationGraphInlineWidgets::DrawSchemaInlineFields(
+            *request.schema,
+            fieldState,
+            fieldContext,
+            [&](AnimationGraphSchema::FieldBinding binding) {
+                return request.isInlineFieldVisible ? request.isInlineFieldVisible(binding) : true;
+            },
+            [&](AnimationGraphSchema::FieldBinding binding) {
+                return request.isInlineFieldDisabled ? request.isInlineFieldDisabled(binding) : false;
+            });
+        if (changed) {
+            request.commitInlineFieldState(fieldState);
+        }
+    }
+    if (!request.summaryLines.empty()) {
+        AnimationGraphInlineWidgets::DrawSummaryLines(request.summaryLines);
+    } else if (!renderedInlineFields) {
         AnimationGraphInlineWidgets::DrawSummaryLines(request.summaryLines);
     }
 }
@@ -132,7 +160,15 @@ inline void RenderNode(const RenderRequest &request) {
 
     ImGui::SameLine(0.0f, 20.0f);
     ImGui::BeginGroup();
+    if (!request.widgetScopeId.empty()) {
+        ImGui::PushID(request.widgetScopeId.c_str());
+    } else if (!request.nodeId.empty()) {
+        ImGui::PushID(request.nodeId.c_str());
+    }
     RenderNodeBody(request);
+    if (!request.widgetScopeId.empty() || !request.nodeId.empty()) {
+        ImGui::PopID();
+    }
     ImGui::EndGroup();
 
     ImGui::SameLine(0.0f, 20.0f);

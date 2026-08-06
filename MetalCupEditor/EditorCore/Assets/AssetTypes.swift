@@ -19,6 +19,7 @@ enum AssetTypes {
         case .skeleton: return 8
         case .animationClip: return 9
         case .audio: return 10
+        case .animationGraph: return 11
         @unknown default: return 7
         }
     }
@@ -29,7 +30,7 @@ enum AssetTypes {
             return .texture
         case "hdr", "exr":
             return .environment
-        case "obj", "usdz", "fbx", "gltf", "glb":
+        case "obj", "usdz", "fbx", "gltf", "glb", "mcmesh":
             return .model
         case "mcmat":
             return .material
@@ -43,6 +44,8 @@ enum AssetTypes {
             return .skeleton
         case "anim", "animclip", "mcanim":
             return .animationClip
+        case "mcanimgraph":
+            return .animationGraph
         case "wav", "ogg", "mp3", "aiff", "caf", "m4a":
             return .audio
         default:
@@ -55,16 +58,18 @@ enum MaterialAlphaModeCodes {
     static func code(for mode: MaterialAlphaMode) -> Int32 {
         switch mode {
         case .opaque: return 0
-        case .masked: return 1
-        case .blended: return 2
+        case .alphaClip: return 1
+        case .transparent: return 2
+        case .additive: return 3
         @unknown default: return 0
         }
     }
 
     static func mode(from code: Int32) -> MaterialAlphaMode {
         switch code {
-        case 1: return .masked
-        case 2: return .blended
+        case 1: return .alphaClip
+        case 2: return .transparent
+        case 3: return .additive
         default: return .opaque
         }
     }

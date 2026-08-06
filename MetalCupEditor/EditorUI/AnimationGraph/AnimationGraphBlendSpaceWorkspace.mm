@@ -1,5 +1,6 @@
 #include "AnimationGraphBlendSpaceWorkspace.h"
 
+#include "AnimationGraphInlineWidgets.h"
 #include "AnimationGraphBlendSpaceStateStore.h"
 
 #include "../Widgets/UIWidgets.h"
@@ -25,7 +26,24 @@ extern "C" uint32_t MCEEditorUpdateAnimationGraphBlend2DSample(void *context, co
 extern "C" uint32_t MCEEditorRemoveAnimationGraphBlend2DSample(void *context, const char *handle, const char *nodeId, int32_t index);
 
 namespace {
+void DrawBlendWorkspaceBanner(const char *title, const char *subtitle) {
+    ImDrawList *draw = ImGui::GetWindowDrawList();
+    const ImVec2 start = ImGui::GetCursorScreenPos();
+    const float width = ImGui::GetContentRegionAvail().x;
+    const ImVec2 size(width, 48.0f);
+    draw->AddRectFilled(start, ImVec2(start.x + size.x, start.y + size.y), IM_COL32(24, 27, 32, 255), 8.0f);
+    draw->AddRect(start, ImVec2(start.x + size.x, start.y + size.y), IM_COL32(56, 63, 74, 255), 8.0f, 0, 1.0f);
+    draw->AddText(ImVec2(start.x + 14.0f, start.y + 8.0f), IM_COL32(226, 232, 240, 245), title);
+    draw->AddText(ImVec2(start.x + 14.0f, start.y + 26.0f), IM_COL32(148, 158, 174, 230), subtitle);
+    ImGui::Dummy(size);
+}
+
 constexpr int32_t kAssetTypeAnimationClip = 9;
+
+struct AnimationClipOption {
+    std::string handle;
+    std::string label;
+};
 
 std::string ShortHandleLabel(const std::string &handle) {
     if (handle.size() <= 12) { return handle; }
@@ -39,6 +57,38 @@ std::string DisplayNameForAssetHandle(void *context, const std::string &handle) 
         return nameBuffer;
     }
     return ShortHandleLabel(handle);
+}
+
+std::vector<AnimationClipOption> CollectAnimationClipOptions(void *context) {
+    std::vector<AnimationClipOption> options;
+    const int32_t assetCount = MCEEditorGetAssetCount(context);
+    if (assetCount <= 0) { return options; }
+    options.reserve(static_cast<size_t>(assetCount));
+    for (int32_t i = 0; i < assetCount; ++i) {
+        char handle[64] = {0};
+        char path[512] = {0};
+        char name[128] = {0};
+        int32_t type = -1;
+        if (MCEEditorGetAssetAt(context,
+                                i,
+                                handle,
+                                sizeof(handle),
+                                &type,
+                                path,
+                                sizeof(path),
+                                name,
+                                sizeof(name)) == 0) {
+            continue;
+        }
+        if (type != kAssetTypeAnimationClip || handle[0] == 0) {
+            continue;
+        }
+        options.push_back({handle, name[0] != 0 ? name : handle});
+    }
+    std::sort(options.begin(), options.end(), [](const AnimationClipOption &a, const AnimationClipOption &b) {
+        return a.label < b.label;
+    });
+    return options;
 }
 
 const AnimationGraphNodeRecord *FindNodeById(const AnimationGraphSnapshot &snapshot, const std::string &nodeId) {
@@ -62,60 +112,48 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
 
     AnimationGraphBlendSpaceWorkspaceState &workspaceState =
         AnimationGraphBlendSpaceStateStore::StateForWorkspace(panelState.activeGraphHandle, workspace);
-    if (!workspaceState.initializedFromNode) {
-        if (!node->blend1DParameterName.empty()) { workspaceState.xLabel = node->blend1DParameterName; }
-        if (!node->blend2DParameterXName.empty()) { workspaceState.xLabel = node->blend2DParameterXName; }
-        if (!node->blend2DParameterYName.empty()) { workspaceState.yLabel = node->blend2DParameterYName; }
-        workspaceState.initializedFromNode = true;
-    }
-
-    workspaceState.xMin = std::min(workspaceState.xMin, workspaceState.xMax - 0.001f);
-    workspaceState.xMax = std::max(workspaceState.xMax, workspaceState.xMin + 0.001f);
-    workspaceState.yMin = std::min(workspaceState.yMin, workspaceState.yMax - 0.001f);
-    workspaceState.yMax = std::max(workspaceState.yMax, workspaceState.yMin + 0.001f);
-
     const int32_t sampleCount = node->type == 2 ? static_cast<int32_t>(node->blend1DSamples.size()) : static_cast<int32_t>(node->blend2DSamples.size());
     if (workspaceState.selectedSampleIndex >= sampleCount) {
         workspaceState.selectedSampleIndex = -1;
     }
+    const std::vector<AnimationClipOption> clipOptions = CollectAnimationClipOptions(context);
+    std::vector<AnimationGraphInlineWidgets::ClipOption> sharedClipOptions;
+    sharedClipOptions.reserve(clipOptions.size());
+    for (const auto &option : clipOptions) {
+        sharedClipOptions.push_back({option.handle, option.label});
+    }
 
     const char *title = node->title.empty() ? "Blend Space" : node->title.c_str();
-    ImGui::SeparatorText(title);
-    ImGui::TextDisabled("%s Workspace", node->type == 2 ? "Blend 1D" : "Blend 2D");
-    if (EditorUI::BeginPropertyTable("BlendSpaceAxisProps")) {
-        EditorUI::PropertyLabel("X Label");
-        char xLabelBuffer[64] = {0};
-        strncpy(xLabelBuffer, workspaceState.xLabel.c_str(), sizeof(xLabelBuffer) - 1);
-        ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::InputText("##BlendXAxisLabel", xLabelBuffer, sizeof(xLabelBuffer))) {
-            workspaceState.xLabel = xLabelBuffer;
+    DrawBlendWorkspaceBanner(title,
+                             node->type == 2
+                                ? "Place and edit samples directly on the graph."
+                                : "Place, drag, and tune samples directly on the graph.");
+    auto firstAnimationClipHandle = [&]() -> std::string {
+        for (const auto &option : clipOptions) {
+            if (!option.handle.empty()) {
+                return option.handle;
+            }
         }
+        return {};
+    };
+    auto addSampleAt = [&](const ImVec2 &graphPos, const std::string &clipHandle) {
+        if (clipHandle.empty()) { return; }
+        if (node->type == 2) {
+            MCEEditorAddAnimationGraphBlend1DSample(context,
+                                                    panelState.activeGraphHandle.c_str(),
+                                                    node->id.c_str(),
+                                                    clipHandle.c_str(),
+                                                    graphPos.x);
+        } else {
+            MCEEditorAddAnimationGraphBlend2DSample(context,
+                                                    panelState.activeGraphHandle.c_str(),
+                                                    node->id.c_str(),
+                                                    clipHandle.c_str(),
+                                                    graphPos.x,
+                                                    graphPos.y);
+        }
+    };
 
-        EditorUI::PropertyLabel("X Range");
-        float xRange[2] = {workspaceState.xMin, workspaceState.xMax};
-        ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::DragFloat2("##BlendXAxisRange", xRange, 0.01f, -10000.0f, 10000.0f, "%.3f")) {
-            workspaceState.xMin = std::min(xRange[0], xRange[1] - 0.001f);
-            workspaceState.xMax = std::max(xRange[1], workspaceState.xMin + 0.001f);
-        }
-
-        EditorUI::PropertyLabel("Y Label");
-        char yLabelBuffer[64] = {0};
-        strncpy(yLabelBuffer, workspaceState.yLabel.c_str(), sizeof(yLabelBuffer) - 1);
-        ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::InputText("##BlendYAxisLabel", yLabelBuffer, sizeof(yLabelBuffer))) {
-            workspaceState.yLabel = yLabelBuffer;
-        }
-
-        EditorUI::PropertyLabel("Y Range");
-        float yRange[2] = {workspaceState.yMin, workspaceState.yMax};
-        ImGui::SetNextItemWidth(-1.0f);
-        if (ImGui::DragFloat2("##BlendYAxisRange", yRange, 0.01f, -10000.0f, 10000.0f, "%.3f")) {
-            workspaceState.yMin = std::min(yRange[0], yRange[1] - 0.001f);
-            workspaceState.yMax = std::max(yRange[1], workspaceState.yMin + 0.001f);
-        }
-        EditorUI::EndPropertyTable();
-    }
     ImGui::BeginChild("BlendSpaceCanvas", ImVec2(0.0f, ImGui::GetContentRegionAvail().y * 0.72f), true);
     ImDrawList *draw = ImGui::GetWindowDrawList();
     const ImVec2 origin = ImGui::GetCursorScreenPos();
@@ -123,20 +161,83 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
     const float graphPadding = 22.0f;
     const ImVec2 minGraph(origin.x + graphPadding, origin.y + graphPadding);
     const ImVec2 maxGraph(origin.x + avail.x - graphPadding, origin.y + avail.y - graphPadding);
+    std::string xLabel = node->type == 2
+        ? (node->blend1DParameterName.empty() ? "Parameter" : node->blend1DParameterName)
+        : (node->blend2DParameterXName.empty() ? "X" : node->blend2DParameterXName);
+    std::string yLabel = node->blend2DParameterYName.empty() ? "Y" : node->blend2DParameterYName;
+    float xMin = -1.0f;
+    float xMax = 1.0f;
+    float yMin = -1.0f;
+    float yMax = 1.0f;
+    auto expandAxis = [](float value, float &minValue, float &maxValue) {
+        minValue = std::min(minValue, value);
+        maxValue = std::max(maxValue, value);
+    };
+    if (node->type == 2) {
+        for (const auto &sample : node->blend1DSamples) {
+            expandAxis(sample.threshold, xMin, xMax);
+        }
+    } else {
+        for (const auto &sample : node->blend2DSamples) {
+            expandAxis(sample.position.x, xMin, xMax);
+            expandAxis(sample.position.y, yMin, yMax);
+        }
+    }
+    if (runtimeDebug && runtimeDebug->available) {
+        if (node->type == 2) {
+            if (!node->blend1DParameterName.empty()) {
+                auto it = std::find_if(runtimeDebug->parameters.begin(),
+                                       runtimeDebug->parameters.end(),
+                                       [&](const AnimationGraphRuntimeParameterValueRecord &record) {
+                    return record.name == node->blend1DParameterName && record.type == 0;
+                });
+                if (it != runtimeDebug->parameters.end()) {
+                    expandAxis(it->floatValue, xMin, xMax);
+                }
+            }
+        } else {
+            if (!node->blend2DParameterXName.empty()) {
+                auto it = std::find_if(runtimeDebug->parameters.begin(),
+                                       runtimeDebug->parameters.end(),
+                                       [&](const AnimationGraphRuntimeParameterValueRecord &record) {
+                    return record.name == node->blend2DParameterXName && record.type == 0;
+                });
+                if (it != runtimeDebug->parameters.end()) {
+                    expandAxis(it->floatValue, xMin, xMax);
+                }
+            }
+            if (!node->blend2DParameterYName.empty()) {
+                auto it = std::find_if(runtimeDebug->parameters.begin(),
+                                       runtimeDebug->parameters.end(),
+                                       [&](const AnimationGraphRuntimeParameterValueRecord &record) {
+                    return record.name == node->blend2DParameterYName && record.type == 0;
+                });
+                if (it != runtimeDebug->parameters.end()) {
+                    expandAxis(it->floatValue, yMin, yMax);
+                }
+            }
+        }
+    }
+    const float xPadding = std::max(0.35f, (xMax - xMin) * 0.2f);
+    const float yPadding = std::max(0.35f, (yMax - yMin) * 0.2f);
+    xMin -= xPadding;
+    xMax += xPadding;
+    yMin -= yPadding;
+    yMax += yPadding;
     auto graphToScreen = [&](float x, float y) -> ImVec2 {
-        const float nx = (x - workspaceState.xMin) / std::max(workspaceState.xMax - workspaceState.xMin, 0.001f);
-        const float ny = (y - workspaceState.yMin) / std::max(workspaceState.yMax - workspaceState.yMin, 0.001f);
+        const float nx = (x - xMin) / std::max(xMax - xMin, 0.001f);
+        const float ny = (y - yMin) / std::max(yMax - yMin, 0.001f);
         return ImVec2(minGraph.x + nx * (maxGraph.x - minGraph.x),
                       maxGraph.y - ny * (maxGraph.y - minGraph.y));
     };
     auto screenToGraph = [&](const ImVec2 &p) -> ImVec2 {
         const float nx = (p.x - minGraph.x) / std::max(maxGraph.x - minGraph.x, 0.001f);
         const float ny = (maxGraph.y - p.y) / std::max(maxGraph.y - minGraph.y, 0.001f);
-        return ImVec2(workspaceState.xMin + nx * (workspaceState.xMax - workspaceState.xMin),
-                      workspaceState.yMin + ny * (workspaceState.yMax - workspaceState.yMin));
+        return ImVec2(xMin + nx * (xMax - xMin),
+                      yMin + ny * (yMax - yMin));
     };
-    draw->AddRectFilled(origin, ImVec2(origin.x + avail.x, origin.y + avail.y), IM_COL32(20, 22, 26, 255), 4.0f);
-    draw->AddRect(origin, ImVec2(origin.x + avail.x, origin.y + avail.y), IM_COL32(64, 70, 78, 255), 4.0f);
+    draw->AddRectFilled(origin, ImVec2(origin.x + avail.x, origin.y + avail.y), IM_COL32(22, 25, 30, 255), 8.0f);
+    draw->AddRect(origin, ImVec2(origin.x + avail.x, origin.y + avail.y), IM_COL32(60, 68, 80, 255), 8.0f);
     for (int i = 0; i <= 10; ++i) {
         const float t = static_cast<float>(i) / 10.0f;
         const float x = minGraph.x + t * (maxGraph.x - minGraph.x);
@@ -146,8 +247,12 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
         draw->AddLine(ImVec2(minGraph.x, y), ImVec2(maxGraph.x, y), gridColor, (i == 5) ? 1.6f : 1.0f);
     }
     draw->AddRect(minGraph, maxGraph, IM_COL32(100, 110, 126, 210), 2.0f, 0, 1.0f);
-    draw->AddText(ImVec2(minGraph.x + 6.0f, minGraph.y + 6.0f), IM_COL32(188, 198, 216, 255), workspaceState.yLabel.c_str());
-    draw->AddText(ImVec2(maxGraph.x - 64.0f, maxGraph.y - 18.0f), IM_COL32(188, 198, 216, 255), workspaceState.xLabel.c_str());
+    draw->AddText(ImVec2(minGraph.x + 6.0f, minGraph.y + 6.0f), IM_COL32(188, 198, 216, 255), yLabel.c_str());
+    draw->AddText(ImVec2(maxGraph.x - 64.0f, maxGraph.y - 18.0f), IM_COL32(188, 198, 216, 255), xLabel.c_str());
+    const char *canvasHint = workspaceState.selectedSampleIndex >= 0
+        ? "Drag the point or edit the selected sample card."
+        : "Drop a clip or right-click to add a sample.";
+    draw->AddText(ImVec2(minGraph.x + 6.0f, maxGraph.y - 18.0f), IM_COL32(152, 164, 182, 220), canvasHint);
     if (ImGui::IsWindowHovered() && ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
         workspaceState.selectedSampleIndex = -1;
     }
@@ -155,37 +260,15 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
     int32_t deleteIndex = -1;
     ImVec2 addPosition(0.0f, 0.0f);
     bool addRequested = false;
-    auto firstAnimationClipHandle = [&]() -> std::string {
-        const int32_t assetCount = MCEEditorGetAssetCount(context);
-        for (int32_t assetIndex = 0; assetIndex < assetCount; ++assetIndex) {
-            char handle[64] = {0};
-            char path[512] = {0};
-            char name[128] = {0};
-            int32_t type = -1;
-            if (MCEEditorGetAssetAt(context,
-                                    assetIndex,
-                                    handle,
-                                    sizeof(handle),
-                                    &type,
-                                    path,
-                                    sizeof(path),
-                                    name,
-                                    sizeof(name)) == 0) {
-                continue;
-            }
-            if (type == kAssetTypeAnimationClip && handle[0] != 0) {
-                return std::string(handle);
-            }
-        }
-        return {};
-    };
-
     if (node->type == 2) {
         for (int32_t i = 0; i < static_cast<int32_t>(node->blend1DSamples.size()); ++i) {
             const auto &sample = node->blend1DSamples[static_cast<size_t>(i)];
             const ImVec2 p = graphToScreen(sample.threshold, 0.0f);
             const bool selected = workspaceState.selectedSampleIndex == i;
-            draw->AddCircleFilled(p, selected ? 7.0f : 5.0f, selected ? IM_COL32(255, 210, 118, 255) : IM_COL32(95, 184, 241, 255));
+            draw->AddCircleFilled(p, selected ? 7.5f : 5.5f, selected ? IM_COL32(255, 210, 118, 255) : IM_COL32(95, 184, 241, 255));
+            if (selected) {
+                draw->AddCircle(p, 12.0f, IM_COL32(255, 210, 118, 105), 24, 2.0f);
+            }
             const std::string sampleName = DisplayNameForAssetHandle(context, sample.clipHandle);
             draw->AddText(ImVec2(p.x + 6.0f, p.y - 6.0f), IM_COL32(220, 228, 240, 235), sampleName.c_str());
 
@@ -194,6 +277,21 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
             ImGui::InvisibleButton("Blend1DSamplePoint", ImVec2(20.0f, 20.0f));
             if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
                 workspaceState.selectedSampleIndex = i;
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_ASSET_ANIMATION_CLIP")) {
+                    const char *clipHandle = static_cast<const char *>(payload->Data);
+                    if (clipHandle && clipHandle[0] != 0) {
+                        MCEEditorUpdateAnimationGraphBlend1DSample(context,
+                                                                   panelState.activeGraphHandle.c_str(),
+                                                                   node->id.c_str(),
+                                                                   i,
+                                                                   clipHandle,
+                                                                   sample.threshold);
+                        workspaceState.selectedSampleIndex = i;
+                    }
+                }
+                ImGui::EndDragDropTarget();
             }
             if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                 const ImVec2 graphPos = screenToGraph(ImGui::GetMousePos());
@@ -217,7 +315,10 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
             const auto &sample = node->blend2DSamples[static_cast<size_t>(i)];
             const ImVec2 p = graphToScreen(sample.position.x, sample.position.y);
             const bool selected = workspaceState.selectedSampleIndex == i;
-            draw->AddCircleFilled(p, selected ? 7.0f : 5.0f, selected ? IM_COL32(255, 210, 118, 255) : IM_COL32(95, 184, 241, 255));
+            draw->AddCircleFilled(p, selected ? 7.5f : 5.5f, selected ? IM_COL32(255, 210, 118, 255) : IM_COL32(95, 184, 241, 255));
+            if (selected) {
+                draw->AddCircle(p, 12.0f, IM_COL32(255, 210, 118, 105), 24, 2.0f);
+            }
             const std::string sampleName = DisplayNameForAssetHandle(context, sample.clipHandle);
             draw->AddText(ImVec2(p.x + 6.0f, p.y - 6.0f), IM_COL32(220, 228, 240, 235), sampleName.c_str());
 
@@ -226,6 +327,22 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
             ImGui::InvisibleButton("Blend2DSamplePoint", ImVec2(20.0f, 20.0f));
             if (ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
                 workspaceState.selectedSampleIndex = i;
+            }
+            if (ImGui::BeginDragDropTarget()) {
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_ASSET_ANIMATION_CLIP")) {
+                    const char *clipHandle = static_cast<const char *>(payload->Data);
+                    if (clipHandle && clipHandle[0] != 0) {
+                        MCEEditorUpdateAnimationGraphBlend2DSample(context,
+                                                                   panelState.activeGraphHandle.c_str(),
+                                                                   node->id.c_str(),
+                                                                   i,
+                                                                   clipHandle,
+                                                                   sample.position.x,
+                                                                   sample.position.y);
+                        workspaceState.selectedSampleIndex = i;
+                    }
+                }
+                ImGui::EndDragDropTarget();
             }
             if (ImGui::IsItemActive() && ImGui::IsMouseDragging(ImGuiMouseButton_Left)) {
                 const ImVec2 graphPos = screenToGraph(ImGui::GetMousePos());
@@ -324,7 +441,155 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
             const ImVec2 previewPoint = graphToScreen(previewX, previewY);
             draw->AddCircle(previewPoint, 10.0f, IM_COL32(92, 248, 152, 230), 20, 2.0f);
             draw->AddCircleFilled(previewPoint, 4.0f, IM_COL32(92, 248, 152, 255));
-            draw->AddText(ImVec2(previewPoint.x + 9.0f, previewPoint.y - 14.0f), IM_COL32(92, 248, 152, 240), "Preview");
+            draw->AddText(ImVec2(previewPoint.x + 9.0f, previewPoint.y - 14.0f), IM_COL32(92, 248, 152, 220), "Live");
+        }
+    }
+
+    if (workspaceState.selectedSampleIndex >= 0 && workspaceState.selectedSampleIndex < sampleCount) {
+        const bool isBlend1D = node->type == 2;
+        const int32_t selectedSampleIndex = workspaceState.selectedSampleIndex;
+        const std::string clipHandle = isBlend1D
+            ? node->blend1DSamples[static_cast<size_t>(selectedSampleIndex)].clipHandle
+            : node->blend2DSamples[static_cast<size_t>(selectedSampleIndex)].clipHandle;
+        const ImVec2 samplePos = isBlend1D
+            ? graphToScreen(node->blend1DSamples[static_cast<size_t>(selectedSampleIndex)].threshold, 0.0f)
+            : graphToScreen(node->blend2DSamples[static_cast<size_t>(selectedSampleIndex)].position.x,
+                            node->blend2DSamples[static_cast<size_t>(selectedSampleIndex)].position.y);
+        const float overlayWidth = std::min(320.0f, std::max(232.0f, avail.x * 0.42f));
+        const float overlayHeight = isBlend1D ? 184.0f : 206.0f;
+        ImVec2 overlayMin(samplePos.x + 18.0f, samplePos.y - overlayHeight - 18.0f);
+        overlayMin.x = std::clamp(overlayMin.x, origin.x + 10.0f, origin.x + avail.x - overlayWidth - 10.0f);
+        overlayMin.y = std::clamp(overlayMin.y, origin.y + 10.0f, origin.y + avail.y - overlayHeight - 10.0f);
+        const ImVec2 overlayMax(overlayMin.x + overlayWidth, overlayMin.y + overlayHeight);
+        draw->AddLine(samplePos,
+                      ImVec2(overlayMin.x, overlayMin.y + 18.0f),
+                      IM_COL32(100, 110, 126, 210),
+                      1.2f);
+        draw->AddRectFilled(overlayMin, overlayMax, IM_COL32(28, 32, 38, 242), 8.0f);
+        draw->AddRect(overlayMin, overlayMax, IM_COL32(100, 110, 126, 220), 8.0f, 0, 1.1f);
+        const std::string sampleTitle = std::string("Sample ").append(std::to_string(selectedSampleIndex + 1));
+        draw->AddText(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 8.0f), IM_COL32(224, 232, 242, 245), sampleTitle.c_str());
+        draw->AddText(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 28.0f), IM_COL32(152, 164, 182, 235), "Edit the selected point here.");
+        draw->AddText(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 44.0f), IM_COL32(188, 198, 216, 240), "Clip");
+
+        auto updateSelectedSampleClip = [&](const std::string &updatedClipHandle) {
+            if (isBlend1D) {
+                const auto &sample = node->blend1DSamples[static_cast<size_t>(selectedSampleIndex)];
+                MCEEditorUpdateAnimationGraphBlend1DSample(context,
+                                                           panelState.activeGraphHandle.c_str(),
+                                                           node->id.c_str(),
+                                                           selectedSampleIndex,
+                                                           updatedClipHandle.c_str(),
+                                                           sample.threshold);
+            } else {
+                const auto &sample = node->blend2DSamples[static_cast<size_t>(selectedSampleIndex)];
+                MCEEditorUpdateAnimationGraphBlend2DSample(context,
+                                                           panelState.activeGraphHandle.c_str(),
+                                                           node->id.c_str(),
+                                                           selectedSampleIndex,
+                                                           updatedClipHandle.c_str(),
+                                                           sample.position.x,
+                                                           sample.position.y);
+            }
+        };
+
+        ImGui::SetCursorScreenPos(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 60.0f));
+        std::string updatedClipHandle = clipHandle;
+        const std::string popupId = std::string("BlendSampleClipPopup##").append(node->id).append("|").append(std::to_string(selectedSampleIndex));
+        const std::string fieldId = std::string("BlendSampleClipField##").append(node->id).append("|").append(std::to_string(selectedSampleIndex));
+        if (AnimationGraphInlineWidgets::DrawClipField(fieldId.c_str(),
+                                                       popupId.c_str(),
+                                                       updatedClipHandle,
+                                                       DisplayNameForAssetHandle(context, clipHandle),
+                                                       sharedClipOptions)) {
+            updateSelectedSampleClip(updatedClipHandle);
+        }
+
+        ImGui::SetCursorScreenPos(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 92.0f));
+        ImGui::InvisibleButton("##BlendSampleCardDropTarget", ImVec2(overlayWidth - 20.0f, 18.0f));
+        if (ImGui::BeginDragDropTarget()) {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("MCE_ASSET_ANIMATION_CLIP")) {
+                const char *droppedClipHandle = static_cast<const char *>(payload->Data);
+                if (droppedClipHandle && droppedClipHandle[0] != 0) {
+                    updateSelectedSampleClip(droppedClipHandle);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+        draw->AddText(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 92.0f), IM_COL32(152, 164, 182, 220), "Drop a clip on this card to replace it.");
+
+        ImGui::SetCursorScreenPos(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 118.0f));
+        draw->AddText(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 104.0f), IM_COL32(188, 198, 216, 240), "Position");
+        if (isBlend1D) {
+            const auto &sample = node->blend1DSamples[static_cast<size_t>(selectedSampleIndex)];
+            float threshold = sample.threshold;
+            if (AnimationGraphInlineWidgets::DrawFloatField("##BlendSampleThreshold",
+                                                            xLabel.c_str(),
+                                                            threshold,
+                                                            0.01f,
+                                                            xMin,
+                                                            xMax,
+                                                            "%.3f",
+                                                            true,
+                                                            false,
+                                                            overlayWidth - 72.0f)) {
+                MCEEditorUpdateAnimationGraphBlend1DSample(context,
+                                                           panelState.activeGraphHandle.c_str(),
+                                                           node->id.c_str(),
+                                                           selectedSampleIndex,
+                                                           sample.clipHandle.c_str(),
+                                                           threshold);
+            }
+        } else {
+            const auto &sample = node->blend2DSamples[static_cast<size_t>(selectedSampleIndex)];
+            float sampleX = sample.position.x;
+            float sampleY = sample.position.y;
+            if (AnimationGraphInlineWidgets::DrawFloatField("##BlendSampleX",
+                                                            xLabel.c_str(),
+                                                            sampleX,
+                                                            0.01f,
+                                                            xMin,
+                                                            xMax,
+                                                            "%.3f",
+                                                            true,
+                                                            false,
+                                                            overlayWidth - 72.0f)) {
+                MCEEditorUpdateAnimationGraphBlend2DSample(context,
+                                                           panelState.activeGraphHandle.c_str(),
+                                                           node->id.c_str(),
+                                                           selectedSampleIndex,
+                                                           sample.clipHandle.c_str(),
+                                                           sampleX,
+                                                           sample.position.y);
+            }
+            ImGui::SetCursorScreenPos(ImVec2(overlayMin.x + 10.0f, overlayMin.y + 148.0f));
+            if (AnimationGraphInlineWidgets::DrawFloatField("##BlendSampleY",
+                                                            yLabel.c_str(),
+                                                            sampleY,
+                                                            0.01f,
+                                                            yMin,
+                                                            yMax,
+                                                            "%.3f",
+                                                            true,
+                                                            false,
+                                                            overlayWidth - 72.0f)) {
+                MCEEditorUpdateAnimationGraphBlend2DSample(context,
+                                                           panelState.activeGraphHandle.c_str(),
+                                                           node->id.c_str(),
+                                                           selectedSampleIndex,
+                                                           sample.clipHandle.c_str(),
+                                                           sample.position.x,
+                                                           sampleY);
+            }
+        }
+
+        ImGui::SetCursorScreenPos(ImVec2(overlayMin.x + 10.0f, overlayMax.y - 32.0f));
+        if (ImGui::SmallButton("Done")) {
+            workspaceState.selectedSampleIndex = -1;
+        }
+        ImGui::SetCursorScreenPos(ImVec2(overlayMax.x - 104.0f, overlayMax.y - 32.0f));
+        if (ImGui::SmallButton("Delete Sample")) {
+            deleteIndex = selectedSampleIndex;
         }
     }
     ImGui::EndChild();
@@ -344,40 +609,6 @@ void DrawAnimationGraphBlendSpaceWorkspace(void *context,
         workspaceState.selectedSampleIndex = -1;
     }
     if (addRequested) {
-        const std::string clipHandle = firstAnimationClipHandle();
-        if (!clipHandle.empty()) {
-            if (node->type == 2) {
-                MCEEditorAddAnimationGraphBlend1DSample(context,
-                                                        panelState.activeGraphHandle.c_str(),
-                                                        node->id.c_str(),
-                                                        clipHandle.c_str(),
-                                                        addPosition.x);
-            } else {
-                MCEEditorAddAnimationGraphBlend2DSample(context,
-                                                        panelState.activeGraphHandle.c_str(),
-                                                        node->id.c_str(),
-                                                        clipHandle.c_str(),
-                                                        addPosition.x,
-                                                        addPosition.y);
-            }
-        }
-    }
-
-    if (workspaceState.selectedSampleIndex >= 0 && workspaceState.selectedSampleIndex < sampleCount) {
-        ImGui::SeparatorText("Sample");
-        if (node->type == 2) {
-            const auto &sample = node->blend1DSamples[static_cast<size_t>(workspaceState.selectedSampleIndex)];
-            ImGui::Text("Clip: %s", DisplayNameForAssetHandle(context, sample.clipHandle).c_str());
-            ImGui::Text("X: %.3f", sample.threshold);
-            ImGui::Text("Y: %.3f", 0.0f);
-        } else {
-            const auto &sample = node->blend2DSamples[static_cast<size_t>(workspaceState.selectedSampleIndex)];
-            ImGui::Text("Clip: %s", DisplayNameForAssetHandle(context, sample.clipHandle).c_str());
-            ImGui::Text("X: %.3f", sample.position.x);
-            ImGui::Text("Y: %.3f", sample.position.y);
-        }
-    } else {
-        ImGui::TextDisabled("Right click to add sample. Drag clip assets onto the space to create samples.");
+        addSampleAt(addPosition, firstAnimationClipHandle());
     }
 }
-

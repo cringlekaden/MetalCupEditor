@@ -33,8 +33,10 @@ extern "C" uint32_t MCEEditorCreateMaterial(MCE_CTX,  const char *relativePath, 
 extern "C" uint32_t MCEEditorCreateScene(MCE_CTX,  const char *relativePath, const char *name);
 extern "C" uint32_t MCEEditorCreatePrefab(MCE_CTX,  const char *relativePath, const char *name);
 extern "C" uint32_t MCEEditorCreateScript(MCE_CTX,  const char *relativePath, const char *name);
+extern "C" uint32_t MCEEditorCreateAnimationGraph(MCE_CTX, const char *relativePath, const char *name, char *outHandle, int32_t outHandleSize);
 extern "C" uint32_t MCEEditorOpenSceneAtPath(MCE_CTX,  const char *relativePath);
 extern "C" uint32_t MCEEditorOpenAssetAtPath(MCE_CTX,  const char *relativePath);
+extern "C" void MCEEditorOpenAnimationGraphEditor(MCE_CTX, const char *handle);
 extern "C" void MCEEditorSetSelectedMaterial(MCE_CTX,  const char *handle);
 extern "C" void MCEEditorOpenMaterialEditor(MCE_CTX,  const char *handle);
 extern "C" void MCEEditorRefreshAssets(MCE_CTX);
@@ -64,6 +66,7 @@ namespace {
     using MCEPanelState::AssetUnknown;
     using MCEPanelState::AssetAnimationClip;
     using MCEPanelState::AssetAudio;
+    using MCEPanelState::AssetAnimationGraph;
     using MCEPanelState::BrowserEntry;
     using MCEPanelState::ContentBrowserState;
     using MCEPanelState::ContextTarget;
@@ -89,6 +92,7 @@ namespace {
         case AssetSkeleton: return "Skeleton";
         case AssetAnimationClip: return "Animation Clip";
         case AssetAudio: return "Audio";
+        case AssetAnimationGraph: return "Animation Graph";
         default: return "Unknown";
         }
     }
@@ -105,6 +109,7 @@ namespace {
         case AssetSkeleton: return "MCE_ASSET_SKELETON";
         case AssetAnimationClip: return "MCE_ASSET_ANIMATION_CLIP";
         case AssetAudio: return "MCE_ASSET_AUDIO";
+        case AssetAnimationGraph: return "MCE_ASSET_ANIMATION_GRAPH";
         default: return "MCE_ASSET_GENERIC";
         }
     }
@@ -745,6 +750,8 @@ void ImGuiContentBrowserPanelDraw(void *context, bool *isOpen) {
                                 MCEEditorOpenSceneAtPath(context, entry.relativePath.c_str());
                             } else if (entry.type == AssetMaterial) {
                                 MCEEditorOpenMaterialEditor(context, entry.handle.c_str());
+                            } else if (entry.type == AssetAnimationGraph && !entry.handle.empty()) {
+                                MCEEditorOpenAnimationGraphEditor(context, entry.handle.c_str());
                             } else if (entry.type == AssetScript) {
                                 MCEEditorOpenAssetAtPath(context, entry.relativePath.c_str());
                             }
@@ -840,6 +847,23 @@ void ImGuiContentBrowserPanelDraw(void *context, bool *isOpen) {
                         state.selectedPath = targetPath + "/" + uniqueName + ".lua";
                         state.selectedHandle.clear();
                         state.selectedType = AssetScript;
+                        state.selectedIsDirectory = false;
+                    }
+                }
+                if (ImGui::MenuItem("Animation Graph")) {
+                    const std::string targetPath = state.currentPath.empty() ? "AnimationGraphs" : state.currentPath;
+                    const auto &entries = GetDirectoryEntries(context, state, targetPath);
+                    const std::string uniqueName = MakeUniqueName(entries, "NewAnimationGraph", false, "mcanimgraph");
+                    char outHandle[64] = {0};
+                    if (MCEEditorCreateAnimationGraph(context, targetPath.c_str(), uniqueName.c_str(), outHandle, sizeof(outHandle)) == 0) {
+                        LogAssetError(context, "Failed to create animation graph.");
+                    } else {
+                        if (state.currentPath.empty()) {
+                            NavigateTo(context, state, targetPath);
+                        }
+                        state.selectedPath = targetPath + "/" + uniqueName + ".mcanimgraph";
+                        state.selectedHandle = outHandle;
+                        state.selectedType = AssetAnimationGraph;
                         state.selectedIsDirectory = false;
                     }
                 }

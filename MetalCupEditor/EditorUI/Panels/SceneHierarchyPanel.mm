@@ -20,6 +20,7 @@ extern "C" int32_t MCEEditorCreateEntity(MCE_CTX, const char *name, char *outId,
 extern "C" int32_t MCEEditorCreateMeshEntity(MCE_CTX, int32_t meshType, char *outId, int32_t outIdSize);
 extern "C" int32_t MCEEditorCreateLightEntity(MCE_CTX, int32_t lightType, char *outId, int32_t outIdSize);
 extern "C" int32_t MCEEditorCreateSkyEntity(MCE_CTX, char *outId, int32_t outIdSize);
+extern "C" int32_t MCEEditorCreateEnvironmentEntity(MCE_CTX, char *outId, int32_t outIdSize);
 extern "C" int32_t MCEEditorCreateCameraEntity(MCE_CTX, char *outId, int32_t outIdSize);
 extern "C" uint32_t MCEEditorSetActiveSky(MCE_CTX, const char *entityId);
 extern "C" void MCEEditorDestroyEntity(MCE_CTX, const char *entityId);
@@ -659,9 +660,9 @@ void ImGuiSceneHierarchyPanelDraw(void *context, bool *isOpen, char *selectedEnt
             }
             ImGui::EndMenu();
         }
-        if (ImGui::MenuItem("Create Sky")) {
+        if (ImGui::MenuItem("Create Environment")) {
             char createdId[64] = {0};
-            if (MCEEditorCreateSkyEntity(context, createdId, sizeof(createdId)) > 0) {
+            if (MCEEditorCreateEnvironmentEntity(context, createdId, sizeof(createdId)) > 0) {
                 std::vector<std::string> single = {std::string(createdId)};
                 CommitSelection(context, selectedEntityId, selectedEntityIdSize, single, single.front());
             }

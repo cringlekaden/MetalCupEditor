@@ -107,4 +107,16 @@ final class EditorUIState {
     func setEditorDebugOutlineEnabled(_ value: Bool) { settingsStore.setEditorDebugOutlineEnabled(value) }
     func editorDebugPhysicsEnabled() -> Bool { settingsStore.editorDebugPhysicsEnabled }
     func setEditorDebugPhysicsEnabled(_ value: Bool) { settingsStore.setEditorDebugPhysicsEnabled(value) }
+    func viewportDebugStyle(_ category: ViewportDebugVisualizationCategory) -> ViewportDebugStyle {
+        settingsStore.viewportDebugStyle(for: category)
+    }
+    func setViewportDebugStyle(_ style: ViewportDebugStyle, category: ViewportDebugVisualizationCategory) {
+        settingsStore.setViewportDebugStyle(style, for: category)
+    }
+    func viewportProbeBlendShellSettings() -> ViewportProbeBlendShellSettings {
+        settingsStore.viewportProbeBlendShellSettings()
+    }
+    func setViewportProbeBlendShellSettings(_ settings: ViewportProbeBlendShellSettings) {
+        settingsStore.setViewportProbeBlendShellSettings(settings)
+    }
 }

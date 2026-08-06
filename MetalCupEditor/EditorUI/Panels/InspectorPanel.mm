@@ -24,6 +24,7 @@ extern "C" uint32_t MCEEditorEntityHasComponent(MCE_CTX,  const char *entityId, 
 extern "C" uint32_t MCEEditorAddComponent(MCE_CTX,  const char *entityId, int32_t componentType);
 extern "C" uint32_t MCEEditorRemoveComponent(MCE_CTX,  const char *entityId, int32_t componentType);
 extern "C" uint32_t MCEEditorEntityExists(MCE_CTX,  const char *entityId);
+extern "C" uint32_t MCEEditorEntityIsAutoDrivenSkySun(MCE_CTX, const char *entityId);
 extern "C" int32_t MCEEditorSkyEntityCount(MCE_CTX);
 extern "C" int32_t MCEEditorGetActiveSkyId(MCE_CTX,  char *buffer, int32_t bufferSize);
 extern "C" uint32_t MCEEditorSetActiveSky(MCE_CTX,  const char *entityId);
@@ -52,10 +53,103 @@ extern "C" void MCEEditorSetCamera(MCE_CTX,  const char *entityId,
                                    float nearPlane,
                                    float farPlane,
                                    uint32_t isPrimary);
+extern "C" uint32_t MCEEditorGetReflectionProbe(MCE_CTX,  const char *entityId,
+                                                uint32_t *enabled,
+                                                float *boxExtentsX,
+                                                float *boxExtentsY,
+                                                float *boxExtentsZ,
+                                                float *blendDistance,
+                                                int32_t *priority,
+                                                float *intensity,
+                                                int32_t *captureResolution,
+                                                int32_t *rebuildMode,
+                                                uint32_t *includeSky);
+extern "C" void MCEEditorSetReflectionProbe(MCE_CTX,  const char *entityId,
+                                            uint32_t enabled,
+                                            float boxExtentsX,
+                                            float boxExtentsY,
+                                            float boxExtentsZ,
+                                            float blendDistance,
+                                            int32_t priority,
+                                            float intensity,
+                                            int32_t captureResolution,
+                                            int32_t rebuildMode,
+                                            uint32_t includeSky);
+extern "C" uint32_t MCEEditorGetReflectionProbeRuntimeStatus(MCE_CTX,  const char *entityId, int32_t *statusOut);
+extern "C" uint32_t MCEEditorRequestReflectionProbeRebuild(MCE_CTX,  const char *entityId);
+extern "C" uint32_t MCEEditorRequestAllReflectionProbeRebuilds(MCE_CTX);
+extern "C" uint32_t MCEEditorGetCameraExposure(MCE_CTX, const char *entityId,
+                                               uint32_t *autoExposureEnabled,
+                                               float *manualExposure,
+                                               float *exposureCompensation,
+                                               float *autoExposureMin,
+                                               float *autoExposureMax,
+                                               float *adaptationSpeed);
+extern "C" void MCEEditorSetCameraExposure(MCE_CTX, const char *entityId,
+                                           uint32_t autoExposureEnabled,
+                                           float manualExposure,
+                                           float exposureCompensation,
+                                           float autoExposureMin,
+                                           float autoExposureMax,
+                                           float adaptationSpeed);
 
 extern "C" uint32_t MCEEditorGetMeshRenderer(MCE_CTX,  const char *entityId, char *meshHandle, int32_t meshHandleSize,
                                              char *materialHandle, int32_t materialHandleSize);
 extern "C" void MCEEditorSetMeshRenderer(MCE_CTX,  const char *entityId, const char *meshHandle, const char *materialHandle);
+extern "C" uint32_t MCEEditorGetSkinnedMesh(MCE_CTX, const char *entityId,
+                                             char *skeletonHandle, int32_t skeletonHandleSize,
+                                             int32_t *jointCount, uint32_t *isValid);
+extern "C" void MCEEditorSetSkinnedMesh(MCE_CTX, const char *entityId, const char *skeletonHandle);
+extern "C" uint32_t MCEEditorGetAnimator(MCE_CTX, const char *entityId,
+                                         char *clipHandle, int32_t clipHandleSize,
+                                         float *playbackTime, float *playbackSpeed,
+                                         uint32_t *isPlaying, uint32_t *isLooping);
+extern "C" void MCEEditorSetAnimator(MCE_CTX, const char *entityId, const char *clipHandle,
+                                     float playbackTime, float playbackSpeed,
+                                     uint32_t isPlaying, uint32_t isLooping);
+extern "C" uint32_t MCEEditorGetAnimatorMode(MCE_CTX, const char *entityId,
+                                             int32_t *modeOut,
+                                             char *graphHandle, int32_t graphHandleSize);
+extern "C" void MCEEditorSetAnimatorGraph(MCE_CTX, const char *entityId, const char *graphHandle,
+                                          float playbackTime, float playbackSpeed,
+                                          uint32_t isPlaying, uint32_t isLooping);
+extern "C" int32_t MCEEditorGetAnimatorGraphParameterCount(MCE_CTX, const char *entityId);
+extern "C" uint32_t MCEEditorGetAnimatorGraphParameterAt(MCE_CTX, const char *entityId, int32_t index,
+                                                         char *nameBuffer, int32_t nameBufferSize,
+                                                         int32_t *typeOut,
+                                                         float *defaultFloatOut,
+                                                         uint32_t *defaultBoolOut,
+                                                         int32_t *defaultIntOut,
+                                                         float *floatValueOut,
+                                                         uint32_t *boolValueOut,
+                                                         int32_t *intValueOut,
+                                                         uint32_t *triggerValueOut);
+extern "C" uint32_t MCEEditorSetAnimatorGraphParameterFloat(MCE_CTX, const char *entityId, int32_t index, float value);
+extern "C" uint32_t MCEEditorSetAnimatorGraphParameterBool(MCE_CTX, const char *entityId, int32_t index, uint32_t value);
+extern "C" uint32_t MCEEditorSetAnimatorGraphParameterInt(MCE_CTX, const char *entityId, int32_t index, int32_t value);
+extern "C" uint32_t MCEEditorSetAnimatorGraphParameterTrigger(MCE_CTX, const char *entityId, int32_t index);
+extern "C" uint32_t MCEEditorGetAnimatorRootMotionEnabled(MCE_CTX, const char *entityId, uint32_t *enabledOut);
+extern "C" uint32_t MCEEditorSetAnimatorRootMotionEnabled(MCE_CTX, const char *entityId, uint32_t enabled);
+extern "C" uint32_t MCEEditorGetAnimatorGraphRuntimeDebug(MCE_CTX, const char *entityId,
+                                                          char *currentStateBuffer, int32_t currentStateBufferSize,
+                                                          char *nextStateBuffer, int32_t nextStateBufferSize,
+                                                          char *rootMotionBoneBuffer, int32_t rootMotionBoneBufferSize,
+                                                          char *rootMotionTranslationBoneBuffer, int32_t rootMotionTranslationBoneBufferSize,
+                                                          char *rootMotionRotationBoneBuffer, int32_t rootMotionRotationBoneBufferSize,
+                                                          char *rootMotionConsumeBoneBuffer, int32_t rootMotionConsumeBoneBufferSize,
+                                                          float *speedOut,
+                                                          uint32_t *groundedOut,
+                                                          float *moveXOut,
+                                                          float *moveYOut,
+                                                          uint32_t *jumpTriggerOut,
+                                                          uint32_t *rootMotionEnabledOut,
+                                                          uint32_t *usesRootMotionOut,
+                                                          float *rootMotionDeltaMagnitudeOut,
+                                                          int32_t *rootMotionJointIndexOut,
+                                                          int32_t *rootMotionTranslationJointIndexOut,
+                                                          int32_t *rootMotionRotationJointIndexOut,
+                                                          int32_t *rootMotionConsumeJointIndexOut,
+                                                          uint32_t *rootMotionTrackConsumedOut);
 extern "C" void MCEEditorAssignMaterialToEntity(MCE_CTX,  const char *entityId, const char *materialHandle);
 extern "C" uint32_t MCEEditorGetMaterialComponent(MCE_CTX,  const char *entityId, char *materialHandle, int32_t materialHandleSize);
 extern "C" void MCEEditorSetMaterialComponent(MCE_CTX,  const char *entityId, const char *materialHandle);
@@ -68,6 +162,9 @@ extern "C" void MCEEditorSetLight(MCE_CTX,  const char *entityId, int32_t type, 
                                   float dirX, float dirY, float dirZ, uint32_t castsShadows);
 
 extern "C" uint32_t MCEEditorGetSkyLight(MCE_CTX,  const char *entityId, int32_t *mode, uint32_t *enabled,
+                                         float *timeOfDay, int32_t *weatherType, int32_t *secondaryWeatherType, float *weatherBlend, float *weatherAmount,
+                                         float *atmosphereAmount, float *cloudCoverage, int32_t *cloudStyle,
+                                         float *temperature, float *mood,
                                          float *intensity, float *tintX, float *tintY, float *tintZ,
                                          float *turbidity, float *azimuth, float *elevation, float *sunSize,
                                          float *zenithTintX, float *zenithTintY, float *zenithTintZ,
@@ -81,9 +178,13 @@ extern "C" uint32_t MCEEditorGetSkyLight(MCE_CTX,  const char *entityId, int32_t
                                          float *cloudsWindX, float *cloudsWindY,
                                          float *cloudsHeight, float *cloudsThickness,
                                          float *cloudsBrightness, float *cloudsSunInfluence,
+                                         float *fogAmount, float *fogHeight, float *fogDistance,
                                          uint32_t *autoRebuild, uint32_t *needsRebuild,
                                          char *hdriHandle, int32_t hdriHandleSize);
 extern "C" void MCEEditorSetSkyLight(MCE_CTX,  const char *entityId, int32_t mode, uint32_t enabled,
+                                     float timeOfDay, int32_t weatherType, int32_t secondaryWeatherType, float weatherBlend, float weatherAmount,
+                                     float atmosphereAmount, float cloudCoverage, int32_t cloudStyle,
+                                     float temperature, float mood,
                                      float intensity, float tintX, float tintY, float tintZ,
                                      float turbidity, float azimuth, float elevation, float sunSize,
                                      float zenithTintX, float zenithTintY, float zenithTintZ,
@@ -97,9 +198,191 @@ extern "C" void MCEEditorSetSkyLight(MCE_CTX,  const char *entityId, int32_t mod
                                      float cloudsWindX, float cloudsWindY,
                                      float cloudsHeight, float cloudsThickness,
                                      float cloudsBrightness, float cloudsSunInfluence,
+                                     float fogAmount, float fogHeight, float fogDistance,
                                      uint32_t autoRebuild,
                                      const char *hdriHandle);
 extern "C" void MCEEditorRequestSkyRebuild(MCE_CTX,  const char *entityId);
+
+struct MCEEnvironmentLookBridge {
+    int32_t preset;
+    float mood;
+    float warmth;
+    float cinematicAmount;
+};
+
+struct MCEEnvironmentSourceBridge {
+    uint32_t enabled;
+    int32_t mode;
+    uint32_t hasHdriHandle;
+    uint64_t hdriHandleHigh;
+    uint64_t hdriHandleLow;
+};
+
+struct MCEEnvironmentTimeBridge {
+    float defaultTimeOfDay;
+    float previewTimeOfDay;
+    int32_t timeControlMode;
+    float dayLengthSeconds;
+    float timeScale;
+};
+
+struct MCEEnvironmentAtmosphereBridge {
+    float amount;
+    float haze;
+    float density;
+    float temperature;
+    float mood;
+};
+
+struct MCEEnvironmentCelestialBridge {
+    float moonIntensity;
+    float moonSizeDegrees;
+    float starIntensity;
+    float starRichness;
+    float milkyWayIntensity;
+    float milkyWayChroma;
+    float milkyWayRotation;
+    float nightBrightness;
+};
+
+struct MCEEnvironmentWeatherCloudBridge {
+    int32_t weatherPrimary;
+    int32_t weatherSecondary;
+    float weatherBlend;
+    float weatherAmount;
+    float cloudCoverage;
+    int32_t cloudStyle;
+    int32_t cloudRenderMode;
+};
+
+struct MCEEnvironmentFogBridge {
+    float amount;
+    float height;
+    float distance;
+};
+
+struct MCEEnvironmentIBLBridge {
+    uint32_t realtimeUpdate;
+    uint32_t autoRebuildOnChange;
+    uint32_t needsRebuild;
+    uint32_t dirty;
+    uint32_t isRebuilding;
+    int32_t currentRebuildQuality;
+    int32_t lastBuiltQuality;
+    uint32_t hasFailure;
+};
+
+extern "C" uint32_t MCEEditorGetEnvironmentLookBridge(MCE_CTX, const char *entityId,
+                                                       MCEEnvironmentLookBridge *outValue);
+extern "C" void MCEEditorSetEnvironmentLookBridge(MCE_CTX, const char *entityId,
+                                                   const MCEEnvironmentLookBridge *value);
+extern "C" uint32_t MCEEditorGetEnvironmentSourceBridge(MCE_CTX, const char *entityId,
+                                                         MCEEnvironmentSourceBridge *outValue);
+extern "C" void MCEEditorSetEnvironmentSourceBridge(MCE_CTX, const char *entityId,
+                                                     const MCEEnvironmentSourceBridge *value);
+extern "C" uint32_t MCEEditorGetEnvironmentTimeBridge(MCE_CTX, const char *entityId,
+                                                       MCEEnvironmentTimeBridge *outValue);
+extern "C" void MCEEditorSetEnvironmentTimeBridge(MCE_CTX, const char *entityId,
+                                                   const MCEEnvironmentTimeBridge *value);
+extern "C" uint32_t MCEEditorGetEnvironmentAtmosphereBridge(MCE_CTX, const char *entityId,
+                                                             MCEEnvironmentAtmosphereBridge *outValue);
+extern "C" void MCEEditorSetEnvironmentAtmosphereBridge(MCE_CTX, const char *entityId,
+                                                         const MCEEnvironmentAtmosphereBridge *value);
+extern "C" uint32_t MCEEditorGetEnvironmentCelestialBridge(MCE_CTX, const char *entityId,
+                                                            MCEEnvironmentCelestialBridge *outValue);
+extern "C" void MCEEditorSetEnvironmentCelestialBridge(MCE_CTX, const char *entityId,
+                                                        const MCEEnvironmentCelestialBridge *value);
+extern "C" uint32_t MCEEditorGetEnvironmentWeatherCloudBridge(MCE_CTX, const char *entityId,
+                                                               MCEEnvironmentWeatherCloudBridge *outValue);
+extern "C" void MCEEditorSetEnvironmentWeatherCloudBridge(MCE_CTX, const char *entityId,
+                                                           const MCEEnvironmentWeatherCloudBridge *value);
+extern "C" uint32_t MCEEditorGetEnvironmentFogBridge(MCE_CTX, const char *entityId,
+                                                      MCEEnvironmentFogBridge *outValue);
+extern "C" void MCEEditorSetEnvironmentFogBridge(MCE_CTX, const char *entityId,
+                                                  const MCEEnvironmentFogBridge *value);
+extern "C" uint32_t MCEEditorGetEnvironmentIBLStatusBridge(MCE_CTX, const char *entityId,
+                                                            MCEEnvironmentIBLBridge *outValue);
+extern "C" void MCEEditorSetEnvironmentIBLConfigBridge(MCE_CTX, const char *entityId,
+                                                        const MCEEnvironmentIBLBridge *value);
+extern "C" uint32_t MCEEditorGetEnvironmentLook(MCE_CTX, const char *entityId,
+                                                 int32_t *preset,
+                                                 float *mood,
+                                                 float *warmth,
+                                                 float *cinematicAmount);
+extern "C" void MCEEditorApplyEnvironmentPreset(MCE_CTX, const char *entityId,
+                                                 int32_t preset);
+extern "C" uint32_t MCEEditorGetEnvironmentSource(MCE_CTX, const char *entityId,
+                                                   uint32_t *enabled,
+                                                   int32_t *mode,
+                                                   char *hdriHandle,
+                                                   int32_t hdriHandleSize);
+extern "C" void MCEEditorSetEnvironmentSource(MCE_CTX, const char *entityId,
+                                               uint32_t enabled,
+                                               int32_t mode,
+                                               const char *hdriHandle);
+extern "C" uint32_t MCEEditorGetEnvironmentCelestial(MCE_CTX, const char *entityId,
+                                                      float *defaultTimeOfDay,
+                                                      float *previewTimeOfDay,
+                                                      float *moonIntensity,
+                                                      float *moonSizeDegrees,
+                                                      float *starIntensity);
+extern "C" void MCEEditorSetEnvironmentCelestial(MCE_CTX, const char *entityId,
+                                                  float defaultTimeOfDay,
+                                                  float moonIntensity,
+                                                  float moonSizeDegrees,
+                                                  float starIntensity);
+extern "C" void MCEEditorSetEnvironmentPreviewTime(MCE_CTX, const char *entityId,
+                                                    float previewTimeOfDay);
+extern "C" uint32_t MCEEditorGetEnvironmentWeather(MCE_CTX, const char *entityId,
+                                                    int32_t *primaryType,
+                                                    int32_t *secondaryType,
+                                                    float *blend,
+                                                    float *amount);
+extern "C" void MCEEditorSetEnvironmentWeather(MCE_CTX, const char *entityId,
+                                                int32_t primaryType,
+                                                int32_t secondaryType,
+                                                float blend,
+                                                float amount);
+extern "C" uint32_t MCEEditorGetEnvironmentAtmosphere(MCE_CTX, const char *entityId,
+                                                       float *amount,
+                                                       float *haze,
+                                                       float *density,
+                                                       float *temperature,
+                                                       float *mood);
+extern "C" void MCEEditorSetEnvironmentAtmosphere(MCE_CTX, const char *entityId,
+                                                   float amount,
+                                                   float haze,
+                                                   float density,
+                                                   float temperature,
+                                                   float mood);
+extern "C" uint32_t MCEEditorGetEnvironmentClouds(MCE_CTX, const char *entityId,
+                                                   float *coverage,
+                                                   int32_t *style);
+extern "C" void MCEEditorSetEnvironmentClouds(MCE_CTX, const char *entityId,
+                                               float coverage,
+                                               int32_t style);
+extern "C" uint32_t MCEEditorGetEnvironmentFog(MCE_CTX, const char *entityId,
+                                                float *amount,
+                                                float *height,
+                                                float *distance);
+extern "C" void MCEEditorSetEnvironmentFog(MCE_CTX, const char *entityId,
+                                            float amount,
+                                            float height,
+                                            float distance);
+extern "C" uint32_t MCEEditorGetEnvironmentIBL(MCE_CTX, const char *entityId,
+                                                uint32_t *realtimeUpdate,
+                                                uint32_t *autoRebuildOnChange,
+                                                uint32_t *needsRebuild,
+                                                uint32_t *dirty,
+                                                uint32_t *isRebuilding,
+                                                int32_t *currentRebuildQuality,
+                                                int32_t *lastBuiltQuality,
+                                                char *lastFailureMessage,
+                                                int32_t lastFailureMessageSize);
+extern "C" void MCEEditorSetEnvironmentIBL(MCE_CTX, const char *entityId,
+                                            uint32_t realtimeUpdate,
+                                            uint32_t autoRebuildOnChange);
+extern "C" void MCEEditorRequestEnvironmentIBLRebuild(MCE_CTX, const char *entityId);
 extern "C" uint32_t MCEEditorGetRigidbody(MCE_CTX,  const char *entityId,
                                           uint32_t *enabled,
                                           int32_t *motionType,
@@ -313,6 +596,16 @@ extern "C" uint32_t MCEEditorSetMaterialAsset(MCE_CTX,
     const char *aoHandle,
     const char *emissiveHandle);
 extern "C" uint32_t MCEEditorGetAssetDisplayName(MCE_CTX,  const char *handle, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEEditorGetImportedSkeletonHandleForMesh(MCE_CTX, const char *meshHandle, char *outHandle, int32_t outHandleSize);
+extern "C" int32_t MCEEditorGetImportedClipCountForMesh(MCE_CTX, const char *meshHandle);
+extern "C" uint32_t MCEEditorGetImportedClipHandleForMeshAt(MCE_CTX, const char *meshHandle, int32_t index, char *outHandle, int32_t outHandleSize);
+extern "C" uint32_t MCEEditorGetImportedDefaultClipHandleForMesh(MCE_CTX, const char *meshHandle, char *outHandle, int32_t outHandleSize);
+extern "C" uint32_t MCEEditorGetAnimationClipDuration(MCE_CTX, const char *clipHandle, float *durationOut);
+extern "C" uint32_t MCEEditorGetSkeletonJointCount(MCE_CTX, const char *skeletonHandle, int32_t *countOut);
+extern "C" int32_t MCEEditorGetAssociatedClipCountForSkeleton(MCE_CTX, const char *skeletonHandle);
+extern "C" uint32_t MCEEditorGetAssociatedClipHandleForSkeletonAt(MCE_CTX, const char *skeletonHandle, int32_t index, char *outHandle, int32_t outHandleSize);
+extern "C" uint32_t MCEEditorGetAnimatorRuntimeStats(MCE_CTX, const char *entityId, int32_t *evaluatedJointCount, uint32_t *hasPoseState);
+extern "C" uint32_t MCEEditorGetAssetImportSetting(MCE_CTX, const char *handle, const char *key, char *valueOut, int32_t valueOutSize);
 extern "C" uint32_t MCEEditorGetSelectedMaterial(MCE_CTX,  char *buffer, int32_t bufferSize);
 extern "C" int32_t MCEEditorGetSelectedEntityCount(MCE_CTX);
 extern "C" int32_t MCEEditorGetSelectedEntityIdAt(MCE_CTX, int32_t index, char *buffer, int32_t bufferSize);
@@ -345,7 +638,11 @@ enum ComponentType : int32_t {
     ComponentRigidbody = 7,
     ComponentCollider = 8,
     ComponentScript = 9,
-    ComponentCharacterController = 10
+    ComponentCharacterController = 10,
+    ComponentSkinnedMesh = 11,
+    ComponentAnimator = 12,
+    ComponentReflectionProbe = 13,
+    ComponentEnvironment = 14
 };
 
 namespace {
@@ -368,79 +665,55 @@ namespace {
         return state->inspector;
     }
 
-    struct SkyPreset {
+    enum AtmosphereWeatherTypeUI : int32_t {
+        AtmosphereWeatherClear = 0,
+        AtmosphereWeatherPartlyCloudy = 1,
+        AtmosphereWeatherOvercast = 2,
+        AtmosphereWeatherStorm = 3,
+        AtmosphereWeatherFoggy = 4,
+        AtmosphereWeatherCustom = 5
+    };
+
+    enum AtmosphereCloudStyleUI : int32_t {
+        AtmosphereCloudClear = 0,
+        AtmosphereCloudWispy = 1,
+        AtmosphereCloudPuffy = 2,
+        AtmosphereCloudLayered = 3,
+        AtmosphereCloudOvercast = 4,
+        AtmosphereCloudStorm = 5,
+        AtmosphereCloudCustom = 6
+    };
+
+    struct AtmospherePreset {
         const char *name;
         int32_t mode;
         uint32_t enabled;
-        float intensity;
-        float tintX;
-        float tintY;
-        float tintZ;
-        float turbidity;
-        float azimuth;
-        float elevation;
-        float sunSize;
-        float zenithTintX;
-        float zenithTintY;
-        float zenithTintZ;
-        float horizonTintX;
-        float horizonTintY;
-        float horizonTintZ;
-        float gradientStrength;
-        float hazeDensity;
-        float hazeFalloff;
-        float hazeHeight;
-        float ozoneStrength;
-        float ozoneTintX;
-        float ozoneTintY;
-        float ozoneTintZ;
-        float sunHaloSize;
-        float sunHaloIntensity;
-        float sunHaloSoftness;
-        uint32_t cloudsEnabled;
-        float cloudsCoverage;
-        float cloudsSoftness;
-        float cloudsScale;
-        float cloudsSpeed;
-        float cloudsWindX;
-        float cloudsWindY;
-        float cloudsHeight;
-        float cloudsThickness;
-        float cloudsBrightness;
-        float cloudsSunInfluence;
+        float timeOfDay;
+        int32_t primaryWeatherType;
+        int32_t secondaryWeatherType;
+        float weatherBlend;
+        float weatherAmount;
+        float atmosphereAmount;
+        float cloudCoverage;
+        int32_t cloudStyle;
+        float temperature;
+        float mood;
+        float fogAmount;
+        float fogHeight;
+        float fogDistance;
     };
 
-    static const SkyPreset kSkyPresets[] = {
-        {"Clear Day", 1, 1, 1.0f, 1.0f, 1.0f, 1.0f, 2.0f, 0.0f, 35.0f, 0.5f,
-         0.24f, 0.45f, 0.95f, 0.95f, 0.75f, 0.55f, 1.0f, 0.25f, 2.0f, 0.0f, 0.35f, 0.55f, 0.7f, 1.0f,
-         2.5f, 0.5f, 1.2f, 1, 0.3f, 0.6f, 1.0f, 0.02f, 1.0f, 0.0f, 0.3f, 0.35f, 1.0f, 1.0f},
-        {"Golden Hour", 1, 1, 1.2f, 1.0f, 0.95f, 0.85f, 3.2f, 20.0f, 10.0f, 0.6f,
-         0.18f, 0.32f, 0.75f, 1.0f, 0.65f, 0.35f, 1.2f, 0.55f, 2.8f, 0.1f, 0.6f, 0.6f, 0.55f, 0.9f,
-         3.0f, 0.9f, 1.4f, 1, 0.4f, 0.65f, 1.2f, 0.03f, 0.7f, 0.2f, 0.25f, 0.4f, 1.2f, 1.4f},
-        {"Blue Hour", 1, 1, 0.8f, 0.9f, 0.95f, 1.0f, 2.5f, 10.0f, 5.0f, 0.4f,
-         0.15f, 0.28f, 0.8f, 0.5f, 0.6f, 1.0f, 1.1f, 0.3f, 2.6f, 0.0f, 0.8f, 0.45f, 0.65f, 1.0f,
-         2.0f, 0.4f, 1.4f, 0, 0.0f, 0.6f, 1.0f, 0.0f, 1.0f, 0.0f, 0.3f, 0.3f, 0.9f, 0.8f},
-        {"Overcast", 1, 1, 0.9f, 0.9f, 0.92f, 0.95f, 6.0f, 0.0f, 45.0f, 0.7f,
-         0.2f, 0.35f, 0.8f, 0.8f, 0.85f, 0.9f, 0.6f, 0.7f, 3.5f, 0.0f, 0.25f, 0.6f, 0.7f, 1.0f,
-         2.0f, 0.2f, 1.6f, 1, 0.75f, 0.8f, 1.8f, 0.01f, 1.0f, 0.0f, 0.2f, 0.6f, 1.1f, 0.6f},
-        {"Stormy", 1, 1, 0.75f, 0.85f, 0.9f, 1.0f, 8.0f, 15.0f, 20.0f, 0.6f,
-         0.12f, 0.2f, 0.6f, 0.5f, 0.6f, 0.7f, 0.5f, 0.9f, 4.0f, 0.0f, 0.1f, 0.45f, 0.6f, 0.9f,
-         1.8f, 0.3f, 2.0f, 1, 0.85f, 0.75f, 2.2f, 0.02f, 0.3f, 0.2f, 0.15f, 0.7f, 0.8f, 0.3f},
-        {"Desert Haze", 1, 1, 1.1f, 1.0f, 0.98f, 0.92f, 4.5f, 0.0f, 45.0f, 0.55f,
-         0.2f, 0.35f, 0.85f, 1.0f, 0.75f, 0.45f, 1.0f, 0.9f, 3.0f, 0.15f, 0.4f, 0.6f, 0.6f, 0.85f,
-         2.8f, 0.7f, 1.1f, 0, 0.0f, 0.6f, 1.0f, 0.0f, 1.0f, 0.0f, 0.2f, 0.2f, 1.0f, 0.7f},
-        {"Winter Cold", 1, 1, 0.95f, 0.95f, 1.0f, 1.05f, 2.8f, 0.0f, 35.0f, 0.45f,
-         0.18f, 0.3f, 0.9f, 0.7f, 0.8f, 1.1f, 1.2f, 0.25f, 2.4f, 0.0f, 0.7f, 0.45f, 0.7f, 1.05f,
-         2.2f, 0.45f, 1.3f, 1, 0.4f, 0.65f, 1.1f, 0.015f, 0.9f, 0.1f, 0.3f, 0.3f, 1.0f, 0.9f},
-        {"Stylized", 1, 1, 1.1f, 0.9f, 0.9f, 1.1f, 1.5f, 220.0f, 35.0f, 0.8f,
-         0.15f, 0.55f, 1.1f, 1.2f, 0.4f, 0.9f, 1.6f, 0.2f, 1.6f, 0.0f, 0.3f, 0.4f, 0.8f, 1.2f,
-         3.5f, 1.2f, 0.9f, 1, 0.2f, 0.5f, 1.6f, 0.03f, -0.2f, 1.0f, 0.35f, 0.25f, 1.4f, 1.2f},
-        {"Alien", 1, 1, 0.9f, 0.7f, 0.95f, 0.6f, 2.2f, 140.0f, 25.0f, 1.2f,
-         0.1f, 0.7f, 0.4f, 0.9f, 0.2f, 0.8f, 1.4f, 0.3f, 2.0f, 0.0f, 0.6f, 0.4f, 0.8f, 0.6f,
-         4.0f, 1.0f, 1.2f, 1, 0.5f, 0.6f, 1.8f, 0.02f, 0.7f, -0.3f, 0.25f, 0.4f, 1.2f, 1.5f},
-        {"Night Sky", 1, 1, 0.35f, 0.7f, 0.75f, 1.0f, 1.2f, 0.0f, 5.0f, 0.3f,
-         0.05f, 0.08f, 0.2f, 0.2f, 0.2f, 0.5f, 0.9f, 0.1f, 2.5f, 0.0f, 0.9f, 0.25f, 0.4f, 0.9f,
-         1.0f, 0.25f, 1.6f, 0, 0.0f, 0.6f, 1.0f, 0.0f, 1.0f, 0.0f, 0.25f, 0.2f, 0.6f, 0.5f}
+    static const AtmospherePreset kSkyPresets[] = {
+        {"Clear Day", 1, 1, 14.0f, AtmosphereWeatherClear, AtmosphereWeatherPartlyCloudy, 0.05f, 0.10f, 0.22f, 0.10f, AtmosphereCloudWispy, 0.05f, 0.25f, 0.02f, 0.0f, 8.0f},
+        {"Golden Hour", 1, 1, 18.0f, AtmosphereWeatherPartlyCloudy, AtmosphereWeatherClear, 0.20f, 0.35f, 0.45f, 0.35f, AtmosphereCloudPuffy, 0.45f, 0.15f, 0.05f, 0.0f, 18.0f},
+        {"Blue Hour", 1, 1, 19.5f, AtmosphereWeatherClear, AtmosphereWeatherFoggy, 0.10f, 0.15f, 0.30f, 0.05f, AtmosphereCloudClear, -0.20f, -0.20f, 0.01f, 0.0f, 22.0f},
+        {"Overcast", 1, 1, 13.0f, AtmosphereWeatherOvercast, AtmosphereWeatherFoggy, 0.25f, 0.85f, 0.62f, 0.85f, AtmosphereCloudOvercast, -0.05f, -0.10f, 0.08f, 0.0f, 12.0f},
+        {"Stormy", 1, 1, 16.0f, AtmosphereWeatherStorm, AtmosphereWeatherOvercast, 0.30f, 0.95f, 0.82f, 0.92f, AtmosphereCloudStorm, -0.08f, -0.55f, 0.14f, 0.0f, 10.0f},
+        {"Desert Haze", 1, 1, 15.0f, AtmosphereWeatherClear, AtmosphereWeatherFoggy, 0.55f, 0.35f, 0.72f, 0.05f, AtmosphereCloudClear, 0.55f, 0.18f, 0.02f, 0.0f, 18.0f},
+        {"Winter Cold", 1, 1, 11.5f, AtmosphereWeatherPartlyCloudy, AtmosphereWeatherOvercast, 0.18f, 0.30f, 0.28f, 0.35f, AtmosphereCloudLayered, -0.65f, 0.05f, 0.04f, 0.0f, 14.0f},
+        {"Stylized", 1, 1, 17.0f, AtmosphereWeatherCustom, AtmosphereWeatherPartlyCloudy, 0.35f, 0.45f, 0.18f, 0.25f, AtmosphereCloudPuffy, 0.75f, 0.55f, 0.03f, 0.0f, 18.0f},
+        {"Alien", 1, 1, 9.0f, AtmosphereWeatherCustom, AtmosphereWeatherFoggy, 0.40f, 0.50f, 0.30f, 0.45f, AtmosphereCloudLayered, -0.40f, 0.75f, 0.04f, 0.0f, 20.0f},
+        {"Night Atmosphere", 1, 1, 22.0f, AtmosphereWeatherClear, AtmosphereWeatherFoggy, 0.20f, 0.15f, 0.12f, 0.0f, AtmosphereCloudClear, -0.35f, -0.35f, 0.01f, 0.0f, 30.0f}
     };
 
     static const char *kSkyPresetNames[] = {
@@ -453,7 +726,7 @@ namespace {
         "Winter Cold",
         "Stylized",
         "Alien",
-        "Night Sky"
+        "Night Atmosphere"
     };
 
     static float RandomRange(float minValue, float maxValue) {
@@ -537,7 +810,26 @@ namespace {
     struct AssetOption {
         std::string handle;
         std::string name;
+        std::string path;
     };
+
+    std::string ClipOptionLabel(const AssetOption &option, const std::vector<AssetOption> &allOptions) {
+        int duplicateNameCount = 0;
+        for (const auto &candidate : allOptions) {
+            if (candidate.name == option.name) {
+                duplicateNameCount += 1;
+            }
+        }
+        std::string label = option.name.empty() ? option.handle : option.name;
+        if (duplicateNameCount > 1) {
+            if (!option.path.empty()) {
+                label += " | " + option.path;
+            } else {
+                label += " | " + option.handle.substr(0, std::min<size_t>(8, option.handle.size()));
+            }
+        }
+        return label;
+    }
 
     TexturePickerState &GetTexturePickerState(InspectorState &state) {
         return state.texturePicker;
@@ -580,6 +872,7 @@ namespace {
             AssetOption option;
             option.handle = handleBuffer;
             option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
             options.push_back(option);
         }
         std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
@@ -608,6 +901,7 @@ namespace {
             AssetOption option;
             option.handle = handleBuffer;
             option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
             options.push_back(option);
         }
         std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
@@ -636,6 +930,7 @@ namespace {
             AssetOption option;
             option.handle = handleBuffer;
             option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
             options.push_back(option);
         }
         options.push_back({"00000000-0000-0000-0000-000000000002", "Cube"});
@@ -669,6 +964,7 @@ namespace {
             AssetOption option;
             option.handle = handleBuffer;
             option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
             options.push_back(option);
         }
         std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
@@ -697,6 +993,94 @@ namespace {
             AssetOption option;
             option.handle = handleBuffer;
             option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
+            options.push_back(option);
+        }
+        std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
+            return a.name < b.name;
+        });
+    }
+
+    void LoadSkeletonOptions(void *context, std::vector<AssetOption> &options) {
+        options.clear();
+        const int32_t count = MCEEditorGetAssetCount(context);
+        options.reserve(count);
+        for (int32_t i = 0; i < count; ++i) {
+            char handleBuffer[64] = {0};
+            int32_t type = 0;
+            char pathBuffer[512] = {0};
+            char nameBuffer[128] = {0};
+            if (MCEEditorGetAssetAt(context, i,
+                                    handleBuffer, sizeof(handleBuffer),
+                                    &type,
+                                    pathBuffer, sizeof(pathBuffer),
+                                    nameBuffer, sizeof(nameBuffer)) == 0) {
+                continue;
+            }
+            if (type != 8) { continue; }
+            if (handleBuffer[0] == 0) { continue; }
+            AssetOption option;
+            option.handle = handleBuffer;
+            option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
+            options.push_back(option);
+        }
+        std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
+            return a.name < b.name;
+        });
+    }
+
+    void LoadAnimationClipOptions(void *context, std::vector<AssetOption> &options) {
+        options.clear();
+        const int32_t count = MCEEditorGetAssetCount(context);
+        options.reserve(count);
+        for (int32_t i = 0; i < count; ++i) {
+            char handleBuffer[64] = {0};
+            int32_t type = 0;
+            char pathBuffer[512] = {0};
+            char nameBuffer[128] = {0};
+            if (MCEEditorGetAssetAt(context, i,
+                                    handleBuffer, sizeof(handleBuffer),
+                                    &type,
+                                    pathBuffer, sizeof(pathBuffer),
+                                    nameBuffer, sizeof(nameBuffer)) == 0) {
+                continue;
+            }
+            if (type != 9) { continue; }
+            if (handleBuffer[0] == 0) { continue; }
+            AssetOption option;
+            option.handle = handleBuffer;
+            option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
+            options.push_back(option);
+        }
+        std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
+            return a.name < b.name;
+        });
+    }
+
+    void LoadAnimationGraphOptions(void *context, std::vector<AssetOption> &options) {
+        options.clear();
+        const int32_t count = MCEEditorGetAssetCount(context);
+        options.reserve(count);
+        for (int32_t i = 0; i < count; ++i) {
+            char handleBuffer[64] = {0};
+            int32_t type = 0;
+            char pathBuffer[512] = {0};
+            char nameBuffer[128] = {0};
+            if (MCEEditorGetAssetAt(context, i,
+                                    handleBuffer, sizeof(handleBuffer),
+                                    &type,
+                                    pathBuffer, sizeof(pathBuffer),
+                                    nameBuffer, sizeof(nameBuffer)) == 0) {
+                continue;
+            }
+            if (type != 11) { continue; }
+            if (handleBuffer[0] == 0) { continue; }
+            AssetOption option;
+            option.handle = handleBuffer;
+            option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
             options.push_back(option);
         }
         std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
@@ -725,6 +1109,7 @@ namespace {
             AssetOption option;
             option.handle = handleBuffer;
             option.name = nameBuffer[0] != 0 ? nameBuffer : pathBuffer;
+            option.path = pathBuffer;
             options.push_back(option);
         }
         std::sort(options.begin(), options.end(), [](const AssetOption &a, const AssetOption &b) {
@@ -1124,7 +1509,7 @@ namespace {
             const float emissiveDefault[3] = {0.0f, 0.0f, 0.0f};
             dirty |= EditorUI::PropertyColor3("Emissive Color", state.emissive, emissiveDefault, true);
             dirty |= EditorUI::PropertyFloat("Emissive Intensity", &state.emissiveIntensity, 0.01f, 0.0f, 50.0f, "%.3f", true, true, 1.0f);
-            const char* alphaModes[] = {"Opaque", "Masked", "Blended"};
+            const char* alphaModes[] = {"Opaque", "Alpha Clip", "Transparent", "Additive"};
             dirty |= EditorUI::PropertyCombo("Alpha Mode", &state.alphaMode, alphaModes, IM_ARRAYSIZE(alphaModes));
             dirty |= EditorUI::PropertyFloat("Alpha Cutoff", &state.alphaCutoff, 0.01f, 0.0f, 1.0f, "%.3f", true, true, 0.5f);
             dirty |= EditorUI::PropertyBool("Double Sided", &state.doubleSided);
@@ -1151,7 +1536,7 @@ namespace {
 void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEntityId) {
     if (!isOpen || !*isOpen) { return; }
     InspectorState &state = GetInspectorState(context);
-    if (!EditorUI::BeginPanel("Inspector", isOpen)) {
+    if (!EditorUI::BeginPanel("Properties", isOpen)) {
         EditorUI::EndPanel();
         return;
     }
@@ -1234,6 +1619,48 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Runtime Locked (Script Component remains editable in Play)");
         ImGui::Separator();
     }
+
+    if (hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentReflectionProbe) != 0) {
+        if (ImGui::CollapsingHeader("Reflection Probe Runtime", ImGuiTreeNodeFlags_DefaultOpen)) {
+            int32_t runtimeStatus = -1;
+            const bool hasRuntimeStatus = MCEEditorGetReflectionProbeRuntimeStatus(context, selectedEntityId, &runtimeStatus) != 0;
+            const char *statusLabel = "Not built (enter Play to capture)";
+            switch (runtimeStatus) {
+            case 0: statusLabel = "Idle"; break;
+            case 1: statusLabel = "Queued"; break;
+            case 2: statusLabel = "Capturing"; break;
+            case 3: statusLabel = "Filtering"; break;
+            case 4: statusLabel = "Ready"; break;
+            case 5: statusLabel = "Failed"; break;
+            default: break;
+            }
+            if (hasRuntimeStatus) {
+                ImGui::Text("Status: %s", statusLabel);
+            } else {
+                ImGui::TextDisabled("%s", statusLabel);
+            }
+
+            const bool canRebuildRuntime = isPlaying;
+            if (!canRebuildRuntime) {
+                ImGui::BeginDisabled(true);
+            }
+            if (ImGui::Button("Rebuild Probe")) {
+                MCEEditorRequestReflectionProbeRebuild(context, selectedEntityId);
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Rebuild All Probes")) {
+                MCEEditorRequestAllReflectionProbeRebuilds(context);
+            }
+            if (!canRebuildRuntime) {
+                ImGui::EndDisabled();
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Reflection probe rebuilds are queued on the runtime scene while Play is active.");
+                }
+            }
+            ImGui::Separator();
+        }
+    }
+
     ImGui::BeginDisabled(runtimeLocked);
 
     if (selectedIds.size() > 1) {
@@ -1746,6 +2173,20 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 int projectionIndex = projectionType;
                 bool dirty = false;
                 bool primaryDirty = false;
+                uint32_t autoExposureEnabled = 1;
+                float manualExposure = 1.0f;
+                float exposureCompensation = 0.0f;
+                float autoExposureMin = 0.03f;
+                float autoExposureMax = 8.0f;
+                float adaptationSpeed = 2.0f;
+                bool hasExposureSettings = MCEEditorGetCameraExposure(context,
+                                                                      selectedEntityId,
+                                                                      &autoExposureEnabled,
+                                                                      &manualExposure,
+                                                                      &exposureCompensation,
+                                                                      &autoExposureMin,
+                                                                      &autoExposureMax,
+                                                                      &adaptationSpeed) != 0;
                 if (EditorUI::BeginPropertyTable("CameraProps")) {
                     EditorUI::SetNextPropertyInfoTooltip("Camera projection model.\nUnits: enum.\nPerformance: similar.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyCombo("Projection", &projectionIndex, projectionItems, 2);
@@ -1768,6 +2209,52 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     if (isEditor != 0) {
                         ImGui::EndDisabled();
                     }
+                    if (hasExposureSettings) {
+                        const bool editorCamera = isEditor != 0;
+                        const char *exposureModeItems[] = {"Manual", "Auto"};
+                        int exposureMode = (autoExposureEnabled != 0) ? 1 : 0;
+                        bool exposureDirty = false;
+
+                        EditorUI::SetNextPropertyInfoTooltip(editorCamera
+                            ? "Editor viewport exposure mode. Use Manual for stable sky and atmosphere look-dev, or Auto to preview the exposure adaptation path.\nPersistence: Scene."
+                            : "Per-camera exposure mode. Manual uses the authored exposure value; Auto derives exposure from scene luminance.\nPersistence: Scene.");
+                        exposureDirty |= EditorUI::PropertyCombo("Exposure Mode", &exposureMode, exposureModeItems, 2);
+
+                        const bool autoExposure = exposureMode == 1;
+                        if (autoExposure) {
+                            ImGui::BeginDisabled();
+                        }
+                        EditorUI::SetNextPropertyInfoTooltip(editorCamera
+                            ? "Stable manual exposure for editor viewport look-dev. This is the main control to lock the sky, clouds, and fog while tuning.\nPersistence: Scene."
+                            : "Manual exposure used only when Exposure Mode is set to Manual.\nPersistence: Scene.");
+                        exposureDirty |= EditorUI::PropertyFloat("Manual Exposure", &manualExposure, 0.05f, 0.01f, 10.0f, "%.3f", true);
+                        if (autoExposure) {
+                            ImGui::EndDisabled();
+                        }
+
+                        EditorUI::SetNextPropertyInfoTooltip("Exposure bias applied on top of auto exposure.\nUnits: EV.\nPersistence: Scene.");
+                        exposureDirty |= EditorUI::PropertyFloat("Exposure Compensation", &exposureCompensation, 0.1f, -10.0f, 10.0f, "%.2f", true);
+                        EditorUI::SetNextPropertyInfoTooltip("Minimum auto exposure clamp.\nPersistence: Scene.");
+                        exposureDirty |= EditorUI::PropertyFloat("Auto Exposure Min", &autoExposureMin, 0.01f, 0.001f, 32.0f, "%.3f", true);
+                        autoExposureMax = std::max(autoExposureMax, autoExposureMin);
+                        EditorUI::SetNextPropertyInfoTooltip("Maximum auto exposure clamp.\nPersistence: Scene.");
+                        exposureDirty |= EditorUI::PropertyFloat("Auto Exposure Max", &autoExposureMax, 0.01f, autoExposureMin, 64.0f, "%.3f", true);
+                        adaptationSpeed = std::max(0.0f, adaptationSpeed);
+                        EditorUI::SetNextPropertyInfoTooltip("Temporal adaptation speed for auto exposure.\nPersistence: Scene.");
+                        exposureDirty |= EditorUI::PropertyFloat("Adaptation Speed", &adaptationSpeed, 0.05f, 0.0f, 20.0f, "%.2f", true);
+
+                        if (exposureDirty) {
+                            autoExposureEnabled = autoExposure ? 1u : 0u;
+                            MCEEditorSetCameraExposure(context,
+                                                       selectedEntityId,
+                                                       autoExposureEnabled,
+                                                       manualExposure,
+                                                       exposureCompensation,
+                                                       autoExposureMin,
+                                                       autoExposureMax,
+                                                       adaptationSpeed);
+                        }
+                    }
                     EditorUI::EndPropertyTable();
 
                     if (dirty || primaryDirty) {
@@ -1783,6 +2270,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
                 if (isEditor != 0) {
                     ImGui::TextDisabled("Editor Camera");
+                    ImGui::TextDisabled("Editor camera exposure settings persist with the scene.");
                 }
             }
         }
@@ -2621,6 +3109,574 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         }
     }
 
+    const bool hasSkinnedMesh = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentSkinnedMesh) != 0;
+    if (hasSkinnedMesh) {
+        bool skinnedOpen = EditorUI::BeginSectionWithContext(context,
+            "Skinned Mesh",
+            "Inspector.SkinnedMesh",
+            "SkinnedMeshContext",
+            [&]() {
+                if (ImGui::MenuItem("Clear Skeleton")) {
+                    const char *empty = "";
+                    MCEEditorSetSkinnedMesh(context, selectedEntityId, empty);
+                }
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentSkinnedMesh);
+                }
+            },
+            true);
+        if (skinnedOpen) {
+            char skeletonHandle[64] = {0};
+            int32_t jointCount = 0;
+            uint32_t isValidSkeleton = 0;
+            MCEEditorGetSkinnedMesh(context, selectedEntityId, skeletonHandle, sizeof(skeletonHandle), &jointCount, &isValidSkeleton);
+
+            char meshHandle[64] = {0};
+            char materialHandle[64] = {0};
+            MCEEditorGetMeshRenderer(context, selectedEntityId, meshHandle, sizeof(meshHandle), materialHandle, sizeof(materialHandle));
+
+            if (EditorUI::BeginPropertyTable("SkinnedMeshProps")) {
+                EditorUI::PropertyLabel("Skeleton");
+                ImGui::PushID("SkinnedSkeleton");
+                char displayName[128] = {0};
+                GetAssetName(context, skeletonHandle, displayName, sizeof(displayName));
+                ImGui::TextUnformatted(displayName);
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_SKELETON")) {
+                        const char *payloadText = static_cast<const char *>(payload->Data);
+                        strncpy(skeletonHandle, payloadText, sizeof(skeletonHandle) - 1);
+                        skeletonHandle[sizeof(skeletonHandle) - 1] = 0;
+                        MCEEditorSetSkinnedMesh(context, selectedEntityId, skeletonHandle);
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Clear")) {
+                    skeletonHandle[0] = 0;
+                    MCEEditorSetSkinnedMesh(context, selectedEntityId, skeletonHandle);
+                }
+                ImGui::PopID();
+
+                EditorUI::PropertyLabel("Status");
+                if (skeletonHandle[0] == 0) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "No skeleton assigned");
+                } else if (isValidSkeleton == 0) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f), "Invalid skeleton asset");
+                } else {
+                    ImGui::TextColored(ImVec4(0.45f, 0.9f, 0.55f, 1.0f), "Valid");
+                }
+
+                EditorUI::PropertyLabel("Joint Count");
+                ImGui::Text("%d", static_cast<int>(jointCount));
+                EditorUI::EndPropertyTable();
+            }
+
+            std::vector<AssetOption> skeletonOptions;
+            LoadSkeletonOptions(context, skeletonOptions);
+            const char *currentSkeleton = "None";
+            int selectedSkeletonIndex = 0;
+            for (size_t i = 0; i < skeletonOptions.size(); ++i) {
+                if (skeletonOptions[i].handle == skeletonHandle) {
+                    selectedSkeletonIndex = static_cast<int>(i) + 1;
+                    currentSkeleton = skeletonOptions[i].name.c_str();
+                    break;
+                }
+            }
+            if (ImGui::BeginCombo("Skeleton Picker", currentSkeleton)) {
+                if (ImGui::Selectable("None", selectedSkeletonIndex == 0)) {
+                    skeletonHandle[0] = 0;
+                    MCEEditorSetSkinnedMesh(context, selectedEntityId, skeletonHandle);
+                }
+                for (const auto &option : skeletonOptions) {
+                    const bool selected = option.handle == skeletonHandle;
+                    if (ImGui::Selectable(option.name.c_str(), selected)) {
+                        MCEEditorSetSkinnedMesh(context, selectedEntityId, option.handle.c_str());
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (meshHandle[0] != 0) {
+                char importedSkeleton[64] = {0};
+                if (MCEEditorGetImportedSkeletonHandleForMesh(context, meshHandle, importedSkeleton, sizeof(importedSkeleton)) != 0) {
+                    if (ImGui::Button("Use Imported Skeleton")) {
+                        MCEEditorSetSkinnedMesh(context, selectedEntityId, importedSkeleton);
+                    }
+                }
+            }
+        }
+    }
+
+    const bool hasAnimator = hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentAnimator) != 0;
+    if (hasAnimator) {
+        bool animatorOpen = EditorUI::BeginSectionWithContext(context,
+            "Animator",
+            "Inspector.Animator",
+            "AnimatorContext",
+            [&]() {
+                if (ImGui::MenuItem("Reset")) {
+                    MCEEditorSetAnimator(context, selectedEntityId, nullptr, 0.0f, 1.0f, 1u, 1u);
+                }
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentAnimator);
+                }
+            },
+            true);
+        if (animatorOpen) {
+            char clipHandle[64] = {0};
+            float playbackTime = 0.0f;
+            float playbackSpeed = 1.0f;
+            uint32_t isPlaying = 1;
+            uint32_t isLooping = 1;
+            MCEEditorGetAnimator(context, selectedEntityId, clipHandle, sizeof(clipHandle), &playbackTime, &playbackSpeed, &isPlaying, &isLooping);
+            int32_t animatorMode = 0;
+            char graphHandle[64] = {0};
+            MCEEditorGetAnimatorMode(context, selectedEntityId, &animatorMode, graphHandle, sizeof(graphHandle));
+
+            char meshHandle[64] = {0};
+            char materialHandle[64] = {0};
+            MCEEditorGetMeshRenderer(context, selectedEntityId, meshHandle, sizeof(meshHandle), materialHandle, sizeof(materialHandle));
+
+            const char *animatorModes[] = {"Clip", "Graph"};
+            int modeIndex = animatorMode == 1 ? 1 : 0;
+            ImGui::SetNextItemWidth(180.0f);
+            if (ImGui::Combo("Mode", &modeIndex, animatorModes, IM_ARRAYSIZE(animatorModes))) {
+                if (modeIndex == 0) {
+                    MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+                } else {
+                    MCEEditorSetAnimatorGraph(context, selectedEntityId, graphHandle[0] != 0 ? graphHandle : nullptr, playbackTime, playbackSpeed, isPlaying, isLooping);
+                }
+                animatorMode = modeIndex == 1 ? 1 : 0;
+            }
+
+            if (animatorMode == 0) {
+
+            float duration = 0.0f;
+            if (clipHandle[0] != 0) {
+                MCEEditorGetAnimationClipDuration(context, clipHandle, &duration);
+            }
+            const float sliderMax = duration > 0.0f ? duration : std::max(5.0f, playbackTime + 1.0f);
+            int32_t evaluatedJointCount = 0;
+            uint32_t hasPoseState = 0;
+            MCEEditorGetAnimatorRuntimeStats(context, selectedEntityId, &evaluatedJointCount, &hasPoseState);
+
+            char assignedSkeletonHandle[64] = {0};
+            int32_t skinnedJointCount = 0;
+            uint32_t skinnedValid = 0;
+            if (hasSkinnedMesh) {
+                MCEEditorGetSkinnedMesh(context, selectedEntityId, assignedSkeletonHandle, sizeof(assignedSkeletonHandle), &skinnedJointCount, &skinnedValid);
+            }
+
+            if (EditorUI::BeginPropertyTable("AnimatorProps")) {
+                EditorUI::PropertyLabel("Clip");
+                ImGui::PushID("AnimatorClip");
+                char clipDisplayName[128] = {0};
+                GetAssetName(context, clipHandle, clipDisplayName, sizeof(clipDisplayName));
+                ImGui::TextUnformatted(clipDisplayName);
+                if (ImGui::BeginDragDropTarget()) {
+                    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_ANIMATION_CLIP")) {
+                        const char *payloadText = static_cast<const char *>(payload->Data);
+                        strncpy(clipHandle, payloadText, sizeof(clipHandle) - 1);
+                        clipHandle[sizeof(clipHandle) - 1] = 0;
+                        MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Clear")) {
+                    clipHandle[0] = 0;
+                    playbackTime = 0.0f;
+                    MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+                }
+                ImGui::PopID();
+
+                bool play = isPlaying != 0;
+                if (EditorUI::PropertyBool("Playing", &play)) {
+                    isPlaying = play ? 1u : 0u;
+                    MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+                }
+
+                bool loop = isLooping != 0;
+                if (EditorUI::PropertyBool("Looping", &loop)) {
+                    isLooping = loop ? 1u : 0u;
+                    MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+                }
+
+                if (EditorUI::PropertyFloat("Playback Time", &playbackTime, 0.01f, 0.0f, sliderMax, "%.3f", true, false, 0.0f)) {
+                    MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+                }
+                if (EditorUI::PropertyFloat("Playback Speed", &playbackSpeed, 0.01f, 0.0f, 4.0f, "%.2f", true, true, 1.0f)) {
+                    MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+                }
+                EditorUI::PropertyLabel("Clip Duration");
+                ImGui::Text("%.3fs", duration);
+                EditorUI::PropertyLabel("Current Time");
+                ImGui::Text("%.3fs", playbackTime);
+
+                EditorUI::PropertyLabel("State");
+                ImGui::Text("isPlaying=%s | isLooping=%s", isPlaying ? "true" : "false", isLooping ? "true" : "false");
+                EditorUI::EndPropertyTable();
+            }
+
+            if (ImGui::Button(isPlaying != 0 ? "Pause" : "Play")) {
+                isPlaying = isPlaying != 0 ? 0u : 1u;
+                MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+            }
+            ImGui::SameLine();
+            bool loopToggle = isLooping != 0;
+            if (ImGui::Checkbox("Loop", &loopToggle)) {
+                isLooping = loopToggle ? 1u : 0u;
+                MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+            }
+
+            ImGui::SetNextItemWidth(-1.0f);
+            if (ImGui::SliderFloat("Time Scrub", &playbackTime, 0.0f, sliderMax, "%.3f")) {
+                MCEEditorSetAnimator(context, selectedEntityId, clipHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+            }
+
+            if (clipHandle[0] == 0) {
+                ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "No animation clip assigned.");
+            }
+            if (!hasSkinnedMesh) {
+                ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Animator is active without Skinned Mesh component.");
+            }
+
+            std::vector<AssetOption> importedClips;
+            if (meshHandle[0] != 0) {
+                const int32_t importedCount = MCEEditorGetImportedClipCountForMesh(context, meshHandle);
+                importedClips.reserve(std::max(0, importedCount));
+                for (int32_t i = 0; i < importedCount; ++i) {
+                    char importedHandle[64] = {0};
+                    if (MCEEditorGetImportedClipHandleForMeshAt(context, meshHandle, i, importedHandle, sizeof(importedHandle)) == 0) {
+                        continue;
+                    }
+                    char importedName[128] = {0};
+                    GetAssetName(context, importedHandle, importedName, sizeof(importedName));
+                    AssetOption option;
+                    option.handle = importedHandle;
+                    option.name = importedName;
+                    option.path = "";
+                    importedClips.push_back(option);
+                }
+            }
+
+            std::vector<AssetOption> skeletonAssociatedClips;
+            if (assignedSkeletonHandle[0] != 0) {
+                const int32_t associatedCount = MCEEditorGetAssociatedClipCountForSkeleton(context, assignedSkeletonHandle);
+                skeletonAssociatedClips.reserve(std::max(0, associatedCount));
+                for (int32_t i = 0; i < associatedCount; ++i) {
+                    char associatedHandle[64] = {0};
+                    if (MCEEditorGetAssociatedClipHandleForSkeletonAt(context, assignedSkeletonHandle, i, associatedHandle, sizeof(associatedHandle)) == 0) {
+                        continue;
+                    }
+                    char associatedName[128] = {0};
+                    GetAssetName(context, associatedHandle, associatedName, sizeof(associatedName));
+                    AssetOption option;
+                    option.handle = associatedHandle;
+                    option.name = associatedName;
+                    option.path = "";
+                    skeletonAssociatedClips.push_back(option);
+                }
+            }
+
+            if (!skeletonAssociatedClips.empty()) {
+                const char *currentAssociatedName = "Select Skeleton Clip";
+                for (const auto &clip : skeletonAssociatedClips) {
+                    if (clip.handle == clipHandle) {
+                        currentAssociatedName = clip.name.c_str();
+                        break;
+                    }
+                }
+                if (ImGui::BeginCombo("Skeleton Clips", currentAssociatedName)) {
+                    for (const auto &clip : skeletonAssociatedClips) {
+                        float clipDuration = 0.0f;
+                        MCEEditorGetAnimationClipDuration(context, clip.handle.c_str(), &clipDuration);
+                        std::string label = ClipOptionLabel(clip, skeletonAssociatedClips) + " (" + std::to_string(clipDuration) + "s)";
+                        const bool selected = clip.handle == clipHandle;
+                        std::string selectableLabel = label + "##" + clip.handle;
+                        if (ImGui::Selectable(selectableLabel.c_str(), selected)) {
+                            MCEEditorSetAnimator(context, selectedEntityId, clip.handle.c_str(), 0.0f, playbackSpeed, isPlaying, isLooping);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+
+            if (!importedClips.empty()) {
+                char defaultImportedClip[64] = {0};
+                MCEEditorGetImportedDefaultClipHandleForMesh(context, meshHandle, defaultImportedClip, sizeof(defaultImportedClip));
+                const char *currentImportedName = "Select Imported Clip";
+                for (const auto &clip : importedClips) {
+                    if (clip.handle == clipHandle) {
+                        currentImportedName = clip.name.c_str();
+                        break;
+                    }
+                }
+                if (ImGui::BeginCombo("Imported Clips", currentImportedName)) {
+                    for (const auto &clip : importedClips) {
+                        float clipDuration = 0.0f;
+                        MCEEditorGetAnimationClipDuration(context, clip.handle.c_str(), &clipDuration);
+                        std::string label = ClipOptionLabel(clip, importedClips) + " (" + std::to_string(clipDuration) + "s)";
+                        if (defaultImportedClip[0] != 0 && clip.handle == defaultImportedClip) {
+                            label += " [Default]";
+                        }
+                        const bool selected = clip.handle == clipHandle;
+                        std::string selectableLabel = label + "##" + clip.handle;
+                        if (ImGui::Selectable(selectableLabel.c_str(), selected)) {
+                            MCEEditorSetAnimator(context, selectedEntityId, clip.handle.c_str(), 0.0f, playbackSpeed, isPlaying, isLooping);
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+            }
+
+            std::vector<AssetOption> clipOptions;
+            LoadAnimationClipOptions(context, clipOptions);
+            const char *currentClipName = "Select Clip";
+            for (const auto &option : clipOptions) {
+                if (option.handle == clipHandle) {
+                    currentClipName = option.name.c_str();
+                    break;
+                }
+            }
+            if (ImGui::BeginCombo("All Clips", currentClipName)) {
+                for (const auto &option : clipOptions) {
+                    const bool selected = option.handle == clipHandle;
+                    std::string displayLabel = ClipOptionLabel(option, clipOptions);
+                    std::string selectableLabel = displayLabel + "##" + option.handle;
+                    if (ImGui::Selectable(selectableLabel.c_str(), selected)) {
+                        MCEEditorSetAnimator(context, selectedEntityId, option.handle.c_str(), 0.0f, playbackSpeed, isPlaying, isLooping);
+                    }
+                }
+                ImGui::EndCombo();
+            }
+
+            ImGui::Separator();
+            ImGui::TextUnformatted("Animation Debug");
+            char activeClipName[128] = {0};
+            GetAssetName(context, clipHandle, activeClipName, sizeof(activeClipName));
+            char skeletonName[128] = {0};
+            GetAssetName(context, assignedSkeletonHandle, skeletonName, sizeof(skeletonName));
+            ImGui::Text("Skeleton: %s", assignedSkeletonHandle[0] != 0 ? assignedSkeletonHandle : "<none>");
+            ImGui::Text("Skeleton Asset: %s", skeletonName);
+            ImGui::Text("Clip: %s", clipHandle[0] != 0 ? clipHandle : "<none>");
+            ImGui::Text("Clip Asset: %s", activeClipName);
+            ImGui::Text("Imported Clip Count: %d", static_cast<int>(importedClips.size()));
+            ImGui::Text("Evaluated Joint Count: %d", static_cast<int>(evaluatedJointCount));
+            const bool skinningActive = (hasSkinnedMesh && skinnedValid != 0 && clipHandle[0] != 0 && evaluatedJointCount > 0 && hasPoseState != 0);
+            ImGui::Text("Skinning Active: %s", skinningActive ? "true" : "false");
+            if (assignedSkeletonHandle[0] == 0) {
+                ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Warning: SkinnedMesh has no skeleton handle.");
+            } else if (skinnedValid == 0) {
+                ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f), "Warning: Skeleton asset is missing or invalid.");
+            }
+            if (clipHandle[0] == 0) {
+                ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Warning: Animator has no clip selected.");
+            } else if (duration <= 0.0f) {
+                ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f), "Warning: Active clip duration is zero.");
+            }
+            if (hasPoseState == 0 && clipHandle[0] != 0 && assignedSkeletonHandle[0] != 0) {
+                ImGui::TextColored(ImVec4(0.95f, 0.45f, 0.45f, 1.0f), "Warning: No evaluated pose runtime state.");
+            }
+
+            if (meshHandle[0] != 0) {
+                char importScaleNormalization[64] = {0};
+                char importScaleApplied[64] = {0};
+                const bool hasScaleMode = MCEEditorGetAssetImportSetting(context, meshHandle, "importScaleNormalization", importScaleNormalization, sizeof(importScaleNormalization)) != 0;
+                const bool hasScaleApplied = MCEEditorGetAssetImportSetting(context, meshHandle, "importScaleApplied", importScaleApplied, sizeof(importScaleApplied)) != 0;
+                if (hasScaleMode || hasScaleApplied) {
+                    ImGui::Text("Import Scale Normalization: %s", hasScaleMode ? importScaleNormalization : "<unknown>");
+                    ImGui::Text("Import Scale Applied: %s", hasScaleApplied ? importScaleApplied : "<unknown>");
+                }
+            }
+            } else {
+                const float sliderMax = std::max(5.0f, playbackTime + 1.0f);
+                uint32_t rootMotionEnabledRaw = 1;
+                MCEEditorGetAnimatorRootMotionEnabled(context, selectedEntityId, &rootMotionEnabledRaw);
+                if (EditorUI::BeginPropertyTable("AnimatorGraphProps")) {
+                    EditorUI::PropertyLabel("Graph");
+                    ImGui::PushID("AnimatorGraph");
+                    char graphDisplayName[128] = {0};
+                    GetAssetName(context, graphHandle, graphDisplayName, sizeof(graphDisplayName));
+                    ImGui::TextUnformatted(graphDisplayName);
+                    if (ImGui::BeginDragDropTarget()) {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("MCE_ASSET_ANIMATION_GRAPH")) {
+                            const char *payloadText = static_cast<const char *>(payload->Data);
+                            strncpy(graphHandle, payloadText, sizeof(graphHandle) - 1);
+                            graphHandle[sizeof(graphHandle) - 1] = 0;
+                            MCEEditorSetAnimatorGraph(context, selectedEntityId, graphHandle, playbackTime, playbackSpeed, isPlaying, isLooping);
+                        }
+                        ImGui::EndDragDropTarget();
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button("Clear")) {
+                        graphHandle[0] = 0;
+                        MCEEditorSetAnimatorGraph(context, selectedEntityId, nullptr, playbackTime, playbackSpeed, isPlaying, isLooping);
+                    }
+                    ImGui::PopID();
+
+                    bool play = isPlaying != 0;
+                    if (EditorUI::PropertyBool("Playing", &play)) {
+                        isPlaying = play ? 1u : 0u;
+                        MCEEditorSetAnimatorGraph(context, selectedEntityId, graphHandle[0] != 0 ? graphHandle : nullptr, playbackTime, playbackSpeed, isPlaying, isLooping);
+                    }
+                    bool loop = isLooping != 0;
+                    if (EditorUI::PropertyBool("Looping", &loop)) {
+                        isLooping = loop ? 1u : 0u;
+                        MCEEditorSetAnimatorGraph(context, selectedEntityId, graphHandle[0] != 0 ? graphHandle : nullptr, playbackTime, playbackSpeed, isPlaying, isLooping);
+                    }
+                    bool enableRootMotion = rootMotionEnabledRaw != 0;
+                    if (EditorUI::PropertyBool("Enable Root Motion", &enableRootMotion)) {
+                        rootMotionEnabledRaw = enableRootMotion ? 1u : 0u;
+                        MCEEditorSetAnimatorRootMotionEnabled(context, selectedEntityId, rootMotionEnabledRaw);
+                    }
+                    if (EditorUI::PropertyFloat("Playback Time", &playbackTime, 0.01f, 0.0f, sliderMax, "%.3f", true, false, 0.0f)) {
+                        MCEEditorSetAnimatorGraph(context, selectedEntityId, graphHandle[0] != 0 ? graphHandle : nullptr, playbackTime, playbackSpeed, isPlaying, isLooping);
+                    }
+                    if (EditorUI::PropertyFloat("Playback Speed", &playbackSpeed, 0.01f, 0.0f, 4.0f, "%.2f", true, true, 1.0f)) {
+                        MCEEditorSetAnimatorGraph(context, selectedEntityId, graphHandle[0] != 0 ? graphHandle : nullptr, playbackTime, playbackSpeed, isPlaying, isLooping);
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+
+                ImGui::Separator();
+                ImGui::TextUnformatted("Graph Parameters");
+                const int32_t parameterCount = MCEEditorGetAnimatorGraphParameterCount(context, selectedEntityId);
+                if (parameterCount <= 0) {
+                    ImGui::TextDisabled("No parameters.");
+                } else {
+                    for (int32_t i = 0; i < parameterCount; ++i) {
+                        char parameterName[128] = {0};
+                        int32_t parameterType = 0;
+                        float defaultFloat = 0.0f;
+                        uint32_t defaultBool = 0;
+                        int32_t defaultInt = 0;
+                        float floatValue = 0.0f;
+                        uint32_t boolValue = 0;
+                        int32_t intValue = 0;
+                        uint32_t triggerValue = 0;
+                        if (MCEEditorGetAnimatorGraphParameterAt(context,
+                                                                 selectedEntityId,
+                                                                 i,
+                                                                 parameterName, sizeof(parameterName),
+                                                                 &parameterType,
+                                                                 &defaultFloat,
+                                                                 &defaultBool,
+                                                                 &defaultInt,
+                                                                 &floatValue,
+                                                                 &boolValue,
+                                                                 &intValue,
+                                                                 &triggerValue) == 0) {
+                            continue;
+                        }
+
+                        ImGui::PushID(i);
+                        if (parameterType == 0) {
+                            if (ImGui::DragFloat(parameterName, &floatValue, 0.01f)) {
+                                MCEEditorSetAnimatorGraphParameterFloat(context, selectedEntityId, i, floatValue);
+                            }
+                            ImGui::TextDisabled("default %.3f", defaultFloat);
+                        } else if (parameterType == 1) {
+                            bool value = boolValue != 0;
+                            if (ImGui::Checkbox(parameterName, &value)) {
+                                MCEEditorSetAnimatorGraphParameterBool(context, selectedEntityId, i, value ? 1u : 0u);
+                            }
+                            ImGui::TextDisabled("default %s", defaultBool != 0 ? "true" : "false");
+                        } else if (parameterType == 2) {
+                            if (ImGui::DragInt(parameterName, &intValue, 1.0f)) {
+                                MCEEditorSetAnimatorGraphParameterInt(context, selectedEntityId, i, intValue);
+                            }
+                            ImGui::TextDisabled("default %d", defaultInt);
+                        } else {
+                            std::string fireLabel = std::string("Fire##") + parameterName;
+                            if (ImGui::Button(fireLabel.c_str())) {
+                                MCEEditorSetAnimatorGraphParameterTrigger(context, selectedEntityId, i);
+                            }
+                            ImGui::SameLine();
+                            ImGui::Text("%s = %s", parameterName, triggerValue != 0 ? "true" : "false");
+                        }
+                        ImGui::PopID();
+                    }
+                }
+
+                if (isPlaying) {
+                    char currentState[128] = {0};
+                    char nextState[128] = {0};
+                    char rootMotionBoneName[192] = {0};
+                    char rootMotionTranslationBoneName[192] = {0};
+                    char rootMotionRotationBoneName[192] = {0};
+                    char rootMotionConsumeBoneName[192] = {0};
+                    float runtimeSpeed = 0.0f;
+                    float runtimeMoveX = 0.0f;
+                    float runtimeMoveY = 0.0f;
+                    uint32_t runtimeGrounded = 0;
+                    uint32_t runtimeJumpTrigger = 0;
+                    uint32_t runtimeRootMotionEnabled = 0;
+                    uint32_t runtimeUsesRootMotion = 0;
+                    float runtimeRootMotionDeltaMagnitude = 0.0f;
+                    int32_t runtimeRootMotionJointIndex = -1;
+                    int32_t runtimeRootMotionTranslationJointIndex = -1;
+                    int32_t runtimeRootMotionRotationJointIndex = -1;
+                    int32_t runtimeRootMotionConsumeJointIndex = -1;
+                    uint32_t runtimeRootTrackConsumed = 0;
+                    if (MCEEditorGetAnimatorGraphRuntimeDebug(context,
+                                                              selectedEntityId,
+                                                              currentState, sizeof(currentState),
+                                                              nextState, sizeof(nextState),
+                                                              rootMotionBoneName, sizeof(rootMotionBoneName),
+                                                              rootMotionTranslationBoneName, sizeof(rootMotionTranslationBoneName),
+                                                              rootMotionRotationBoneName, sizeof(rootMotionRotationBoneName),
+                                                              rootMotionConsumeBoneName, sizeof(rootMotionConsumeBoneName),
+                                                              &runtimeSpeed,
+                                                              &runtimeGrounded,
+                                                              &runtimeMoveX,
+                                                              &runtimeMoveY,
+                                                              &runtimeJumpTrigger,
+                                                              &runtimeRootMotionEnabled,
+                                                              &runtimeUsesRootMotion,
+                                                              &runtimeRootMotionDeltaMagnitude,
+                                                              &runtimeRootMotionJointIndex,
+                                                              &runtimeRootMotionTranslationJointIndex,
+                                                              &runtimeRootMotionRotationJointIndex,
+                                                              &runtimeRootMotionConsumeJointIndex,
+                                                              &runtimeRootTrackConsumed) != 0) {
+                        ImGui::Separator();
+                        ImGui::TextUnformatted("Runtime");
+                        ImGui::Text("State: %s", currentState[0] != 0 ? currentState : "<none>");
+                        ImGui::Text("Next: %s", nextState[0] != 0 ? nextState : "-");
+                        ImGui::Text("speed %.2f | grounded %s | moveX %.2f | moveY %.2f | jump %s",
+                                    runtimeSpeed,
+                                    runtimeGrounded != 0 ? "true" : "false",
+                                    runtimeMoveX,
+                                    runtimeMoveY,
+                                    runtimeJumpTrigger != 0 ? "latched" : "false");
+                        ImGui::Text("rootMotion enabled %s | active %s | |delta| %.3f",
+                                    runtimeRootMotionEnabled != 0 ? "true" : "false",
+                                    runtimeUsesRootMotion != 0 ? "true" : "false",
+                                    runtimeRootMotionDeltaMagnitude);
+                        ImGui::Text("rootBone %s | rootJoint %d | consumed %s",
+                                    rootMotionBoneName[0] != 0 ? rootMotionBoneName : "<none>",
+                                    runtimeRootMotionJointIndex,
+                                    runtimeRootTrackConsumed != 0 ? "true" : "false");
+                        ImGui::Text("rm srcT %s[%d] | srcR %s[%d] | consume %s[%d]",
+                                    rootMotionTranslationBoneName[0] != 0 ? rootMotionTranslationBoneName : "<none>",
+                                    runtimeRootMotionTranslationJointIndex,
+                                    rootMotionRotationBoneName[0] != 0 ? rootMotionRotationBoneName : "<none>",
+                                    runtimeRootMotionRotationJointIndex,
+                                    rootMotionConsumeBoneName[0] != 0 ? rootMotionConsumeBoneName : "<none>",
+                                    runtimeRootMotionConsumeJointIndex);
+                    }
+                }
+
+                if (graphHandle[0] == 0) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "No animation graph assigned.");
+                }
+                if (!hasSkinnedMesh) {
+                    ImGui::TextColored(ImVec4(0.95f, 0.7f, 0.2f, 1.0f), "Animator is active without Skinned Mesh component.");
+                }
+            }
+        }
+    }
+
     bool hasMaterialComponent = hasValidEntity && (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentMaterial) != 0);
     const bool showMaterialSection = !hasMeshRenderer && (hasSelectedMaterial || hasMaterialComponent);
     if (showMaterialSection) {
@@ -2703,7 +3759,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         }
     }
 
-    if (hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentLight) != 0) {
+    const bool isAutoDrivenSkySun = hasValidEntity && MCEEditorEntityIsAutoDrivenSkySun(context, selectedEntityId) != 0;
+
+    if (isAutoDrivenSkySun) {
+        ImGui::PushStyleColor(ImGuiCol_Text, IM_COL32(235, 190, 110, 255));
+        ImGui::TextWrapped("Auto Sun is driven by the active Sky entity. It is hidden from normal authoring workflow and direct light edits are locked.");
+        ImGui::PopStyleColor();
+        ImGui::Spacing();
+    }
+
+    if (hasValidEntity && !isAutoDrivenSkySun && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentLight) != 0) {
         bool lightOpen = EditorUI::BeginSectionWithContext(context, 
             "Light",
             "Inspector.Light",
@@ -2778,6 +3843,761 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         }
     }
 
+    if (hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentReflectionProbe) != 0) {
+        bool probeOpen = EditorUI::BeginSectionWithContext(context,
+            "Reflection Probe",
+            "Inspector.ReflectionProbe",
+            "ReflectionProbeContext",
+            [&]() {
+                if (ImGui::MenuItem("Reset")) {
+                    MCEEditorSetReflectionProbe(context, selectedEntityId, 1, 5.0f, 5.0f, 5.0f, 1.0f, 0, 1.0f, 128, 1, 1);
+                }
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentReflectionProbe);
+                }
+            },
+            true);
+        if (probeOpen) {
+            uint32_t enabled = 1;
+            float boxExtentsX = 5.0f, boxExtentsY = 5.0f, boxExtentsZ = 5.0f;
+            float blendDistance = 1.0f;
+            int32_t priority = 0;
+            float intensity = 1.0f;
+            int32_t captureResolution = 128;
+            int32_t rebuildMode = 1;
+            uint32_t includeSky = 1;
+            if (MCEEditorGetReflectionProbe(context, selectedEntityId, &enabled, &boxExtentsX, &boxExtentsY, &boxExtentsZ, &blendDistance, &priority, &intensity, &captureResolution, &rebuildMode, &includeSky) != 0) {
+                bool dirty = false;
+                bool enabledBool = enabled != 0;
+                bool includeSkyBool = includeSky != 0;
+                float boxExtents[3] = {boxExtentsX, boxExtentsY, boxExtentsZ};
+                int priorityValue = static_cast<int>(priority);
+                constexpr int kReflectionProbePriorityMin = -1024;
+                constexpr int kReflectionProbePriorityMax = 1024;
+                const char *rebuildModes[] = {"Manual", "On Play"};
+                int rebuildModeIndex = rebuildMode <= 0 ? 0 : 1;
+                const int captureResolutionOptions[] = {64, 128, 256, 512};
+                const char *captureResolutionLabels[] = {"64", "128", "256", "512"};
+                int captureResolutionIndex = 1;
+                for (int optionIndex = 0; optionIndex < IM_ARRAYSIZE(captureResolutionOptions); ++optionIndex) {
+                    if (captureResolution == captureResolutionOptions[optionIndex]) {
+                        captureResolutionIndex = optionIndex;
+                        break;
+                    }
+                }
+
+                if (EditorUI::BeginPropertyTable("ReflectionProbeProps")) {
+                    dirty |= EditorUI::PropertyBool("Enabled", &enabledBool);
+                    dirty |= EditorUI::PropertyVec3("Box Extents",
+                                                    boxExtents,
+                                                    5.0f,
+                                                    EditorUIConstants::kPositionStep,
+                                                    0.0f,
+                                                    0.0f,
+                                                    "%.3f",
+                                                    false,
+                                                    true);
+                    dirty |= EditorUI::PropertyFloat("Blend Distance", &blendDistance, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 1.0f);
+                    if (EditorUI::PropertyInt("Priority",
+                                              &priorityValue,
+                                              kReflectionProbePriorityMin,
+                                              kReflectionProbePriorityMax)) {
+                        priority = static_cast<int32_t>(priorityValue);
+                        dirty = true;
+                    }
+                    if (EditorUI::PropertyCombo("Capture Resolution", &captureResolutionIndex, captureResolutionLabels, IM_ARRAYSIZE(captureResolutionLabels))) {
+                        captureResolution = captureResolutionOptions[captureResolutionIndex];
+                        dirty = true;
+                    }
+                    dirty |= EditorUI::PropertyBool("Include Sky", &includeSkyBool);
+                    if (EditorUI::PropertyCombo("Rebuild Mode", &rebuildModeIndex, rebuildModes, IM_ARRAYSIZE(rebuildModes))) {
+                        rebuildMode = rebuildModeIndex == 0 ? 0 : 1;
+                        dirty = true;
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+
+                if (ImGui::TreeNodeEx("ReflectionProbeAdvanced", ImGuiTreeNodeFlags_None, "Advanced")) {
+                    ImGui::TextWrapped("Reflection probe intensity remains serialized for compatibility, but normal workflow derives probe brightness from the captured scene and sky.");
+                    if (EditorUI::BeginPropertyTable("ReflectionProbeAdvancedProps")) {
+                        dirty |= EditorUI::PropertyFloat("Legacy Intensity", &intensity, 0.1f, 0.0f, 100.0f, "%.2f", true, true, 1.0f);
+                        EditorUI::EndPropertyTable();
+                    }
+                    ImGui::TreePop();
+                }
+
+                if (dirty) {
+                    MCEEditorSetReflectionProbe(context,
+                                                selectedEntityId,
+                                                enabledBool ? 1u : 0u,
+                                                boxExtents[0],
+                                                boxExtents[1],
+                                                boxExtents[2],
+                                                blendDistance,
+                                                priority,
+                                                intensity,
+                                                captureResolution,
+                                                rebuildMode,
+                                                includeSkyBool ? 1u : 0u);
+                }
+            }
+        }
+    }
+
+    if (hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentEnvironment) != 0) {
+        bool environmentOpen = EditorUI::BeginSectionWithContext(context,
+            "Environment",
+            "Inspector.Environment",
+            "EnvironmentContext",
+            [&]() {
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentEnvironment);
+                }
+            },
+            true);
+        if (environmentOpen) {
+            int32_t lookPreset = 0;
+            float lookMood = 0.0f;
+            float lookWarmth = 0.0f;
+            float lookCinematicAmount = 0.0f;
+            uint32_t enabled = 1;
+            int32_t sourceMode = 1;
+            char hdriHandle[64] = {0};
+            float defaultTimeOfDay = 14.0f;
+            float previewTimeOfDay = 14.0f;
+            float moonIntensity = 0.18f;
+            float moonSizeDegrees = 0.54f;
+            float starIntensity = 0.75f;
+            float starRichness = 1.0f;
+            float milkyWayIntensity = 1.0f;
+            float milkyWayChroma = 1.0f;
+            float milkyWayRotation = 0.0f;
+            float nightBrightness = 1.0f;
+            int32_t weatherPrimary = AtmosphereWeatherClear;
+            int32_t weatherSecondary = AtmosphereWeatherClear;
+            float weatherBlend = 0.0f;
+            float weatherAmount = 0.0f;
+            float atmosphereAmount = 0.28f;
+            float atmosphereHaze = 0.28f;
+            float atmosphereDensity = 1.0f;
+            float atmosphereTemperature = 0.0f;
+            float atmosphereMood = 0.0f;
+            float cloudCoverage = 0.30f;
+            int32_t cloudStyle = AtmosphereCloudPuffy;
+            int32_t cloudRenderMode = 0;
+            float fogAmount = 0.03f;
+            float fogHeight = 0.0f;
+            float fogDistance = 3.0f;
+            uint32_t realtimeUpdate = 0;
+            uint32_t autoRebuildOnChange = 0;
+            uint32_t needsRebuild = 0;
+            uint32_t iblDirtyState = 0;
+            uint32_t iblRebuildingState = 0;
+            int32_t iblCurrentQuality = -1;
+            int32_t iblLastBuiltQuality = -1;
+            char iblFailureMessage[256] = {0};
+            MCEEnvironmentLookBridge lookBridge = {};
+            MCEEnvironmentSourceBridge sourceBridge = {};
+            MCEEnvironmentTimeBridge timeBridge = {};
+            MCEEnvironmentAtmosphereBridge atmosphereBridge = {};
+            MCEEnvironmentCelestialBridge celestialBridge = {};
+            MCEEnvironmentWeatherCloudBridge weatherCloudBridge = {};
+            MCEEnvironmentFogBridge fogBridge = {};
+            MCEEnvironmentIBLBridge iblBridge = {};
+
+            if (MCEEditorGetEnvironmentLookBridge(context, selectedEntityId, &lookBridge) != 0 &&
+                MCEEditorGetEnvironmentSourceBridge(context, selectedEntityId, &sourceBridge) != 0 &&
+                MCEEditorGetEnvironmentTimeBridge(context, selectedEntityId, &timeBridge) != 0 &&
+                MCEEditorGetEnvironmentAtmosphereBridge(context, selectedEntityId, &atmosphereBridge) != 0 &&
+                MCEEditorGetEnvironmentCelestialBridge(context, selectedEntityId, &celestialBridge) != 0 &&
+                MCEEditorGetEnvironmentWeatherCloudBridge(context, selectedEntityId, &weatherCloudBridge) != 0 &&
+                MCEEditorGetEnvironmentFogBridge(context, selectedEntityId, &fogBridge) != 0 &&
+                MCEEditorGetEnvironmentIBLStatusBridge(context, selectedEntityId, &iblBridge) != 0 &&
+                MCEEditorGetEnvironmentSource(context, selectedEntityId, &enabled, &sourceMode, hdriHandle, sizeof(hdriHandle)) != 0 &&
+                MCEEditorGetEnvironmentCelestial(context, selectedEntityId, &defaultTimeOfDay, &previewTimeOfDay, &moonIntensity, &moonSizeDegrees, &starIntensity) != 0 &&
+                MCEEditorGetEnvironmentWeather(context, selectedEntityId, &weatherPrimary, &weatherSecondary, &weatherBlend, &weatherAmount) != 0 &&
+                MCEEditorGetEnvironmentAtmosphere(context, selectedEntityId, &atmosphereAmount, &atmosphereHaze, &atmosphereDensity, &atmosphereTemperature, &atmosphereMood) != 0 &&
+                MCEEditorGetEnvironmentClouds(context, selectedEntityId, &cloudCoverage, &cloudStyle) != 0 &&
+                MCEEditorGetEnvironmentFog(context, selectedEntityId, &fogAmount, &fogHeight, &fogDistance) != 0 &&
+                MCEEditorGetEnvironmentIBL(context, selectedEntityId,
+                                           &realtimeUpdate,
+                                           &autoRebuildOnChange,
+                                           &needsRebuild,
+                                           &iblDirtyState,
+                                           &iblRebuildingState,
+                                           &iblCurrentQuality,
+                                           &iblLastBuiltQuality,
+                                           iblFailureMessage,
+                                           sizeof(iblFailureMessage)) != 0) {
+                lookPreset = lookBridge.preset;
+                lookMood = lookBridge.mood;
+                lookWarmth = lookBridge.warmth;
+                lookCinematicAmount = lookBridge.cinematicAmount;
+                enabled = sourceBridge.enabled;
+                sourceMode = sourceBridge.mode;
+                defaultTimeOfDay = timeBridge.defaultTimeOfDay;
+                previewTimeOfDay = timeBridge.previewTimeOfDay;
+                moonIntensity = celestialBridge.moonIntensity;
+                moonSizeDegrees = celestialBridge.moonSizeDegrees;
+                starIntensity = celestialBridge.starIntensity;
+                starRichness = celestialBridge.starRichness;
+                milkyWayIntensity = celestialBridge.milkyWayIntensity;
+                milkyWayChroma = celestialBridge.milkyWayChroma;
+                milkyWayRotation = celestialBridge.milkyWayRotation;
+                nightBrightness = celestialBridge.nightBrightness;
+                weatherPrimary = weatherCloudBridge.weatherPrimary;
+                weatherSecondary = weatherCloudBridge.weatherSecondary;
+                weatherBlend = weatherCloudBridge.weatherBlend;
+                weatherAmount = weatherCloudBridge.weatherAmount;
+                atmosphereAmount = atmosphereBridge.amount;
+                atmosphereHaze = atmosphereBridge.haze;
+                atmosphereDensity = atmosphereBridge.density;
+                atmosphereTemperature = atmosphereBridge.temperature;
+                atmosphereMood = atmosphereBridge.mood;
+                cloudCoverage = weatherCloudBridge.cloudCoverage;
+                cloudStyle = weatherCloudBridge.cloudStyle;
+                cloudRenderMode = weatherCloudBridge.cloudRenderMode;
+                fogAmount = fogBridge.amount;
+                fogHeight = fogBridge.height;
+                fogDistance = fogBridge.distance;
+                realtimeUpdate = iblBridge.realtimeUpdate;
+                autoRebuildOnChange = iblBridge.autoRebuildOnChange;
+                needsRebuild = iblBridge.needsRebuild;
+                iblDirtyState = iblBridge.dirty;
+                iblRebuildingState = iblBridge.isRebuilding;
+                iblCurrentQuality = iblBridge.currentRebuildQuality;
+                iblLastBuiltQuality = iblBridge.lastBuiltQuality;
+
+                PendingSkyState &pending = GetPendingSkyState(state);
+                if (strncmp(pending.entityId, selectedEntityId, sizeof(pending.entityId)) != 0) {
+                    memset(&pending, 0, sizeof(pending));
+                    strncpy(pending.entityId, selectedEntityId, sizeof(pending.entityId) - 1);
+                }
+                EnvironmentPickerState &envPicker = GetEnvironmentPickerState(state);
+                const bool envPickerDirty = envPicker.didPick && (strcmp(envPicker.entityId, selectedEntityId) == 0);
+                if (!envPickerDirty) {
+                    strncpy(pending.hdriHandle, hdriHandle, sizeof(pending.hdriHandle) - 1);
+                    pending.hdriHandle[sizeof(pending.hdriHandle) - 1] = 0;
+                }
+                char *editHdriHandle = pending.hdriHandle;
+
+                int32_t editSourceMode = sourceMode;
+                uint32_t editEnabled = enabled;
+                float editDefaultTimeOfDay = defaultTimeOfDay;
+                float editPreviewTimeOfDay = previewTimeOfDay;
+                float editMoonIntensity = moonIntensity;
+                float editMoonSizeDegrees = moonSizeDegrees;
+                float editStarIntensity = starIntensity;
+                float editStarRichness = starRichness;
+                float editMilkyWayIntensity = milkyWayIntensity;
+                float editMilkyWayChroma = milkyWayChroma;
+                float editMilkyWayRotation = milkyWayRotation;
+                float editNightBrightness = nightBrightness;
+                int32_t editWeatherPrimary = weatherPrimary;
+                int32_t editWeatherSecondary = weatherSecondary;
+                float editWeatherBlend = weatherBlend;
+                float editWeatherAmount = weatherAmount;
+                float editAtmosphereAmount = atmosphereAmount;
+                float editAtmosphereHaze = atmosphereHaze;
+                float editAtmosphereDensity = atmosphereDensity;
+                float editAtmosphereTemperature = atmosphereTemperature;
+                float editAtmosphereMood = atmosphereMood;
+                float editCloudCoverage = cloudCoverage;
+                int32_t editCloudStyle = cloudStyle;
+                int32_t editCloudRenderMode = cloudRenderMode;
+                float editFogAmount = fogAmount;
+                float editFogHeight = fogHeight;
+                float editFogDistance = fogDistance;
+                uint32_t editRealtimeUpdate = realtimeUpdate;
+                uint32_t editAutoRebuildOnChange = autoRebuildOnChange;
+                int32_t editLookPreset = lookPreset;
+
+                const char *lookPresetNames[] = {"Custom", "Clear Noon", "Golden Hour", "Blue Hour", "Moonlit Night", "Starry Night", "Milky Way Night", "Foggy Morning", "Overcast", "Stormy"};
+                const char *lookPresetDescriptions[] = {
+                    "Custom authored environment.",
+                    "Bright clear daytime environment.",
+                    "Warm low-sun cinematic look.",
+                    "Cool twilight transition.",
+                    "Moon-dominant night sky.",
+                    "Dark clear stars.",
+                    "Deep night with galaxy focus.",
+                    "Low sun and aerial fog.",
+                    "Soft cloudy sky.",
+                    "Dark dramatic clouds."
+                };
+                const char *sourceModeNames[] = {"HDRI", "Procedural"};
+                const char *weatherTypeNames[] = {"Clear", "Partly Cloudy", "Overcast", "Storm", "Foggy", "Custom"};
+                const char *cloudStyleNames[] = {"Clear", "Wispy", "Puffy", "Layered", "Overcast", "Storm", "Custom"};
+                const char *cloudRenderModeNames[] = {"Both", "Procedural", "Cards"};
+                const int lookPresetCount = IM_ARRAYSIZE(lookPresetNames);
+                int lookPresetIndex = editLookPreset;
+                if (lookPresetIndex < 0 || lookPresetIndex >= lookPresetCount) {
+                    lookPresetIndex = 0;
+                }
+                const int sourceModeIndex = editSourceMode == 0 ? 0 : 1;
+                const char *iblStatusLabel = "Ready";
+                ImVec4 iblStatusColor = ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled);
+                if (iblRebuildingState != 0) {
+                    iblStatusLabel = "Rebuilding";
+                    iblStatusColor = ImVec4(0.4f, 0.7f, 1.0f, 1.0f);
+                } else if (iblFailureMessage[0] != 0 || iblBridge.hasFailure != 0) {
+                    iblStatusLabel = "Error";
+                    iblStatusColor = ImVec4(1.0f, 0.35f, 0.3f, 1.0f);
+                } else if (needsRebuild != 0 || iblDirtyState != 0) {
+                    iblStatusLabel = "Dirty";
+                    iblStatusColor = ImVec4(1.0f, 0.75f, 0.2f, 1.0f);
+                }
+
+                bool sourceDirty = false;
+                bool celestialDirty = false;
+                bool previewTimeDirty = false;
+                bool weatherDirty = false;
+                bool atmosphereDirty = false;
+                bool cloudsDirty = false;
+                bool fogDirty = false;
+                bool iblDirty = false;
+
+                ImGui::Spacing();
+                ImGui::Text("Mode: %s", sourceModeNames[sourceModeIndex]);
+                ImGui::SameLine();
+                ImGui::TextDisabled("  Look: %s", lookPresetNames[lookPresetIndex]);
+                ImGui::SameLine();
+                ImGui::TextDisabled("  Time: %.2f", editPreviewTimeOfDay);
+                ImGui::SameLine();
+                ImGui::TextColored(iblStatusColor, "  IBL: %s", iblStatusLabel);
+                if (iblFailureMessage[0] != 0 && ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", iblFailureMessage);
+                }
+                if (ImGui::Button("Rebuild IBL##EnvironmentSummary")) {
+                    MCEEditorRequestEnvironmentIBLRebuild(context, selectedEntityId);
+                }
+                ImGui::SameLine();
+                if (ImGui::Button("Reset Preview Time")) {
+                    MCEEditorSetEnvironmentPreviewTime(context, selectedEntityId, editDefaultTimeOfDay);
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Look");
+                if (EditorUI::BeginPropertyTable("EnvironmentLookProps")) {
+                    if (EditorUI::PropertyCombo("Preset", &editLookPreset, lookPresetNames, IM_ARRAYSIZE(lookPresetNames))) {
+                        MCEEditorApplyEnvironmentPreset(context, selectedEntityId, editLookPreset);
+                    }
+                    bool lookDirty = false;
+                    lookDirty |= EditorUI::PropertyFloat("Mood",
+                                                         &lookMood,
+                                                         0.02f,
+                                                         -1.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.0f);
+                    lookDirty |= EditorUI::PropertyFloat("Warmth",
+                                                         &lookWarmth,
+                                                         0.02f,
+                                                         -1.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.0f);
+                    lookDirty |= EditorUI::PropertyFloat("Cinematic",
+                                                         &lookCinematicAmount,
+                                                         0.02f,
+                                                         0.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.0f);
+                    if (lookDirty) {
+                        MCEEnvironmentLookBridge editLook = lookBridge;
+                        editLook.preset = 0;
+                        editLook.mood = lookMood;
+                        editLook.warmth = lookWarmth;
+                        editLook.cinematicAmount = lookCinematicAmount;
+                        MCEEditorSetEnvironmentLookBridge(context, selectedEntityId, &editLook);
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+                ImGui::TextWrapped("%s", lookPresetDescriptions[lookPresetIndex]);
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Lighting Source");
+                if (EditorUI::BeginPropertyTable("EnvironmentSourceProps")) {
+                    bool enabledBool = editEnabled != 0;
+                    if (EditorUI::PropertyBool("Enabled", &enabledBool)) {
+                        editEnabled = enabledBool ? 1 : 0;
+                        sourceDirty = true;
+                    }
+                    sourceDirty |= EditorUI::PropertyCombo("Mode", &editSourceMode, sourceModeNames, IM_ARRAYSIZE(sourceModeNames));
+                    if (editSourceMode == 0) {
+                        sourceDirty |= DrawEnvironmentHandleRow(context, state, "HDRI", editHdriHandle, sizeof(pending.hdriHandle), "MCE_ASSET_ENVIRONMENT", selectedEntityId);
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+                if (envPickerDirty) {
+                    envPicker.didPick = false;
+                    sourceDirty = true;
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Time & Sun");
+                if (EditorUI::BeginPropertyTable("EnvironmentCelestialProps")) {
+                    celestialDirty |= EditorUI::PropertyFloat("Default Time",
+                                                              &editDefaultTimeOfDay,
+                                                              0.1f,
+                                                              0.0f,
+                                                              24.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              14.0f);
+                    previewTimeDirty |= EditorUI::PropertyFloat("Preview Time",
+                                                                &editPreviewTimeOfDay,
+                                                                0.1f,
+                                                                0.0f,
+                                                                24.0f,
+                                                                "%.2f",
+                                                                true,
+                                                                true,
+                                                                editDefaultTimeOfDay);
+                    EditorUI::EndPropertyTable();
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Celestial / Night");
+                if (EditorUI::BeginPropertyTable("EnvironmentNightProps")) {
+                    celestialDirty |= EditorUI::PropertyFloat("Moon Intensity",
+                                                              &editMoonIntensity,
+                                                              0.01f,
+                                                              0.0f,
+                                                              10.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              0.18f);
+                    celestialDirty |= EditorUI::PropertyFloat("Moon Size",
+                                                              &editMoonSizeDegrees,
+                                                              0.01f,
+                                                              0.01f,
+                                                              5.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              0.54f);
+                    celestialDirty |= EditorUI::PropertyFloat("Star Visibility",
+                                                              &editStarIntensity,
+                                                              0.01f,
+                                                              0.0f,
+                                                              10.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              0.75f);
+                    celestialDirty |= EditorUI::PropertyFloat("Star Richness",
+                                                              &editStarRichness,
+                                                              0.02f,
+                                                              0.0f,
+                                                              3.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              1.0f);
+                    celestialDirty |= EditorUI::PropertyFloat("Milky Way Intensity",
+                                                              &editMilkyWayIntensity,
+                                                              0.02f,
+                                                              0.0f,
+                                                              3.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              1.0f);
+                    celestialDirty |= EditorUI::PropertyFloat("Milky Way Chroma",
+                                                              &editMilkyWayChroma,
+                                                              0.02f,
+                                                              0.0f,
+                                                              3.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              1.0f);
+                    celestialDirty |= EditorUI::PropertyFloat("Milky Way Rotation",
+                                                              &editMilkyWayRotation,
+                                                              0.01f,
+                                                              -1.0f,
+                                                              1.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              0.0f);
+                    celestialDirty |= EditorUI::PropertyFloat("Night Brightness",
+                                                              &editNightBrightness,
+                                                              0.02f,
+                                                              0.0f,
+                                                              3.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              1.0f);
+                    EditorUI::EndPropertyTable();
+                }
+                ImGui::TextDisabled("Moon texture and Milky Way texture use built-in runtime assets.");
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Weather / Clouds");
+                if (EditorUI::BeginPropertyTable("EnvironmentWeatherProps")) {
+                    weatherDirty |= EditorUI::PropertyCombo("Weather", &editWeatherPrimary, weatherTypeNames, IM_ARRAYSIZE(weatherTypeNames));
+                    weatherDirty |= EditorUI::PropertyCombo("Blend To", &editWeatherSecondary, weatherTypeNames, IM_ARRAYSIZE(weatherTypeNames));
+                    weatherDirty |= EditorUI::PropertyFloat("Blend",
+                                                            &editWeatherBlend,
+                                                            0.02f,
+                                                            0.0f,
+                                                            1.0f,
+                                                            "%.2f",
+                                                            true,
+                                                            true,
+                                                            0.0f);
+                    weatherDirty |= EditorUI::PropertyFloat("Amount",
+                                                            &editWeatherAmount,
+                                                            0.02f,
+                                                            0.0f,
+                                                            1.0f,
+                                                            "%.2f",
+                                                            true,
+                                                            true,
+                                                            0.0f);
+                    cloudsDirty |= EditorUI::PropertyFloat("Coverage",
+                                                           &editCloudCoverage,
+                                                           0.02f,
+                                                           0.0f,
+                                                           1.0f,
+                                                           "%.2f",
+                                                           true,
+                                                           true,
+                                                           0.30f);
+                    cloudsDirty |= EditorUI::PropertyCombo("Render Mode", &editCloudRenderMode, cloudRenderModeNames, IM_ARRAYSIZE(cloudRenderModeNames));
+                    cloudsDirty |= EditorUI::PropertyCombo("Style", &editCloudStyle, cloudStyleNames, IM_ARRAYSIZE(cloudStyleNames));
+                    EditorUI::EndPropertyTable();
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Atmosphere");
+                if (EditorUI::BeginPropertyTable("EnvironmentAtmosphereProps")) {
+                    atmosphereDirty |= EditorUI::PropertyFloat("Atmosphere",
+                                                               &editAtmosphereAmount,
+                                                               0.02f,
+                                                               0.0f,
+                                                               1.0f,
+                                                               "%.2f",
+                                                               true,
+                                                               true,
+                                                               0.28f);
+                    atmosphereDirty |= EditorUI::PropertyFloat("Haze",
+                                                               &editAtmosphereHaze,
+                                                               0.02f,
+                                                               0.0f,
+                                                               1.0f,
+                                                               "%.2f",
+                                                               true,
+                                                               true,
+                                                               0.28f);
+                    atmosphereDirty |= EditorUI::PropertyFloat("Horizon Depth",
+                                                               &editAtmosphereDensity,
+                                                               0.02f,
+                                                               0.0f,
+                                                               10.0f,
+                                                               "%.2f",
+                                                               true,
+                                                               true,
+                                                               1.0f);
+                    atmosphereDirty |= EditorUI::PropertyFloat("Temperature",
+                                                               &editAtmosphereTemperature,
+                                                               0.02f,
+                                                               -1.0f,
+                                                               1.0f,
+                                                               "%.2f",
+                                                               true,
+                                                               true,
+                                                               0.0f);
+                    atmosphereDirty |= EditorUI::PropertyFloat("Mood Bias",
+                                                               &editAtmosphereMood,
+                                                               0.02f,
+                                                               -1.0f,
+                                                               1.0f,
+                                                               "%.2f",
+                                                               true,
+                                                               true,
+                                                               0.0f);
+                    EditorUI::EndPropertyTable();
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Fog / Aerial Perspective");
+                if (EditorUI::BeginPropertyTable("EnvironmentFogProps")) {
+                    fogDirty |= EditorUI::PropertyFloat("Fog Amount",
+                                                        &editFogAmount,
+                                                        0.005f,
+                                                        0.0f,
+                                                        1.0f,
+                                                        "%.3f",
+                                                        true,
+                                                        true,
+                                                        0.03f);
+                    fogDirty |= EditorUI::PropertyFloat("Height",
+                                                        &editFogHeight,
+                                                        0.1f,
+                                                        -1000.0f,
+                                                        1000.0f,
+                                                        "%.2f",
+                                                        true,
+                                                        true,
+                                                        0.0f);
+                    fogDirty |= EditorUI::PropertyFloat("Distance",
+                                                        &editFogDistance,
+                                                        0.1f,
+                                                        0.0f,
+                                                        1000.0f,
+                                                        "%.2f",
+                                                        true,
+                                                        true,
+                                                        3.0f);
+                    EditorUI::EndPropertyTable();
+                }
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Lighting / IBL");
+                bool realtimeBool = editRealtimeUpdate != 0;
+                if (ImGui::Checkbox("Realtime Update", &realtimeBool)) {
+                    editRealtimeUpdate = realtimeBool ? 1 : 0;
+                    iblDirty = true;
+                }
+                ImGui::SameLine();
+                bool autoRebuildBool = editAutoRebuildOnChange != 0;
+                if (ImGui::Checkbox("Auto Rebuild", &autoRebuildBool)) {
+                    editAutoRebuildOnChange = autoRebuildBool ? 1 : 0;
+                    iblDirty = true;
+                }
+                if (ImGui::Button("Rebuild IBL##EnvironmentLighting")) {
+                    MCEEditorRequestEnvironmentIBLRebuild(context, selectedEntityId);
+                }
+                if (iblRebuildingState != 0) {
+                    ImGui::SameLine();
+                    const char *qualityLabel = iblCurrentQuality == 0 ? "interactive" : (iblCurrentQuality == 1 ? "final" : "unknown");
+                    ImGui::TextColored(ImVec4(0.4f, 0.7f, 1.0f, 1.0f), "IBL rebuilding (%s).", qualityLabel);
+                } else if (iblFailureMessage[0] != 0) {
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.3f, 1.0f), "IBL error.");
+                    if (ImGui::IsItemHovered()) {
+                        ImGui::SetTooltip("%s", iblFailureMessage);
+                    }
+                } else if (needsRebuild != 0 || iblDirtyState != 0) {
+                    ImGui::SameLine();
+                    ImGui::TextColored(ImVec4(1.0f, 0.75f, 0.2f, 1.0f), "IBL rebuild required.");
+                } else {
+                    ImGui::SameLine();
+                    if (iblLastBuiltQuality == 0) {
+                        ImGui::TextDisabled("IBL ready (interactive).");
+                    } else if (iblLastBuiltQuality == 1) {
+                        ImGui::TextDisabled("IBL ready (final).");
+                    } else {
+                        ImGui::TextDisabled("IBL ready.");
+                    }
+                }
+
+                if (ImGui::TreeNodeEx("EnvironmentAdvanced", ImGuiTreeNodeFlags_None, "Advanced / Debug")) {
+                    ImGui::TextWrapped("Runtime preview state and IBL rebuild state are transient. Raw timing controls are shown here for diagnostics.");
+                    MCEEnvironmentTimeBridge editTime = timeBridge;
+                    bool timeRuntimeDirty = false;
+                    if (EditorUI::BeginPropertyTable("EnvironmentAdvancedProps")) {
+                        int timeMode = editTime.timeControlMode;
+                        timeRuntimeDirty |= EditorUI::PropertyInt("Time Mode", &timeMode, 0, 2);
+                        editTime.timeControlMode = timeMode;
+                        timeRuntimeDirty |= EditorUI::PropertyFloat("Day Length",
+                                                                    &editTime.dayLengthSeconds,
+                                                                    1.0f,
+                                                                    1.0f,
+                                                                    86400.0f,
+                                                                    "%.1f",
+                                                                    true,
+                                                                    true,
+                                                                    300.0f);
+                        timeRuntimeDirty |= EditorUI::PropertyFloat("Time Scale",
+                                                                    &editTime.timeScale,
+                                                                    0.1f,
+                                                                    -100.0f,
+                                                                    100.0f,
+                                                                    "%.2f",
+                                                                    true,
+                                                                    true,
+                                                                    1.0f);
+                        EditorUI::EndPropertyTable();
+                    }
+                    if (timeRuntimeDirty) {
+                        MCEEditorSetEnvironmentTimeBridge(context, selectedEntityId, &editTime);
+                    }
+                    ImGui::TreePop();
+                }
+
+                if (sourceDirty) {
+                    MCEEditorSetEnvironmentSource(context, selectedEntityId, editEnabled, editSourceMode, editHdriHandle);
+                }
+                if (celestialDirty) {
+                    MCEEnvironmentTimeBridge editTime = timeBridge;
+                    editTime.defaultTimeOfDay = editDefaultTimeOfDay;
+                    editTime.previewTimeOfDay = editPreviewTimeOfDay;
+                    MCEEditorSetEnvironmentTimeBridge(context, selectedEntityId, &editTime);
+                    MCEEnvironmentCelestialBridge editCelestial = celestialBridge;
+                    editCelestial.moonIntensity = editMoonIntensity;
+                    editCelestial.moonSizeDegrees = editMoonSizeDegrees;
+                    editCelestial.starIntensity = editStarIntensity;
+                    editCelestial.starRichness = editStarRichness;
+                    editCelestial.milkyWayIntensity = editMilkyWayIntensity;
+                    editCelestial.milkyWayChroma = editMilkyWayChroma;
+                    editCelestial.milkyWayRotation = editMilkyWayRotation;
+                    editCelestial.nightBrightness = editNightBrightness;
+                    MCEEditorSetEnvironmentCelestialBridge(context, selectedEntityId, &editCelestial);
+                }
+                if (previewTimeDirty) {
+                    MCEEditorSetEnvironmentPreviewTime(context, selectedEntityId, editPreviewTimeOfDay);
+                }
+                if (weatherDirty || cloudsDirty) {
+                    MCEEnvironmentWeatherCloudBridge editWeatherCloud = weatherCloudBridge;
+                    editWeatherCloud.weatherPrimary = editWeatherPrimary;
+                    editWeatherCloud.weatherSecondary = editWeatherSecondary;
+                    editWeatherCloud.weatherBlend = editWeatherBlend;
+                    editWeatherCloud.weatherAmount = editWeatherAmount;
+                    editWeatherCloud.cloudCoverage = editCloudCoverage;
+                    editWeatherCloud.cloudStyle = editCloudStyle;
+                    editWeatherCloud.cloudRenderMode = editCloudRenderMode;
+                    MCEEditorSetEnvironmentWeatherCloudBridge(context, selectedEntityId, &editWeatherCloud);
+                }
+                if (atmosphereDirty) {
+                    MCEEnvironmentAtmosphereBridge editAtmosphere = atmosphereBridge;
+                    editAtmosphere.amount = editAtmosphereAmount;
+                    editAtmosphere.haze = editAtmosphereHaze;
+                    editAtmosphere.density = editAtmosphereDensity;
+                    editAtmosphere.temperature = editAtmosphereTemperature;
+                    editAtmosphere.mood = editAtmosphereMood;
+                    MCEEditorSetEnvironmentAtmosphereBridge(context, selectedEntityId, &editAtmosphere);
+                }
+                if (fogDirty) {
+                    MCEEnvironmentFogBridge editFog = fogBridge;
+                    editFog.amount = editFogAmount;
+                    editFog.height = editFogHeight;
+                    editFog.distance = editFogDistance;
+                    MCEEditorSetEnvironmentFogBridge(context, selectedEntityId, &editFog);
+                }
+                if (iblDirty) {
+                    MCEEnvironmentIBLBridge editIBL = iblBridge;
+                    editIBL.realtimeUpdate = editRealtimeUpdate;
+                    editIBL.autoRebuildOnChange = editAutoRebuildOnChange;
+                    MCEEditorSetEnvironmentIBLConfigBridge(context, selectedEntityId, &editIBL);
+                }
+            }
+        }
+    }
+
     if (hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentSkyLight) != 0) {
         bool skyOpen = EditorUI::BeginSectionWithContext(context, 
             "Sky",
@@ -2787,6 +4607,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 if (ImGui::MenuItem("Reset")) {
                     const char *empty = "";
                     MCEEditorSetSkyLight(context, selectedEntityId, 0, 1,
+                                         14.0f,
+                                         AtmosphereWeatherClear,
+                                         AtmosphereWeatherClear,
+                                         0.0f,
+                                         0.0f,
+                                         0.28f,
+                                         0.30f,
+                                         AtmosphereCloudPuffy,
+                                         0.0f,
+                                         0.0f,
                                          1.0f, 1.0f, 1.0f, 1.0f,
                                          2.0f, 0.0f, 30.0f,
                                          EditorUIConstants::kDefaultSkySunSize,
@@ -2812,6 +4642,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                          EditorUIConstants::kDefaultCloudThickness,
                                          EditorUIConstants::kDefaultCloudBrightness,
                                          EditorUIConstants::kDefaultCloudSunInfluence,
+                                         0.03f,
+                                         0.0f,
+                                         3.0f,
                                          1,
                                          empty);
                 }
@@ -2836,6 +4669,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
 
             int32_t mode = 0;
             uint32_t enabled = 1;
+            float timeOfDay = 14.0f;
+            int32_t weatherType = AtmosphereWeatherClear;
+            int32_t secondaryWeatherType = AtmosphereWeatherClear;
+            float weatherBlend = 0.0f;
+            float weatherAmount = 0.0f;
+            float atmosphereAmount = 0.28f;
+            float cloudCoverage = 0.30f;
+            int32_t cloudStyle = AtmosphereCloudPuffy;
+            float temperature = 0.0f;
+            float mood = 0.0f;
             float intensity = 1.0f;
             float tintX = 1.0f, tintY = 1.0f, tintZ = 1.0f;
             float turbidity = 2.0f;
@@ -2865,9 +4708,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             float cloudsThickness = 0.35f;
             float cloudsBrightness = 1.0f;
             float cloudsSunInfluence = 1.0f;
+            float fogAmount = 0.03f;
+            float fogHeight = 0.0f;
+            float fogDistance = 3.0f;
             uint32_t autoRebuild = 1;
             uint32_t needsRebuild = 0;
-            if (MCEEditorGetSkyLight(context, selectedEntityId, &mode, &enabled, &intensity, &tintX, &tintY, &tintZ,
+            if (MCEEditorGetSkyLight(context, selectedEntityId, &mode, &enabled,
+                                     &timeOfDay, &weatherType, &secondaryWeatherType, &weatherBlend, &weatherAmount,
+                                     &atmosphereAmount, &cloudCoverage, &cloudStyle,
+                                     &temperature, &mood,
+                                     &intensity, &tintX, &tintY, &tintZ,
                                      &turbidity, &azimuth, &elevation, &sunSize,
                                      &zenithTintX, &zenithTintY, &zenithTintZ,
                                      &horizonTintX, &horizonTintY, &horizonTintZ,
@@ -2880,6 +4730,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                      &cloudsWindX, &cloudsWindY,
                                      &cloudsHeight, &cloudsThickness,
                                      &cloudsBrightness, &cloudsSunInfluence,
+                                     &fogAmount, &fogHeight, &fogDistance,
                                      &autoRebuild, &needsRebuild,
                                      hdriHandle, sizeof(hdriHandle)) != 0) {
                 const char* modes[] = {"HDRI", "Procedural"};
@@ -2891,6 +4742,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
 
                 int32_t editMode = mode;
                 uint32_t editEnabled = enabled;
+                float editTimeOfDay = timeOfDay;
+                int32_t editWeatherType = weatherType;
+                int32_t editSecondaryWeatherType = secondaryWeatherType;
+                float editWeatherBlend = weatherBlend;
+                float editWeatherAmount = weatherAmount;
+                float editAtmosphereAmount = atmosphereAmount;
+                float editCloudCoverage = cloudCoverage;
+                int32_t editCloudStyle = cloudStyle;
+                float editTemperature = temperature;
+                float editMood = mood;
                 float editIntensity = intensity;
                 float editTintX = tintX;
                 float editTintY = tintY;
@@ -2927,6 +4788,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 float editCloudsThickness = cloudsThickness;
                 float editCloudsBrightness = cloudsBrightness;
                 float editCloudsSunInfluence = cloudsSunInfluence;
+                float editFogAmount = fogAmount;
+                float editFogHeight = fogHeight;
+                float editFogDistance = fogDistance;
                 EnvironmentPickerState &envPicker = GetEnvironmentPickerState(state);
                 const bool envPickerDirty = envPicker.didPick && (strcmp(envPicker.entityId, selectedEntityId) == 0);
                 if (!envPickerDirty) {
@@ -2942,8 +4806,45 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     pending.presetIndex = 0;
                 }
 
+                auto applyPresetToEdits = [&](const AtmospherePreset &preset) {
+                    editMode = preset.mode;
+                    editEnabled = preset.enabled;
+                    editTimeOfDay = preset.timeOfDay;
+                    editWeatherType = preset.primaryWeatherType;
+                    editSecondaryWeatherType = preset.secondaryWeatherType;
+                    editWeatherBlend = preset.weatherBlend;
+                    editWeatherAmount = preset.weatherAmount;
+                    editAtmosphereAmount = preset.atmosphereAmount;
+                    editCloudCoverage = preset.cloudCoverage;
+                    editCloudStyle = preset.cloudStyle;
+                    editTemperature = preset.temperature;
+                    editMood = preset.mood;
+                    editFogAmount = preset.fogAmount;
+                    editFogHeight = preset.fogHeight;
+                    editFogDistance = preset.fogDistance;
+                };
+
+                const char *weatherTypeNames[] = {"Clear", "Partly Cloudy", "Overcast", "Storm", "Foggy", "Custom"};
+                const char *cloudStyleNames[] = {"Clear", "Wispy", "Puffy", "Layered", "Overcast", "Storm", "Custom"};
+
+                ImGui::Spacing();
+                ImGui::TextDisabled("Sky Source");
+                if (EditorUI::BeginPropertyTable("SkySourceProps")) {
+                    bool enabledBool = editEnabled != 0;
+                    if (EditorUI::PropertyBool("Enabled", &enabledBool)) {
+                        editEnabled = enabledBool ? 1 : 0;
+                        dirty = true;
+                    }
+                    dirty |= EditorUI::PropertyCombo("Mode", &editMode, modes, IM_ARRAYSIZE(modes));
+                    if (editMode == 0) {
+                        dirty |= DrawEnvironmentHandleRow(context, state, "HDRI", editHdriHandle, sizeof(pending.hdriHandle), "MCE_ASSET_ENVIRONMENT", selectedEntityId);
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+
                 if (editMode == 1) {
-                    ImGui::TextDisabled("Mood Presets");
+                    ImGui::Spacing();
+                    ImGui::TextDisabled("Atmosphere State");
                     if (EditorUI::BeginPropertyTable("SkyPresetProps")) {
                         if (EditorUI::PropertyCombo("Preset", &presetIndex, kSkyPresetNames, IM_ARRAYSIZE(kSkyPresetNames))) {
                             pending.presetIndex = presetIndex;
@@ -2951,328 +4852,260 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                         EditorUI::EndPropertyTable();
                     }
                     if (ImGui::Button("Apply Preset")) {
-                        const SkyPreset &preset = kSkyPresets[presetIndex];
-                        editMode = preset.mode;
-                        editEnabled = preset.enabled;
-                        editIntensity = preset.intensity;
-                        editTintX = preset.tintX;
-                        editTintY = preset.tintY;
-                        editTintZ = preset.tintZ;
-                        editTurbidity = preset.turbidity;
-                        editAzimuth = preset.azimuth;
-                        editElevation = preset.elevation;
-                        editSunSize = preset.sunSize;
-                        editZenithTintX = preset.zenithTintX;
-                        editZenithTintY = preset.zenithTintY;
-                        editZenithTintZ = preset.zenithTintZ;
-                        editHorizonTintX = preset.horizonTintX;
-                        editHorizonTintY = preset.horizonTintY;
-                        editHorizonTintZ = preset.horizonTintZ;
-                        editGradientStrength = preset.gradientStrength;
-                        editHazeDensity = preset.hazeDensity;
-                        editHazeFalloff = preset.hazeFalloff;
-                        editHazeHeight = preset.hazeHeight;
-                        editOzoneStrength = preset.ozoneStrength;
-                        editOzoneTintX = preset.ozoneTintX;
-                        editOzoneTintY = preset.ozoneTintY;
-                        editOzoneTintZ = preset.ozoneTintZ;
-                        editSunHaloSize = preset.sunHaloSize;
-                        editSunHaloIntensity = preset.sunHaloIntensity;
-                        editSunHaloSoftness = preset.sunHaloSoftness;
-                        editCloudsEnabled = preset.cloudsEnabled;
-                        editCloudsCoverage = preset.cloudsCoverage;
-                        editCloudsSoftness = preset.cloudsSoftness;
-                        editCloudsScale = preset.cloudsScale;
-                        editCloudsSpeed = preset.cloudsSpeed;
-                        editCloudsWindX = preset.cloudsWindX;
-                        editCloudsWindY = preset.cloudsWindY;
-                        editCloudsHeight = preset.cloudsHeight;
-                        editCloudsThickness = preset.cloudsThickness;
-                        editCloudsBrightness = preset.cloudsBrightness;
-                        editCloudsSunInfluence = preset.cloudsSunInfluence;
+                        applyPresetToEdits(kSkyPresets[presetIndex]);
                         dirty = true;
                     }
                     ImGui::SameLine();
                     if (ImGui::Button("Randomize Slightly")) {
-                        editIntensity = ClampFloat(editIntensity * (1.0f + RandomRange(-0.12f, 0.12f)),
-                                                   EditorUIConstants::kSkyIntensityMin,
-                                                   EditorUIConstants::kSkyIntensityMax);
-                        editTurbidity = ClampFloat(editTurbidity + RandomRange(-0.5f, 0.5f),
-                                                   EditorUIConstants::kSkyTurbidityMin,
-                                                   EditorUIConstants::kSkyTurbidityMax);
-                        editAzimuth = fmodf(editAzimuth + RandomRange(-12.0f, 12.0f) + 360.0f, 360.0f);
-                        editElevation = ClampFloat(editElevation + RandomRange(-4.0f, 4.0f),
-                                                   EditorUIConstants::kSkyElevationMin,
-                                                   EditorUIConstants::kSkyElevationMax);
-                        editSunSize = ClampFloat(editSunSize * (1.0f + RandomRange(-0.15f, 0.15f)),
-                                                 EditorUIConstants::kSkySunSizeMin,
-                                                 EditorUIConstants::kSkySunSizeMax);
-                        editGradientStrength = ClampFloat(editGradientStrength + RandomRange(-0.15f, 0.15f),
-                                                          EditorUIConstants::kSkyGradientStrengthMin,
-                                                          EditorUIConstants::kSkyGradientStrengthMax);
-                        editHazeDensity = ClampFloat(editHazeDensity + RandomRange(-0.08f, 0.08f),
-                                                     EditorUIConstants::kSkyHazeDensityMin,
-                                                     EditorUIConstants::kSkyHazeDensityMax);
-                        editHazeFalloff = ClampFloat(editHazeFalloff + RandomRange(-0.4f, 0.4f),
-                                                     EditorUIConstants::kSkyHazeFalloffMin,
-                                                     EditorUIConstants::kSkyHazeFalloffMax);
-                        editHazeHeight = ClampFloat(editHazeHeight + RandomRange(-0.04f, 0.04f),
-                                                    EditorUIConstants::kSkyHazeHeightMin,
-                                                    EditorUIConstants::kSkyHazeHeightMax);
-                        editOzoneStrength = ClampFloat(editOzoneStrength + RandomRange(-0.15f, 0.15f),
-                                                       EditorUIConstants::kSkyOzoneStrengthMin,
-                                                       EditorUIConstants::kSkyOzoneStrengthMax);
-                        editSunHaloSize = ClampFloat(editSunHaloSize + RandomRange(-0.3f, 0.3f),
-                                                     EditorUIConstants::kSkySunHaloSizeMin,
-                                                     EditorUIConstants::kSkySunHaloSizeMax);
-                        editSunHaloIntensity = ClampFloat(editSunHaloIntensity + RandomRange(-0.2f, 0.2f),
-                                                          EditorUIConstants::kSkySunHaloIntensityMin,
-                                                          EditorUIConstants::kSkySunHaloIntensityMax);
-                        editSunHaloSoftness = ClampFloat(editSunHaloSoftness + RandomRange(-0.2f, 0.2f),
-                                                         EditorUIConstants::kSkySunHaloSoftnessMin,
-                                                         EditorUIConstants::kSkySunHaloSoftnessMax);
-                        editTintX = ClampFloat(editTintX + RandomRange(-0.05f, 0.05f), 0.0f, 1.0f);
-                        editTintY = ClampFloat(editTintY + RandomRange(-0.05f, 0.05f), 0.0f, 1.0f);
-                        editTintZ = ClampFloat(editTintZ + RandomRange(-0.05f, 0.05f), 0.0f, 1.0f);
-                        editZenithTintX = ClampFloat(editZenithTintX + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        editZenithTintY = ClampFloat(editZenithTintY + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        editZenithTintZ = ClampFloat(editZenithTintZ + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        editHorizonTintX = ClampFloat(editHorizonTintX + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        editHorizonTintY = ClampFloat(editHorizonTintY + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        editHorizonTintZ = ClampFloat(editHorizonTintZ + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        editOzoneTintX = ClampFloat(editOzoneTintX + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        editOzoneTintY = ClampFloat(editOzoneTintY + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        editOzoneTintZ = ClampFloat(editOzoneTintZ + RandomRange(-0.06f, 0.06f), 0.0f, 1.2f);
-                        if (editCloudsEnabled != 0) {
-                            editCloudsCoverage = ClampFloat(editCloudsCoverage + RandomRange(-0.08f, 0.08f),
-                                                            EditorUIConstants::kCloudCoverageMin,
-                                                            EditorUIConstants::kCloudCoverageMax);
-                            editCloudsSoftness = ClampFloat(editCloudsSoftness + RandomRange(-0.08f, 0.08f),
-                                                            EditorUIConstants::kCloudSoftnessMin,
-                                                            EditorUIConstants::kCloudSoftnessMax);
-                            editCloudsScale = ClampFloat(editCloudsScale * (1.0f + RandomRange(-0.2f, 0.2f)),
-                                                         EditorUIConstants::kCloudScaleMin,
-                                                         EditorUIConstants::kCloudScaleMax);
-                            editCloudsSpeed = ClampFloat(editCloudsSpeed + RandomRange(-0.03f, 0.03f),
-                                                         EditorUIConstants::kCloudSpeedMin,
-                                                         EditorUIConstants::kCloudSpeedMax);
-                            float windX = editCloudsWindX + RandomRange(-0.2f, 0.2f);
-                            float windY = editCloudsWindY + RandomRange(-0.2f, 0.2f);
-                            float windLen = sqrtf(windX * windX + windY * windY);
-                            if (windLen > 0.001f) {
-                                windX /= windLen;
-                                windY /= windLen;
-                            }
-                            editCloudsWindX = ClampFloat(windX, EditorUIConstants::kCloudWindMin, EditorUIConstants::kCloudWindMax);
-                            editCloudsWindY = ClampFloat(windY, EditorUIConstants::kCloudWindMin, EditorUIConstants::kCloudWindMax);
-                            editCloudsHeight = ClampFloat(editCloudsHeight + RandomRange(-0.05f, 0.05f),
-                                                          EditorUIConstants::kCloudHeightMin,
-                                                          EditorUIConstants::kCloudHeightMax);
-                            editCloudsThickness = ClampFloat(editCloudsThickness + RandomRange(-0.06f, 0.06f),
-                                                             EditorUIConstants::kCloudThicknessMin,
-                                                             EditorUIConstants::kCloudThicknessMax);
-                            editCloudsBrightness = ClampFloat(editCloudsBrightness + RandomRange(-0.15f, 0.15f),
-                                                              EditorUIConstants::kCloudBrightnessMin,
-                                                              EditorUIConstants::kCloudBrightnessMax);
-                            editCloudsSunInfluence = ClampFloat(editCloudsSunInfluence + RandomRange(-0.2f, 0.2f),
-                                                                EditorUIConstants::kCloudSunInfluenceMin,
-                                                                EditorUIConstants::kCloudSunInfluenceMax);
-                        }
+                        editTimeOfDay = ClampFloat(editTimeOfDay + RandomRange(-1.0f, 1.0f), 0.0f, 24.0f);
+                        editWeatherBlend = ClampFloat(editWeatherBlend + RandomRange(-0.12f, 0.12f), 0.0f, 1.0f);
+                        editWeatherAmount = ClampFloat(editWeatherAmount + RandomRange(-0.15f, 0.15f), 0.0f, 1.0f);
+                        editAtmosphereAmount = ClampFloat(editAtmosphereAmount + RandomRange(-0.1f, 0.1f), 0.0f, 1.0f);
+                        editCloudCoverage = ClampFloat(editCloudCoverage + RandomRange(-0.12f, 0.12f), 0.0f, 1.0f);
+                        editTemperature = ClampFloat(editTemperature + RandomRange(-0.15f, 0.15f), -1.0f, 1.0f);
+                        editMood = ClampFloat(editMood + RandomRange(-0.15f, 0.15f), -1.0f, 1.0f);
+                        editFogAmount = ClampFloat(editFogAmount + RandomRange(-0.015f, 0.015f), 0.0f, 1.0f);
                         dirty = true;
                     }
-                }
+                    ImGui::TextWrapped("Author the atmosphere here. The editor now writes authored sky state and synchronized runtime preview state; live simulation owns time, weather progression, and cloud motion once play starts.");
 
-                ImGui::Spacing();
-                ImGui::TextDisabled("Art Direction (Live)");
-                if (EditorUI::BeginPropertyTable("SkyArtProps")) {
-                    bool enabledBool = editEnabled != 0;
-                    if (EditorUI::PropertyBool("Enabled", &enabledBool)) {
-                        editEnabled = enabledBool ? 1 : 0;
-                        dirty = true;
-                    }
-                    dirty |= EditorUI::PropertyFloat("Intensity",
-                                                     &editIntensity,
-                                                     EditorUIConstants::kSkyIntensityStep,
-                                                     EditorUIConstants::kSkyIntensityMin,
-                                                     EditorUIConstants::kSkyIntensityMax,
-                                                     "%.2f",
-                                                     true,
-                                                     true,
-                                                     EditorUIConstants::kDefaultSkyIntensity);
-                    float tint[3] = {editTintX, editTintY, editTintZ};
-                    const float tintDefault[3] = {1.0f, 1.0f, 1.0f};
-                    if (EditorUI::PropertyColor3("Tint", tint, tintDefault, true)) {
-                        editTintX = tint[0];
-                        editTintY = tint[1];
-                        editTintZ = tint[2];
-                        dirty = true;
-                    }
-                    if (editMode == 1) {
-                        dirty |= EditorUI::PropertyFloat("Azimuth",
-                                                         &editAzimuth,
-                                                         EditorUIConstants::kSkyAzimuthStep,
-                                                         EditorUIConstants::kSkyAzimuthMin,
-                                                         EditorUIConstants::kSkyAzimuthMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyAzimuth);
-                        dirty |= EditorUI::PropertyFloat("Elevation",
-                                                         &editElevation,
-                                                         EditorUIConstants::kSkyElevationStep,
-                                                         EditorUIConstants::kSkyElevationMin,
-                                                         EditorUIConstants::kSkyElevationMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyElevation);
-                        dirty |= EditorUI::PropertyFloat("Turbidity",
-                                                         &editTurbidity,
-                                                         EditorUIConstants::kSkyTurbidityStep,
-                                                         EditorUIConstants::kSkyTurbidityMin,
-                                                         EditorUIConstants::kSkyTurbidityMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyTurbidity);
-                        dirty |= EditorUI::PropertyFloat("Sun Size (deg)",
-                                                         &editSunSize,
-                                                         EditorUIConstants::kSkySunSizeStep,
-                                                         EditorUIConstants::kSkySunSizeMin,
-                                                         EditorUIConstants::kSkySunSizeMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkySunSize);
-                        float zenithTint[3] = {editZenithTintX, editZenithTintY, editZenithTintZ};
-                        const float zenithDefault[3] = {0.24f, 0.45f, 0.95f};
-                        if (EditorUI::PropertyColor3("Zenith Tint", zenithTint, zenithDefault, true)) {
-                            editZenithTintX = zenithTint[0];
-                            editZenithTintY = zenithTint[1];
-                            editZenithTintZ = zenithTint[2];
-                            dirty = true;
-                        }
-                        float horizonTint[3] = {editHorizonTintX, editHorizonTintY, editHorizonTintZ};
-                        const float horizonDefault[3] = {0.95f, 0.75f, 0.55f};
-                        if (EditorUI::PropertyColor3("Horizon Tint", horizonTint, horizonDefault, true)) {
-                            editHorizonTintX = horizonTint[0];
-                            editHorizonTintY = horizonTint[1];
-                            editHorizonTintZ = horizonTint[2];
-                            dirty = true;
-                        }
-                        dirty |= EditorUI::PropertyFloat("Gradient Strength",
-                                                         &editGradientStrength,
-                                                         EditorUIConstants::kSkyGradientStrengthStep,
-                                                         EditorUIConstants::kSkyGradientStrengthMin,
-                                                         EditorUIConstants::kSkyGradientStrengthMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyGradientStrength);
-                        dirty |= EditorUI::PropertyFloat("Haze Density",
-                                                         &editHazeDensity,
-                                                         EditorUIConstants::kSkyHazeDensityStep,
-                                                         EditorUIConstants::kSkyHazeDensityMin,
-                                                         EditorUIConstants::kSkyHazeDensityMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyHazeDensity);
-                        dirty |= EditorUI::PropertyFloat("Haze Falloff",
-                                                         &editHazeFalloff,
-                                                         EditorUIConstants::kSkyHazeFalloffStep,
-                                                         EditorUIConstants::kSkyHazeFalloffMin,
-                                                         EditorUIConstants::kSkyHazeFalloffMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyHazeFalloff);
-                        dirty |= EditorUI::PropertyFloat("Haze Height",
-                                                         &editHazeHeight,
-                                                         EditorUIConstants::kSkyHazeHeightStep,
-                                                         EditorUIConstants::kSkyHazeHeightMin,
-                                                         EditorUIConstants::kSkyHazeHeightMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyHazeHeight);
-                        dirty |= EditorUI::PropertyFloat("Ozone Strength",
-                                                         &editOzoneStrength,
-                                                         EditorUIConstants::kSkyOzoneStrengthStep,
-                                                         EditorUIConstants::kSkyOzoneStrengthMin,
-                                                         EditorUIConstants::kSkyOzoneStrengthMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkyOzoneStrength);
-                        float ozoneTint[3] = {editOzoneTintX, editOzoneTintY, editOzoneTintZ};
-                        const float ozoneDefault[3] = {0.55f, 0.7f, 1.0f};
-                        if (EditorUI::PropertyColor3("Ozone Tint", ozoneTint, ozoneDefault, true)) {
-                            editOzoneTintX = ozoneTint[0];
-                            editOzoneTintY = ozoneTint[1];
-                            editOzoneTintZ = ozoneTint[2];
-                            dirty = true;
-                        }
-                        dirty |= EditorUI::PropertyFloat("Sun Halo Size",
-                                                         &editSunHaloSize,
-                                                         EditorUIConstants::kSkySunHaloSizeStep,
-                                                         EditorUIConstants::kSkySunHaloSizeMin,
-                                                         EditorUIConstants::kSkySunHaloSizeMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkySunHaloSize);
-                        dirty |= EditorUI::PropertyFloat("Sun Halo Intensity",
-                                                         &editSunHaloIntensity,
-                                                         EditorUIConstants::kSkySunHaloIntensityStep,
-                                                         EditorUIConstants::kSkySunHaloIntensityMin,
-                                                         EditorUIConstants::kSkySunHaloIntensityMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkySunHaloIntensity);
-                        dirty |= EditorUI::PropertyFloat("Sun Halo Softness",
-                                                         &editSunHaloSoftness,
-                                                         EditorUIConstants::kSkySunHaloSoftnessStep,
-                                                         EditorUIConstants::kSkySunHaloSoftnessMin,
-                                                         EditorUIConstants::kSkySunHaloSoftnessMax,
-                                                         "%.2f",
-                                                         true,
-                                                         true,
-                                                         EditorUIConstants::kDefaultSkySunHaloSoftness);
-                    }
-                    EditorUI::EndPropertyTable();
-                }
-
-                if (editMode == 1) {
                     ImGui::Spacing();
-                    ImGui::TextDisabled("Clouds (Live)");
+                    ImGui::TextDisabled("Atmosphere");
+                    if (EditorUI::BeginPropertyTable("SkyPublicProps")) {
+                        dirty |= EditorUI::PropertyFloat("Time of Day",
+                                                         &editTimeOfDay,
+                                                         0.1f,
+                                                         0.0f,
+                                                         24.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         14.0f);
+                        dirty |= EditorUI::PropertyCombo("Weather Type", &editWeatherType, weatherTypeNames, IM_ARRAYSIZE(weatherTypeNames));
+                        dirty |= EditorUI::PropertyCombo("Blend To", &editSecondaryWeatherType, weatherTypeNames, IM_ARRAYSIZE(weatherTypeNames));
+                        dirty |= EditorUI::PropertyFloat("Weather Blend",
+                                                         &editWeatherBlend,
+                                                         0.02f,
+                                                         0.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.0f);
+                        dirty |= EditorUI::PropertyFloat("Weather Amount",
+                                                         &editWeatherAmount,
+                                                         0.02f,
+                                                         0.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.0f);
+                        dirty |= EditorUI::PropertyFloat("Temperature",
+                                                         &editTemperature,
+                                                         0.02f,
+                                                         -1.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.0f);
+                        dirty |= EditorUI::PropertyFloat("Mood",
+                                                         &editMood,
+                                                         0.02f,
+                                                         -1.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.0f);
+                        dirty |= EditorUI::PropertyFloat("Atmosphere / Haze",
+                                                         &editAtmosphereAmount,
+                                                         0.02f,
+                                                         0.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.28f);
+                        EditorUI::EndPropertyTable();
+                    }
+
+                    ImGui::Spacing();
+                    ImGui::TextDisabled("Clouds");
                     if (EditorUI::BeginPropertyTable("SkyCloudProps")) {
-                        bool cloudsEnabledBool = editCloudsEnabled != 0;
-                        if (EditorUI::PropertyBool("Enabled", &cloudsEnabledBool)) {
-                            editCloudsEnabled = cloudsEnabledBool ? 1 : 0;
-                            dirty = true;
-                        }
-                        if (editCloudsEnabled != 0) {
-                            dirty |= EditorUI::PropertyFloat("Coverage",
-                                                             &editCloudsCoverage,
-                                                             EditorUIConstants::kCloudCoverageStep,
-                                                             EditorUIConstants::kCloudCoverageMin,
-                                                             EditorUIConstants::kCloudCoverageMax,
+                        dirty |= EditorUI::PropertyFloat("Cloud Coverage",
+                                                         &editCloudCoverage,
+                                                         0.02f,
+                                                         0.0f,
+                                                         1.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.30f);
+                        dirty |= EditorUI::PropertyCombo("Cloud Style", &editCloudStyle, cloudStyleNames, IM_ARRAYSIZE(cloudStyleNames));
+                        EditorUI::EndPropertyTable();
+                    }
+
+                    ImGui::Spacing();
+                    ImGui::TextDisabled("Fog");
+                    if (EditorUI::BeginPropertyTable("SkyFogProps")) {
+                        dirty |= EditorUI::PropertyFloat("Fog Amount",
+                                                         &editFogAmount,
+                                                         0.005f,
+                                                         0.0f,
+                                                         1.0f,
+                                                         "%.3f",
+                                                         true,
+                                                         true,
+                                                         0.03f);
+                        dirty |= EditorUI::PropertyFloat("Fog Height",
+                                                         &editFogHeight,
+                                                         0.1f,
+                                                         -1000.0f,
+                                                         1000.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         0.0f);
+                        dirty |= EditorUI::PropertyFloat("Fog Distance",
+                                                         &editFogDistance,
+                                                         0.1f,
+                                                         0.0f,
+                                                         1000.0f,
+                                                         "%.2f",
+                                                         true,
+                                                         true,
+                                                         3.0f);
+                        EditorUI::EndPropertyTable();
+                    }
+
+                    if (ImGui::TreeNodeEx("SkyAdvancedControls", ImGuiTreeNodeFlags_None, "Legacy Procedural Controls (Debug)")) {
+                        ImGui::TextWrapped("These controls are compatibility/debug overrides for the older procedural sky path. They are not the normal authored environment workflow in Wave 1. Use Custom weather/cloud settings only when you intentionally want manual legacy overrides.");
+                        if (EditorUI::BeginPropertyTable("SkyAdvancedProps")) {
+                            dirty |= EditorUI::PropertyFloat("Legacy Sky Brightness",
+                                                             &editIntensity,
+                                                             EditorUIConstants::kSkyIntensityStep,
+                                                             EditorUIConstants::kSkyIntensityMin,
+                                                             EditorUIConstants::kSkyIntensityMax,
                                                              "%.2f",
                                                              true,
                                                              true,
-                                                             EditorUIConstants::kDefaultCloudCoverage);
-                            dirty |= EditorUI::PropertyFloat("Softness",
-                                                             &editCloudsSoftness,
-                                                             EditorUIConstants::kCloudSoftnessStep,
-                                                             EditorUIConstants::kCloudSoftnessMin,
-                                                             EditorUIConstants::kCloudSoftnessMax,
+                                                             EditorUIConstants::kDefaultSkyIntensity);
+                            float tint[3] = {editTintX, editTintY, editTintZ};
+                            const float tintDefault[3] = {1.0f, 1.0f, 1.0f};
+                            if (EditorUI::PropertyColor3("Tint", tint, tintDefault, true)) {
+                                editTintX = tint[0];
+                                editTintY = tint[1];
+                                editTintZ = tint[2];
+                                dirty = true;
+                            }
+                            dirty |= EditorUI::PropertyFloat("Turbidity",
+                                                             &editTurbidity,
+                                                             EditorUIConstants::kSkyTurbidityStep,
+                                                             EditorUIConstants::kSkyTurbidityMin,
+                                                             EditorUIConstants::kSkyTurbidityMax,
                                                              "%.2f",
                                                              true,
                                                              true,
-                                                             EditorUIConstants::kDefaultCloudSoftness);
-                            dirty |= EditorUI::PropertyFloat("Scale",
+                                                             EditorUIConstants::kDefaultSkyTurbidity);
+                            dirty |= EditorUI::PropertyFloat("Sun Size (deg)",
+                                                             &editSunSize,
+                                                             EditorUIConstants::kSkySunSizeStep,
+                                                             EditorUIConstants::kSkySunSizeMin,
+                                                             EditorUIConstants::kSkySunSizeMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultSkySunSize);
+                            float zenithTint[3] = {editZenithTintX, editZenithTintY, editZenithTintZ};
+                            const float zenithDefault[3] = {0.24f, 0.45f, 0.95f};
+                            if (EditorUI::PropertyColor3("Zenith Tint", zenithTint, zenithDefault, true)) {
+                                editZenithTintX = zenithTint[0];
+                                editZenithTintY = zenithTint[1];
+                                editZenithTintZ = zenithTint[2];
+                                dirty = true;
+                            }
+                            float horizonTint[3] = {editHorizonTintX, editHorizonTintY, editHorizonTintZ};
+                            const float horizonDefault[3] = {0.95f, 0.75f, 0.55f};
+                            if (EditorUI::PropertyColor3("Horizon Tint", horizonTint, horizonDefault, true)) {
+                                editHorizonTintX = horizonTint[0];
+                                editHorizonTintY = horizonTint[1];
+                                editHorizonTintZ = horizonTint[2];
+                                dirty = true;
+                            }
+                            dirty |= EditorUI::PropertyFloat("Gradient Strength",
+                                                             &editGradientStrength,
+                                                             EditorUIConstants::kSkyGradientStrengthStep,
+                                                             EditorUIConstants::kSkyGradientStrengthMin,
+                                                             EditorUIConstants::kSkyGradientStrengthMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultSkyGradientStrength);
+                            dirty |= EditorUI::PropertyFloat("Haze Falloff",
+                                                             &editHazeFalloff,
+                                                             EditorUIConstants::kSkyHazeFalloffStep,
+                                                             EditorUIConstants::kSkyHazeFalloffMin,
+                                                             EditorUIConstants::kSkyHazeFalloffMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultSkyHazeFalloff);
+                            dirty |= EditorUI::PropertyFloat("Haze Height",
+                                                             &editHazeHeight,
+                                                             EditorUIConstants::kSkyHazeHeightStep,
+                                                             EditorUIConstants::kSkyHazeHeightMin,
+                                                             EditorUIConstants::kSkyHazeHeightMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultSkyHazeHeight);
+                            dirty |= EditorUI::PropertyFloat("Ozone Strength",
+                                                             &editOzoneStrength,
+                                                             EditorUIConstants::kSkyOzoneStrengthStep,
+                                                             EditorUIConstants::kSkyOzoneStrengthMin,
+                                                             EditorUIConstants::kSkyOzoneStrengthMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultSkyOzoneStrength);
+                            float ozoneTint[3] = {editOzoneTintX, editOzoneTintY, editOzoneTintZ};
+                            const float ozoneDefault[3] = {0.55f, 0.7f, 1.0f};
+                            if (EditorUI::PropertyColor3("Ozone Tint", ozoneTint, ozoneDefault, true)) {
+                                editOzoneTintX = ozoneTint[0];
+                                editOzoneTintY = ozoneTint[1];
+                                editOzoneTintZ = ozoneTint[2];
+                                dirty = true;
+                            }
+                            dirty |= EditorUI::PropertyFloat("Sun Halo Size",
+                                                             &editSunHaloSize,
+                                                             EditorUIConstants::kSkySunHaloSizeStep,
+                                                             EditorUIConstants::kSkySunHaloSizeMin,
+                                                             EditorUIConstants::kSkySunHaloSizeMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultSkySunHaloSize);
+                            dirty |= EditorUI::PropertyFloat("Sun Halo Intensity",
+                                                             &editSunHaloIntensity,
+                                                             EditorUIConstants::kSkySunHaloIntensityStep,
+                                                             EditorUIConstants::kSkySunHaloIntensityMin,
+                                                             EditorUIConstants::kSkySunHaloIntensityMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultSkySunHaloIntensity);
+                            dirty |= EditorUI::PropertyFloat("Sun Halo Softness",
+                                                             &editSunHaloSoftness,
+                                                             EditorUIConstants::kSkySunHaloSoftnessStep,
+                                                             EditorUIConstants::kSkySunHaloSoftnessMin,
+                                                             EditorUIConstants::kSkySunHaloSoftnessMax,
+                                                             "%.2f",
+                                                             true,
+                                                             true,
+                                                             EditorUIConstants::kDefaultSkySunHaloSoftness);
+                            dirty |= EditorUI::PropertyFloat("Cloud Scale",
                                                              &editCloudsScale,
                                                              EditorUIConstants::kCloudScaleStep,
                                                              EditorUIConstants::kCloudScaleMin,
@@ -3281,16 +5114,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                              true,
                                                              true,
                                                              EditorUIConstants::kDefaultCloudScale);
-                            dirty |= EditorUI::PropertyFloat("Speed",
-                                                             &editCloudsSpeed,
-                                                             EditorUIConstants::kCloudSpeedStep,
-                                                             EditorUIConstants::kCloudSpeedMin,
-                                                             EditorUIConstants::kCloudSpeedMax,
-                                                             "%.2f",
-                                                             true,
-                                                             true,
-                                                             EditorUIConstants::kDefaultCloudSpeed);
-                            dirty |= EditorUI::PropertyFloat("Wind X",
+                            dirty |= EditorUI::PropertyFloat("Cloud Wind X",
                                                              &editCloudsWindX,
                                                              EditorUIConstants::kCloudWindStep,
                                                              EditorUIConstants::kCloudWindMin,
@@ -3299,7 +5123,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                              true,
                                                              true,
                                                              EditorUIConstants::kDefaultCloudWindX);
-                            dirty |= EditorUI::PropertyFloat("Wind Y",
+                            dirty |= EditorUI::PropertyFloat("Cloud Wind Y",
                                                              &editCloudsWindY,
                                                              EditorUIConstants::kCloudWindStep,
                                                              EditorUIConstants::kCloudWindMin,
@@ -3308,7 +5132,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                              true,
                                                              true,
                                                              EditorUIConstants::kDefaultCloudWindY);
-                            dirty |= EditorUI::PropertyFloat("Height",
+                            dirty |= EditorUI::PropertyFloat("Cloud Height",
                                                              &editCloudsHeight,
                                                              EditorUIConstants::kCloudHeightStep,
                                                              EditorUIConstants::kCloudHeightMin,
@@ -3317,7 +5141,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                              true,
                                                              true,
                                                              EditorUIConstants::kDefaultCloudHeight);
-                            dirty |= EditorUI::PropertyFloat("Thickness",
+                            dirty |= EditorUI::PropertyFloat("Cloud Thickness",
                                                              &editCloudsThickness,
                                                              EditorUIConstants::kCloudThicknessStep,
                                                              EditorUIConstants::kCloudThicknessMin,
@@ -3326,7 +5150,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                              true,
                                                              true,
                                                              EditorUIConstants::kDefaultCloudThickness);
-                            dirty |= EditorUI::PropertyFloat("Brightness",
+                            dirty |= EditorUI::PropertyFloat("Cloud Brightness",
                                                              &editCloudsBrightness,
                                                              EditorUIConstants::kCloudBrightnessStep,
                                                              EditorUIConstants::kCloudBrightnessMin,
@@ -3335,7 +5159,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                              true,
                                                              true,
                                                              EditorUIConstants::kDefaultCloudBrightness);
-                            dirty |= EditorUI::PropertyFloat("Sun Influence",
+                            dirty |= EditorUI::PropertyFloat("Cloud Sun Influence",
                                                              &editCloudsSunInfluence,
                                                              EditorUIConstants::kCloudSunInfluenceStep,
                                                              EditorUIConstants::kCloudSunInfluenceMin,
@@ -3344,20 +5168,14 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                              true,
                                                              true,
                                                              EditorUIConstants::kDefaultCloudSunInfluence);
+                            EditorUI::EndPropertyTable();
                         }
-                        EditorUI::EndPropertyTable();
+                        ImGui::TreePop();
                     }
                 }
 
                 ImGui::Spacing();
-                ImGui::TextDisabled("Rebuild-required");
-                if (EditorUI::BeginPropertyTable("SkyRebuildProps")) {
-                    dirty |= EditorUI::PropertyCombo("Mode", &editMode, modes, IM_ARRAYSIZE(modes));
-                    if (editMode == 0) {
-                        dirty |= DrawEnvironmentHandleRow(context, state, "HDRI", editHdriHandle, sizeof(pending.hdriHandle), "MCE_ASSET_ENVIRONMENT", selectedEntityId);
-                    }
-                    EditorUI::EndPropertyTable();
-                }
+                ImGui::TextDisabled("IBL Update");
 
                 if (envPickerDirty) {
                     envPicker.didPick = false;
@@ -3381,6 +5199,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     MCEEditorSetSkyLight(context, selectedEntityId,
                                          editMode,
                                          editEnabled,
+                                         editTimeOfDay,
+                                         editWeatherType,
+                                         editSecondaryWeatherType,
+                                         editWeatherBlend,
+                                         editWeatherAmount,
+                                         editAtmosphereAmount,
+                                         editCloudCoverage,
+                                         editCloudStyle,
+                                         editTemperature,
+                                         editMood,
                                          editIntensity,
                                          editTintX,
                                          editTintY,
@@ -3417,6 +5245,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                          editCloudsThickness,
                                          editCloudsBrightness,
                                          editCloudsSunInfluence,
+                                         editFogAmount,
+                                         editFogHeight,
+                                         editFogDistance,
                                          autoRebuild,
                                          editHdriHandle);
                 }
@@ -3460,14 +5291,29 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 MCEEditorAddComponent(context, selectedEntityId, ComponentCharacterController);
             }
         }
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentSkinnedMesh) == 0) {
+            if (ImGui::MenuItem("Skinned Mesh")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentSkinnedMesh);
+            }
+        }
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentAnimator) == 0) {
+            if (ImGui::MenuItem("Animator")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentAnimator);
+            }
+        }
         if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentLight) == 0) {
             if (ImGui::MenuItem("Light")) {
                 MCEEditorAddComponent(context, selectedEntityId, ComponentLight);
             }
         }
-        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentSkyLight) == 0) {
-            if (ImGui::MenuItem("Sky Light")) {
-                MCEEditorAddComponent(context, selectedEntityId, ComponentSkyLight);
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentEnvironment) == 0) {
+            if (ImGui::MenuItem("Environment")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentEnvironment);
+            }
+        }
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentReflectionProbe) == 0) {
+            if (ImGui::MenuItem("Reflection Probe")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentReflectionProbe);
             }
         }
         ImGui::EndPopup();

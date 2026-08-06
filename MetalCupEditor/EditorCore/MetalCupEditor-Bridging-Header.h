@@ -3,3 +3,4 @@
 /// Created by Kaden Cringle.
 
 #import "ImGui/ImGuiBridge.h"
+#import "Assets/FbxBridge.h"

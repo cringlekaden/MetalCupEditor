@@ -61,6 +61,18 @@ extern "C" uint32_t MCEEditorGetLight(MCE_CTX, const char *entityId, int32_t *ty
                                      float *brightness, float *range, float *innerCos, float *outerCos,
                                      float *dirX, float *dirY, float *dirZ,
                                      uint32_t *castsShadows);
+extern "C" uint32_t MCEEditorGetReflectionProbe(MCE_CTX, const char *entityId,
+                                                uint32_t *enabled,
+                                                float *boxExtentsX,
+                                                float *boxExtentsY,
+                                                float *boxExtentsZ,
+                                                float *blendDistance,
+                                                int32_t *priority,
+                                                float *intensity,
+                                                int32_t *captureResolution,
+                                                int32_t *rebuildMode,
+                                                uint32_t *includeSky);
+extern "C" uint32_t MCEEditorGetReflectionProbeRuntimeStatus(MCE_CTX, const char *entityId, int32_t *statusOut);
 extern "C" uint32_t MCEEditorGetEntityName(MCE_CTX, const char *entityId, char *buffer, int32_t bufferSize);
 extern "C" uint32_t MCEEditorGetViewportShowWorldIcons(MCE_CTX);
 extern "C" float MCEEditorGetViewportWorldIconBaseSize(MCE_CTX);
@@ -154,6 +166,23 @@ namespace {
         return ImGui::ColorConvertFloat4ToU32(color);
     }
 
+    ImU32 ReflectionProbeStatusColor(int32_t status) {
+        switch (status) {
+        case 1:
+            return IM_COL32(242, 191, 51, 255);
+        case 2:
+            return IM_COL32(255, 140, 51, 255);
+        case 3:
+            return IM_COL32(242, 230, 89, 255);
+        case 4:
+            return IM_COL32(64, 242, 153, 255);
+        case 5:
+            return IM_COL32(242, 77, 64, 255);
+        default:
+            return IM_COL32(153, 166, 191, 224);
+        }
+    }
+
     void DrawWorldIcons(void *context,
                         const char *selectedEntityId,
                         const float *viewMatrix,
@@ -187,6 +216,7 @@ namespace {
             const float pz = modelMatrix[14];
 
             const char *glyph = nullptr;
+            ImU32 glyphColor = normalColor;
             int32_t projectionType = 0;
             float fov = 60.0f, orthoSize = 10.0f, nearPlane = 0.01f, farPlane = 1000.0f;
             uint32_t isPrimary = 0, isEditor = 0;
@@ -196,20 +226,38 @@ namespace {
                 }
                 glyph = EditorIcons::Glyph(EditorIcons::Id::Camera);
             } else {
-                int32_t lightType = 0;
-                if (MCEEditorGetLight(context, entityId, &lightType,
-                                      nullptr, nullptr, nullptr,
-                                      nullptr, nullptr, nullptr, nullptr,
-                                      nullptr, nullptr, nullptr,
-                                      nullptr) == 0) {
-                    continue;
-                }
-                if (lightType == 2) {
-                    glyph = EditorIcons::Glyph(EditorIcons::Id::DirectionalLight);
-                } else if (lightType == 1) {
-                    glyph = EditorIcons::Glyph(EditorIcons::Id::SpotLight);
+                if (MCEEditorGetReflectionProbe(context, entityId,
+                                                nullptr,
+                                                nullptr, nullptr, nullptr,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr,
+                                                nullptr) != 0) {
+                    glyph = EditorIcons::Glyph(EditorIcons::Id::HDRI);
+                    int32_t probeStatus = 0;
+                    if (MCEEditorGetReflectionProbeRuntimeStatus(context, entityId, &probeStatus) != 0) {
+                        glyphColor = ReflectionProbeStatusColor(probeStatus);
+                    } else {
+                        glyphColor = ReflectionProbeStatusColor(0);
+                    }
                 } else {
-                    glyph = EditorIcons::Glyph(EditorIcons::Id::PointLight);
+                    int32_t lightType = 0;
+                    if (MCEEditorGetLight(context, entityId, &lightType,
+                                          nullptr, nullptr, nullptr,
+                                          nullptr, nullptr, nullptr, nullptr,
+                                          nullptr, nullptr, nullptr,
+                                          nullptr) == 0) {
+                        continue;
+                    }
+                    if (lightType == 2) {
+                        glyph = EditorIcons::Glyph(EditorIcons::Id::DirectionalLight);
+                    } else if (lightType == 1) {
+                        glyph = EditorIcons::Glyph(EditorIcons::Id::SpotLight);
+                    } else {
+                        glyph = EditorIcons::Glyph(EditorIcons::Id::PointLight);
+                    }
                 }
             }
 
@@ -222,7 +270,7 @@ namespace {
             float scaled = baseSize / (1.0f + depth * distanceScale * 0.1f);
             scaled = std::max(minSize, std::min(maxSize, scaled));
             const bool selected = selectedEntityId && selectedEntityId[0] != 0 && strcmp(selectedEntityId, entityId) == 0;
-            const ImU32 color = selected ? accentColor : normalColor;
+            const ImU32 color = selected ? accentColor : glyphColor;
             ImVec2 glyphSize = ImGui::CalcTextSize(glyph);
             float fontSize = ImGui::GetFontSize();
             float scale = scaled / std::max(1.0f, fontSize);

@@ -5,6 +5,229 @@
 import Foundation
 import MetalCupEngine
 
+enum ViewportDebugVisualizationCategory: Int32, CaseIterable {
+    case worldIcons = 0
+    case cameraFrustums = 1
+    case reflectionProbeInfluence = 2
+    case reflectionProbeBlendShell = 3
+    case reflectionProbeLinks = 4
+    case physics = 5
+    case genericLines = 6
+    case genericShapes = 7
+}
+
+struct ViewportDebugStyle: Codable {
+    var enabled: Bool
+    var colorR: Float
+    var colorG: Float
+    var colorB: Float
+    var opacity: Float
+    var thickness: Float
+
+    init(enabled: Bool = true,
+         colorR: Float = 1.0,
+         colorG: Float = 1.0,
+         colorB: Float = 1.0,
+         opacity: Float = 1.0,
+         thickness: Float = 0.03) {
+        self.enabled = enabled
+        self.colorR = colorR
+        self.colorG = colorG
+        self.colorB = colorB
+        self.opacity = opacity
+        self.thickness = thickness
+    }
+}
+
+struct ViewportWorldIconSettings: Codable {
+    var enabled: Bool
+    var baseSize: Float
+    var distanceScale: Float
+    var minSize: Float
+    var maxSize: Float
+    var opacity: Float
+
+    init(enabled: Bool = true,
+         baseSize: Float = 18.0,
+         distanceScale: Float = 0.75,
+         minSize: Float = 11.0,
+         maxSize: Float = 28.0,
+         opacity: Float = 1.0) {
+        self.enabled = enabled
+        self.baseSize = baseSize
+        self.distanceScale = distanceScale
+        self.minSize = minSize
+        self.maxSize = maxSize
+        self.opacity = opacity
+    }
+}
+
+struct ViewportProbeBlendShellSettings: Codable {
+    var style: ViewportDebugStyle
+    var showInnerBox: Bool
+    var showOuterBox: Bool
+    var showConnectorLines: Bool
+
+    init(style: ViewportDebugStyle = ViewportDebugStyle(
+            enabled: true,
+            colorR: 0.25,
+            colorG: 0.95,
+            colorB: 0.95,
+            opacity: 0.55,
+            thickness: 0.03
+         ),
+         showInnerBox: Bool = true,
+         showOuterBox: Bool = true,
+         showConnectorLines: Bool = true) {
+        self.style = style
+        self.showInnerBox = showInnerBox
+        self.showOuterBox = showOuterBox
+        self.showConnectorLines = showConnectorLines
+    }
+}
+
+struct ViewportDebugVisualizationSettings: Codable {
+    var worldIcons: ViewportWorldIconSettings
+    var cameraFrustums: ViewportDebugStyle
+    var reflectionProbeInfluence: ViewportDebugStyle
+    var reflectionProbeBlendShell: ViewportProbeBlendShellSettings
+    var reflectionProbeLinks: ViewportDebugStyle
+    var physics: ViewportDebugStyle
+    var genericLines: ViewportDebugStyle
+    var genericShapes: ViewportDebugStyle
+
+    init(worldIcons: ViewportWorldIconSettings = ViewportWorldIconSettings(),
+         cameraFrustums: ViewportDebugStyle = ViewportDebugStyle(
+            enabled: true,
+            colorR: 1.0,
+            colorG: 0.78,
+            colorB: 0.25,
+            opacity: 0.95,
+            thickness: 0.03
+         ),
+         reflectionProbeInfluence: ViewportDebugStyle = ViewportDebugStyle(
+            enabled: true,
+            colorR: 0.25,
+            colorG: 0.95,
+            colorB: 0.95,
+            opacity: 0.95,
+            thickness: 0.04
+         ),
+         reflectionProbeBlendShell: ViewportProbeBlendShellSettings = ViewportProbeBlendShellSettings(),
+         reflectionProbeLinks: ViewportDebugStyle = ViewportDebugStyle(
+            enabled: true,
+            colorR: 1.0,
+            colorG: 0.72,
+            colorB: 0.22,
+            opacity: 0.95,
+            thickness: 0.03
+         ),
+         physics: ViewportDebugStyle = ViewportDebugStyle(
+            enabled: false,
+            colorR: 0.9,
+            colorG: 0.95,
+            colorB: 0.3,
+            opacity: 0.95,
+            thickness: 0.03
+         ),
+         genericLines: ViewportDebugStyle = ViewportDebugStyle(
+            enabled: true,
+            colorR: 0.95,
+            colorG: 0.95,
+            colorB: 1.0,
+            opacity: 0.95,
+            thickness: 0.03
+         ),
+         genericShapes: ViewportDebugStyle = ViewportDebugStyle(
+            enabled: true,
+            colorR: 0.8,
+            colorG: 0.9,
+            colorB: 1.0,
+            opacity: 0.9,
+            thickness: 0.03
+         )) {
+        self.worldIcons = worldIcons
+        self.cameraFrustums = cameraFrustums
+        self.reflectionProbeInfluence = reflectionProbeInfluence
+        self.reflectionProbeBlendShell = reflectionProbeBlendShell
+        self.reflectionProbeLinks = reflectionProbeLinks
+        self.physics = physics
+        self.genericLines = genericLines
+        self.genericShapes = genericShapes
+    }
+
+    func style(for category: ViewportDebugVisualizationCategory) -> ViewportDebugStyle {
+        switch category {
+        case .worldIcons:
+            return ViewportDebugStyle(
+                enabled: worldIcons.enabled,
+                colorR: 1.0,
+                colorG: 1.0,
+                colorB: 1.0,
+                opacity: worldIcons.opacity,
+                thickness: 0.0
+            )
+        case .cameraFrustums:
+            return cameraFrustums
+        case .reflectionProbeInfluence:
+            return reflectionProbeInfluence
+        case .reflectionProbeBlendShell:
+            return reflectionProbeBlendShell.style
+        case .reflectionProbeLinks:
+            return reflectionProbeLinks
+        case .physics:
+            return physics
+        case .genericLines:
+            return genericLines
+        case .genericShapes:
+            return genericShapes
+        }
+    }
+
+    mutating func setStyle(_ style: ViewportDebugStyle, for category: ViewportDebugVisualizationCategory) {
+        switch category {
+        case .worldIcons:
+            worldIcons.enabled = style.enabled
+            worldIcons.opacity = style.opacity
+        case .cameraFrustums:
+            cameraFrustums = style
+        case .reflectionProbeInfluence:
+            reflectionProbeInfluence = style
+        case .reflectionProbeBlendShell:
+            reflectionProbeBlendShell.style = style
+        case .reflectionProbeLinks:
+            reflectionProbeLinks = style
+        case .physics:
+            physics = style
+        case .genericLines:
+            genericLines = style
+        case .genericShapes:
+            genericShapes = style
+        }
+    }
+
+    static func migrated(worldIconsEnabled: Bool,
+                         worldIconBaseSize: Float,
+                         worldIconDistanceScale: Float,
+                         worldIconMinSize: Float,
+                         worldIconMaxSize: Float,
+                         cameraFrustumEnabled: Bool,
+                         physicsEnabled: Bool) -> ViewportDebugVisualizationSettings {
+        var settings = ViewportDebugVisualizationSettings()
+        settings.worldIcons = ViewportWorldIconSettings(
+            enabled: worldIconsEnabled,
+            baseSize: worldIconBaseSize,
+            distanceScale: worldIconDistanceScale,
+            minSize: worldIconMinSize,
+            maxSize: worldIconMaxSize,
+            opacity: 1.0
+        )
+        settings.cameraFrustums.enabled = cameraFrustumEnabled
+        settings.physics.enabled = physicsEnabled
+        return settings
+    }
+}
+
 struct EditorSettingsDocument: Codable {
     var schemaVersion: Int
     var recentProjects: [String]
@@ -33,11 +256,12 @@ struct EditorSettingsDocument: Codable {
     var viewportPreviewEnabled: Bool
     var viewportPreviewSize: Float
     var viewportPreviewPosition: Int
+    var viewportDebugVisualizations: ViewportDebugVisualizationSettings
     var editorDebugGridEnabled: Bool
     var editorDebugOutlineEnabled: Bool
     var editorDebugPhysicsEnabled: Bool
 
-    init(schemaVersion: Int = 1,
+    init(schemaVersion: Int = 2,
          recentProjects: [String] = [],
          panelVisibility: [String: Bool] = [:],
          headerStates: [String: Bool] = [:],
@@ -64,6 +288,7 @@ struct EditorSettingsDocument: Codable {
          viewportPreviewEnabled: Bool = true,
          viewportPreviewSize: Float = 0.28,
          viewportPreviewPosition: Int = 3,
+         viewportDebugVisualizations: ViewportDebugVisualizationSettings = ViewportDebugVisualizationSettings(),
          editorDebugGridEnabled: Bool = true,
          editorDebugOutlineEnabled: Bool = true,
          editorDebugPhysicsEnabled: Bool = false) {
@@ -94,6 +319,7 @@ struct EditorSettingsDocument: Codable {
         self.viewportPreviewEnabled = viewportPreviewEnabled
         self.viewportPreviewSize = viewportPreviewSize
         self.viewportPreviewPosition = viewportPreviewPosition
+        self.viewportDebugVisualizations = viewportDebugVisualizations
         self.editorDebugGridEnabled = editorDebugGridEnabled
         self.editorDebugOutlineEnabled = editorDebugOutlineEnabled
         self.editorDebugPhysicsEnabled = editorDebugPhysicsEnabled
@@ -127,6 +353,7 @@ struct EditorSettingsDocument: Codable {
         case viewportPreviewEnabled
         case viewportPreviewSize
         case viewportPreviewPosition
+        case viewportDebugVisualizations
         case editorDebugGridEnabled
         case editorDebugOutlineEnabled
         case editorDebugPhysicsEnabled
@@ -134,7 +361,7 @@ struct EditorSettingsDocument: Codable {
 
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 1
+        schemaVersion = try container.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? 2
         recentProjects = try container.decodeIfPresent([String].self, forKey: .recentProjects) ?? []
         panelVisibility = try container.decodeIfPresent([String: Bool].self, forKey: .panelVisibility) ?? [:]
         headerStates = try container.decodeIfPresent([String: Bool].self, forKey: .headerStates) ?? [:]
@@ -162,6 +389,16 @@ struct EditorSettingsDocument: Codable {
         viewportPreviewEnabled = try container.decodeIfPresent(Bool.self, forKey: .viewportPreviewEnabled) ?? true
         viewportPreviewSize = try container.decodeIfPresent(Float.self, forKey: .viewportPreviewSize) ?? 0.28
         viewportPreviewPosition = try container.decodeIfPresent(Int.self, forKey: .viewportPreviewPosition) ?? 3
+        viewportDebugVisualizations = try container.decodeIfPresent(ViewportDebugVisualizationSettings.self, forKey: .viewportDebugVisualizations)
+            ?? ViewportDebugVisualizationSettings.migrated(
+                worldIconsEnabled: viewportShowWorldIcons,
+                worldIconBaseSize: viewportWorldIconBaseSize,
+                worldIconDistanceScale: viewportWorldIconDistanceScale,
+                worldIconMinSize: viewportWorldIconMinSize,
+                worldIconMaxSize: viewportWorldIconMaxSize,
+                cameraFrustumEnabled: viewportShowSelectedCameraFrustum,
+                physicsEnabled: try container.decodeIfPresent(Bool.self, forKey: .editorDebugPhysicsEnabled) ?? false
+            )
         editorDebugGridEnabled = try container.decodeIfPresent(Bool.self, forKey: .editorDebugGridEnabled) ?? true
         editorDebugOutlineEnabled = try container.decodeIfPresent(Bool.self, forKey: .editorDebugOutlineEnabled) ?? true
         editorDebugPhysicsEnabled = try container.decodeIfPresent(Bool.self, forKey: .editorDebugPhysicsEnabled) ?? false
@@ -186,18 +423,19 @@ final class EditorSettingsStore {
     private(set) var themeRoundedUI: Bool = true
     private(set) var themeCornerRounding: Float = 6.0
     private(set) var themeSpacingPreset: Int = 1
-    private(set) var viewportShowWorldIcons: Bool = true
-    private(set) var viewportWorldIconBaseSize: Float = 18.0
-    private(set) var viewportWorldIconDistanceScale: Float = 0.75
-    private(set) var viewportWorldIconMinSize: Float = 11.0
-    private(set) var viewportWorldIconMaxSize: Float = 28.0
-    private(set) var viewportShowSelectedCameraFrustum: Bool = true
+    private(set) var viewportDebugVisualizations = ViewportDebugVisualizationSettings()
+    var viewportShowWorldIcons: Bool { viewportDebugVisualizations.worldIcons.enabled }
+    var viewportWorldIconBaseSize: Float { viewportDebugVisualizations.worldIcons.baseSize }
+    var viewportWorldIconDistanceScale: Float { viewportDebugVisualizations.worldIcons.distanceScale }
+    var viewportWorldIconMinSize: Float { viewportDebugVisualizations.worldIcons.minSize }
+    var viewportWorldIconMaxSize: Float { viewportDebugVisualizations.worldIcons.maxSize }
+    var viewportShowSelectedCameraFrustum: Bool { viewportDebugVisualizations.cameraFrustums.enabled }
     private(set) var viewportPreviewEnabled: Bool = true
     private(set) var viewportPreviewSize: Float = 0.28
     private(set) var viewportPreviewPosition: Int = 3
     private(set) var editorDebugGridEnabled: Bool = true
     private(set) var editorDebugOutlineEnabled: Bool = true
-    private(set) var editorDebugPhysicsEnabled: Bool = false
+    var editorDebugPhysicsEnabled: Bool { viewportDebugVisualizations.physics.enabled }
 
     init() {}
 
@@ -223,18 +461,12 @@ final class EditorSettingsStore {
             themeRoundedUI = document.themeRoundedUI
             themeCornerRounding = document.themeCornerRounding
             themeSpacingPreset = document.themeSpacingPreset
-            viewportShowWorldIcons = document.viewportShowWorldIcons
-            viewportWorldIconBaseSize = document.viewportWorldIconBaseSize
-            viewportWorldIconDistanceScale = document.viewportWorldIconDistanceScale
-            viewportWorldIconMinSize = document.viewportWorldIconMinSize
-            viewportWorldIconMaxSize = document.viewportWorldIconMaxSize
-            viewportShowSelectedCameraFrustum = document.viewportShowSelectedCameraFrustum
+            viewportDebugVisualizations = document.viewportDebugVisualizations
             viewportPreviewEnabled = document.viewportPreviewEnabled
             viewportPreviewSize = document.viewportPreviewSize
             viewportPreviewPosition = document.viewportPreviewPosition
             editorDebugGridEnabled = document.editorDebugGridEnabled
             editorDebugOutlineEnabled = document.editorDebugOutlineEnabled
-            editorDebugPhysicsEnabled = document.editorDebugPhysicsEnabled
         }
     }
 
@@ -269,6 +501,7 @@ final class EditorSettingsStore {
             viewportPreviewEnabled: viewportPreviewEnabled,
             viewportPreviewSize: viewportPreviewSize,
             viewportPreviewPosition: viewportPreviewPosition,
+            viewportDebugVisualizations: viewportDebugVisualizations,
             editorDebugGridEnabled: editorDebugGridEnabled,
             editorDebugOutlineEnabled: editorDebugOutlineEnabled,
             editorDebugPhysicsEnabled: editorDebugPhysicsEnabled
@@ -352,18 +585,30 @@ final class EditorSettingsStore {
     func setThemeRoundedUI(_ value: Bool) { themeRoundedUI = value }
     func setThemeCornerRounding(_ value: Float) { themeCornerRounding = value }
     func setThemeSpacingPreset(_ value: Int) { themeSpacingPreset = value }
-    func setViewportShowWorldIcons(_ value: Bool) { viewportShowWorldIcons = value }
-    func setViewportWorldIconBaseSize(_ value: Float) { viewportWorldIconBaseSize = value }
-    func setViewportWorldIconDistanceScale(_ value: Float) { viewportWorldIconDistanceScale = value }
-    func setViewportWorldIconMinSize(_ value: Float) { viewportWorldIconMinSize = value }
-    func setViewportWorldIconMaxSize(_ value: Float) { viewportWorldIconMaxSize = value }
-    func setViewportShowSelectedCameraFrustum(_ value: Bool) { viewportShowSelectedCameraFrustum = value }
+    func setViewportShowWorldIcons(_ value: Bool) { viewportDebugVisualizations.worldIcons.enabled = value }
+    func setViewportWorldIconBaseSize(_ value: Float) { viewportDebugVisualizations.worldIcons.baseSize = value }
+    func setViewportWorldIconDistanceScale(_ value: Float) { viewportDebugVisualizations.worldIcons.distanceScale = value }
+    func setViewportWorldIconMinSize(_ value: Float) { viewportDebugVisualizations.worldIcons.minSize = value }
+    func setViewportWorldIconMaxSize(_ value: Float) { viewportDebugVisualizations.worldIcons.maxSize = value }
+    func setViewportShowSelectedCameraFrustum(_ value: Bool) { viewportDebugVisualizations.cameraFrustums.enabled = value }
     func setViewportPreviewEnabled(_ value: Bool) { viewportPreviewEnabled = value }
     func setViewportPreviewSize(_ value: Float) { viewportPreviewSize = value }
     func setViewportPreviewPosition(_ value: Int) { viewportPreviewPosition = value }
     func setEditorDebugGridEnabled(_ value: Bool) { editorDebugGridEnabled = value }
     func setEditorDebugOutlineEnabled(_ value: Bool) { editorDebugOutlineEnabled = value }
-    func setEditorDebugPhysicsEnabled(_ value: Bool) { editorDebugPhysicsEnabled = value }
+    func setEditorDebugPhysicsEnabled(_ value: Bool) { viewportDebugVisualizations.physics.enabled = value }
+    func viewportDebugStyle(for category: ViewportDebugVisualizationCategory) -> ViewportDebugStyle {
+        viewportDebugVisualizations.style(for: category)
+    }
+    func setViewportDebugStyle(_ style: ViewportDebugStyle, for category: ViewportDebugVisualizationCategory) {
+        viewportDebugVisualizations.setStyle(style, for: category)
+    }
+    func viewportProbeBlendShellSettings() -> ViewportProbeBlendShellSettings {
+        viewportDebugVisualizations.reflectionProbeBlendShell
+    }
+    func setViewportProbeBlendShellSettings(_ settings: ViewportProbeBlendShellSettings) {
+        viewportDebugVisualizations.reflectionProbeBlendShell = settings
+    }
 
     private func settingsURL() -> URL {
         return EditorFileSystem.editorSettingsURL()

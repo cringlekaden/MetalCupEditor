@@ -13,7 +13,9 @@ extern "C" {
 typedef enum ImGuiRendererSettingsCategory : unsigned int {
     ImGuiRendererSettingsCategoryCore = 0,
     ImGuiRendererSettingsCategoryLighting = 1,
-    ImGuiRendererSettingsCategoryShadows = 2
+    ImGuiRendererSettingsCategoryShadows = 2,
+    ImGuiRendererSettingsCategoryViewportOverlays = 3,
+    ImGuiRendererSettingsCategorySelection = 4
 } ImGuiRendererSettingsCategory;
 
 void ImGuiRendererSettingsCategoryDraw(void *context, ImGuiRendererSettingsCategory category);

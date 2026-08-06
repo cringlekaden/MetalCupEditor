@@ -86,6 +86,14 @@ struct TransitionGraphEditorState {
     bool pendingCreateFromPin = false;
 };
 
+struct TransitionGraphPopupIds {
+    std::string background;
+    std::string node;
+    std::string pin;
+    std::string link;
+    std::string createNode;
+};
+
 inline std::unordered_map<std::string, TransitionGraphEditorState> &EditorStatesByWorkspace() {
     static std::unordered_map<std::string, TransitionGraphEditorState> states;
     return states;
@@ -127,6 +135,13 @@ inline bool DrawTransitionGraphCanvas(const AnimationGraphTransitionGraphHostCon
             AnimationGraphSchema::NormalizeTypeId(node.type) == AnimationGraphSchema::NormalizeTypeId("transitionOutput");
     };
     const std::string workspaceKey = hostContext.graphHandle + "|" + hostContext.stateMachineNodeId + "|" + transitionRecord.id;
+    const TransitionGraphPopupIds popupIds {
+        "TransitionGraphBackgroundContext##" + workspaceKey,
+        "TransitionGraphNodeContext##" + workspaceKey,
+        "TransitionGraphPinContext##" + workspaceKey,
+        "TransitionGraphLinkContext##" + workspaceKey,
+        "TransitionGraphAddNode##" + workspaceKey
+    };
     auto settingsPath = [&]() -> std::string {
         char assetsRoot[1024] = {0};
         if (hostContext.context == nullptr ||
@@ -294,8 +309,10 @@ inline bool DrawTransitionGraphCanvas(const AnimationGraphTransitionGraphHostCon
             AnimationGraphNodeRenderer::RenderNode({
                 editorNodeId,
                 node.id,
+                node.id,
                 nodeSchema,
                 defaultTitle,
+                false,
                 {},
                 [&](int32_t slot, bool isInput) {
                     return makeNodeEditorPinId(node.id, slot, isInput);
@@ -304,72 +321,49 @@ inline bool DrawTransitionGraphCanvas(const AnimationGraphTransitionGraphHostCon
                     pinByEditorId[pinId.Get()] = TransitionGraphPinEndpoint { node.id, slot, isInput, nodeSchema, pinSchema };
                 },
                 {},
-                [&]() {
-                    std::string titleValue = defaultTitle;
-                    std::string parameterName = node.parameterName;
-                    float floatValue = node.floatValue;
-                    bool boolValue = node.boolValue;
-                    bool synchronizeValue = node.synchronizeValue;
-                    bool hasFloatValue = node.hasFloatValue;
-                    bool hasBoolValue = node.hasBoolValue;
-                    bool hasSynchronizeValue = node.hasSynchronizeValue;
-                    bool nodeChanged = false;
-
-                    ImGui::PushID(node.id.c_str());
-                    if (nodeSchema != nullptr) {
-                        AnimationGraphInlineWidgets::SchemaInlineFieldState fieldState {
-                            titleValue,
-                            parameterName,
-                            floatValue,
-                            boolValue,
-                            synchronizeValue,
-                            hasFloatValue,
-                            hasBoolValue,
-                            hasSynchronizeValue
-                        };
-                        nodeChanged = AnimationGraphInlineWidgets::DrawSchemaInlineFields(
-                            *nodeSchema,
-                            fieldState,
-                            [&](AnimationGraphSchema::FieldBinding binding) {
-                                if (normalizedType != "transitionoutput") {
-                                    return false;
-                                }
-                                if (binding == AnimationGraphSchema::FieldBinding::BoolValue) {
-                                    return isInputDriven(node.id, 0);
-                                }
-                                if (binding == AnimationGraphSchema::FieldBinding::SynchronizeValue) {
-                                    return isInputDriven(node.id, 1);
-                                }
-                                if (binding == AnimationGraphSchema::FieldBinding::Duration) {
-                                    return isInputDriven(node.id, 2);
-                                }
-                                return false;
-                            }) || nodeChanged;
-                        titleValue = fieldState.title;
-                        parameterName = fieldState.parameterName;
-                        floatValue = fieldState.floatValue;
-                        boolValue = fieldState.boolValue;
-                        synchronizeValue = fieldState.synchronizeValue;
-                        hasFloatValue = fieldState.hasFloatValue;
-                        hasBoolValue = fieldState.hasBoolValue;
-                        hasSynchronizeValue = fieldState.hasSynchronizeValue;
+                {
+                    defaultTitle,
+                    node.parameterName,
+                    {},
+                    {},
+                    {},
+                    node.floatValue,
+                    node.boolValue,
+                    node.synchronizeValue,
+                    node.hasFloatValue,
+                    node.hasBoolValue,
+                    node.hasSynchronizeValue
+                },
+                {},
+                {},
+                [&](AnimationGraphSchema::FieldBinding binding) {
+                    if (normalizedType != "transitionoutput") {
+                        return false;
                     }
-                    ImGui::PopID();
-
-                    if (nodeChanged) {
-                        const ImVec2 graphPos = ed::GetNodePosition(editorNodeId);
-                        updateNode(node,
-                                   titleValue.c_str(),
-                                   graphPos,
-                                   parameterName.empty() ? nullptr : parameterName.c_str(),
-                                   floatValue,
-                                   hasFloatValue,
-                                   boolValue,
-                                   hasBoolValue,
-                                   synchronizeValue,
-                                   hasSynchronizeValue,
-                                   isOutputNode(node));
+                    if (binding == AnimationGraphSchema::FieldBinding::BoolValue) {
+                        return isInputDriven(node.id, 0);
                     }
+                    if (binding == AnimationGraphSchema::FieldBinding::SynchronizeValue) {
+                        return isInputDriven(node.id, 1);
+                    }
+                    if (binding == AnimationGraphSchema::FieldBinding::Duration) {
+                        return isInputDriven(node.id, 2);
+                    }
+                    return false;
+                },
+                [&](const AnimationGraphInlineWidgets::SchemaInlineFieldState &fieldState) {
+                    const ImVec2 graphPos = ed::GetNodePosition(editorNodeId);
+                    updateNode(node,
+                               fieldState.title.c_str(),
+                               graphPos,
+                               fieldState.parameterName.empty() ? nullptr : fieldState.parameterName.c_str(),
+                               fieldState.floatValue,
+                               fieldState.hasFloatValue,
+                               fieldState.boolValue,
+                               fieldState.hasBoolValue,
+                               fieldState.synchronizeValue,
+                               fieldState.hasSynchronizeValue,
+                               isOutputNode(node));
                 }
             });
         }
@@ -475,10 +469,10 @@ inline bool DrawTransitionGraphCanvas(const AnimationGraphTransitionGraphHostCon
             pinByEditorId,
             linkIdByEditorId,
             transitionCanvasInteracted,
-            "TransitionGraphBackgroundContextMenu",
-            "TransitionGraphNodeContextMenu",
-            "TransitionGraphPinContextMenu",
-            "TransitionGraphLinkContextMenu",
+            popupIds.background.c_str(),
+            popupIds.node.c_str(),
+            popupIds.pin.c_str(),
+            popupIds.link.c_str(),
             [&](const std::string &) {},
             [&](const std::string &linkId) {
                 if (hostContext.panelState != nullptr) {
@@ -555,11 +549,11 @@ inline bool DrawTransitionGraphCanvas(const AnimationGraphTransitionGraphHostCon
         const AnimationGraphValidation::PinEndpoint contextEndpoint = transitionContextEndpoint();
 
         AnimationGraphInteractionController::DrawBackgroundContextMenu(popupRefs(),
-                                                                       "TransitionGraphBackgroundContextMenu",
-                                                                       "TransitionGraphAddNodeMenu");
+                                                                       popupIds.background.c_str(),
+                                                                       popupIds.createNode.c_str());
         AnimationGraphInteractionController::DrawNodeContextMenu(
             popupRefs(),
-            "TransitionGraphNodeContextMenu",
+            popupIds.node.c_str(),
             [&]() {
                 if (!editorState.contextNodeId.empty() && ImGui::MenuItem("Set As Output Node")) {
                     MCEEditorSetAnimationGraphStateMachineTransitionGraphOutputNode(
@@ -580,8 +574,8 @@ inline bool DrawTransitionGraphCanvas(const AnimationGraphTransitionGraphHostCon
             });
         AnimationGraphInteractionController::DrawPinContextMenu(
             popupRefs(),
-            "TransitionGraphPinContextMenu",
-            "TransitionGraphAddNodeMenu",
+            popupIds.pin.c_str(),
+            popupIds.createNode.c_str(),
             [&]() {
                 const auto creatableSchemas =
                     AnimationGraphSchema::CreatableSchemasForDomain(AnimationGraphSchema::GraphDomain::Transition);
@@ -594,7 +588,7 @@ inline bool DrawTransitionGraphCanvas(const AnimationGraphTransitionGraphHostCon
             });
         AnimationGraphInteractionController::DrawLinkContextMenu(
             popupRefs(),
-            "TransitionGraphLinkContextMenu",
+            popupIds.link.c_str(),
             []() {},
             [&](const std::string &linkId) {
                 MCEEditorRemoveAnimationGraphStateMachineTransitionGraphLink(
@@ -608,7 +602,7 @@ inline bool DrawTransitionGraphCanvas(const AnimationGraphTransitionGraphHostCon
         AnimationGraphInteractionController::DrawSchemaCreateMenu(
             AnimationGraphSchema::GraphDomain::Transition,
             popupRefs(),
-            "TransitionGraphAddNodeMenu",
+            popupIds.createNode.c_str(),
             nullptr,
             nullptr,
             0,

@@ -142,6 +142,59 @@ enum AssetOps {
         return ok
     }
 
+    static func createAnimationGraph(context: UnsafeRawPointer?, relativePath: String?, name: String?) -> AssetHandle? {
+        guard let context = resolveContext(context) else { return nil }
+        let projectManager = context.editorProjectManager
+        let alertCenter = context.editorAlertCenter
+        let logCenter = context.engineContext.log
+        guard let rootURL = projectManager.assetRootURL() else { return nil }
+        let rel = (relativePath == nil || relativePath?.isEmpty == true) ? "AnimationGraphs" : (relativePath ?? "")
+        let graphName = sanitizeName((name == nil || name?.isEmpty == true) ? "NewAnimationGraph" : (name ?? "NewAnimationGraph"))
+        guard let folderURL = resolveDirectoryURL(rootURL: rootURL, relativePath: rel) else { return nil }
+        let graphURL = uniqueFileURL(folder: folderURL, baseName: graphName, fileExtension: "mcanimgraph")
+        let handle = AssetHandle()
+        let outputNodeID = UUID()
+        let outputNode = AnimationGraphNodeDefinition(
+            id: outputNodeID,
+            type: .outputPose,
+            title: "Output Pose",
+            position: SIMD2<Float>(320.0, 120.0)
+        )
+        let relativePathValue = graphURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
+        let graphAsset = AnimationGraphAsset(
+            handle: handle,
+            name: graphURL.deletingPathExtension().lastPathComponent,
+            sourcePath: relativePathValue,
+            outputNodeID: outputNodeID,
+            parameters: [],
+            nodes: [outputNode],
+            links: []
+        )
+        let ok = performAssetMutation(projectManager) {
+            do {
+                try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+            } catch {
+                alertCenter.enqueueError("Failed to create animation graph folder: \(error.localizedDescription)")
+                return false
+            }
+            if !AnimationGraphAssetSerializer.save(graphAsset, to: graphURL) {
+                alertCenter.enqueueError("Failed to save animation graph file.")
+                return false
+            }
+            registerAssetMetadata(projectManager: projectManager,
+                                  handle: handle,
+                                  type: .animationGraph,
+                                  assetURL: graphURL,
+                                  rootURL: rootURL)
+            return true
+        }
+        if ok {
+            logCenter.logInfo("Created animation graph: \(graphAsset.name)", category: .assets)
+            return handle
+        }
+        return nil
+    }
+
     static func createPrefab(context: UnsafeRawPointer?, prefab: PrefabDocument, relativePath: String?, name: String?) -> String? {
         guard let context = resolveContext(context) else { return nil }
         let projectManager = context.editorProjectManager
@@ -470,11 +523,23 @@ enum AssetOps {
                                                  handle: AssetHandle,
                                                  materialURL: URL,
                                                  rootURL: URL) {
-        let relativePath = materialURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
-        guard let metaURL = projectManager.metaURLForAsset(assetURL: materialURL, relativePath: relativePath) else { return }
+        registerAssetMetadata(projectManager: projectManager,
+                              handle: handle,
+                              type: .material,
+                              assetURL: materialURL,
+                              rootURL: rootURL)
+    }
+
+    private static func registerAssetMetadata(projectManager: EditorProjectManager,
+                                              handle: AssetHandle,
+                                              type: AssetType,
+                                              assetURL: URL,
+                                              rootURL: URL) {
+        let relativePath = assetURL.path.replacingOccurrences(of: rootURL.path + "/", with: "")
+        guard let metaURL = projectManager.metaURLForAsset(assetURL: assetURL, relativePath: relativePath) else { return }
         let metadata = AssetMetadata(
             handle: handle,
-            type: .material,
+            type: type,
             sourcePath: relativePath,
             importSettings: [:],
             dependencies: [],
@@ -568,6 +633,8 @@ struct AssetPathResolver {
             return assetsRootURL.appendingPathComponent("Skeletons", isDirectory: true)
         case .animationClip:
             return assetsRootURL.appendingPathComponent("Animations", isDirectory: true)
+        case .animationGraph:
+            return assetsRootURL.appendingPathComponent("AnimationGraphs", isDirectory: true)
         case .audio:
             return assetsRootURL.appendingPathComponent("Audio", isDirectory: true)
         case .unknown:
@@ -625,8 +692,24 @@ struct MeshScanInfo {
     let hasTangents: Bool
     let suggestFlipNormalY: Bool
     let embeddedTextureCount: Int
+    let isSkinned: Bool
+    let skeletonInfo: MeshSkeletonScanInfo?
+    let clipInfos: [MeshAnimationClipScanInfo]
+    let hasRootMotion: Bool
+    let rootMotionBoneName: String?
     let warnings: [String]
     let materials: [MeshScanMaterial]
+}
+
+struct MeshSkeletonScanInfo {
+    let jointCount: Int
+    let joints: [SkeletonAsset.Joint]
+}
+
+struct MeshAnimationClipScanInfo {
+    let name: String
+    let durationSeconds: Float
+    let tracks: [AnimationClipAsset.JointTrack]
 }
 
 enum MeshTextureSemantic: String {
@@ -674,6 +757,10 @@ struct ImportCommitResult {
     let primaryHandle: AssetHandle
     let writtenPaths: [String]
     let dependencyHandles: [AssetHandle]
+    let meshPath: String?
+    let skeletonHandle: AssetHandle?
+    let defaultClipHandle: AssetHandle?
+    let submeshMaterialHandles: [AssetHandle]
 }
 
 private struct TextureImportDiagnostics {
@@ -1045,11 +1132,119 @@ struct MeshImporter: AssetImporter {
     }
 }
 
+struct FbxImporter: AssetImporter {
+    let importerId = "FbxImporter"
+    let importerVersion = "1"
+
+    func canImport(_ url: URL) -> Bool {
+        url.pathExtension.lowercased() == "fbx"
+    }
+
+    func scan(_ url: URL) -> ImportScanResult? {
+        guard canImport(url) else { return nil }
+        let name = url.deletingPathExtension().lastPathComponent
+        let fbxData = FbxSdkAdapter.scanFBX(url: url, suggestedName: name)
+        guard let fbxData else {
+            let failedInfo = MeshScanInfo(
+                meshCount: 0,
+                submeshCount: 0,
+                submeshMaterialIndices: [],
+                materialNames: [],
+                textureNames: [],
+                hasUVs: false,
+                hasNormals: false,
+                hasTangents: false,
+                suggestFlipNormalY: false,
+                embeddedTextureCount: 0,
+                isSkinned: false,
+                skeletonInfo: nil,
+                clipInfos: [],
+                hasRootMotion: false,
+                rootMotionBoneName: nil,
+                warnings: ["FBX import failed. FBX SDK bridge could not extract this FBX scene."],
+                materials: []
+            )
+            return ImportScanResult(
+                sourceURL: url,
+                assetType: .model,
+                suggestedName: name,
+                details: ["fbxBackend": "fbxsdk", "warning": "FBX import failed. FBX SDK bridge could not extract this FBX scene."],
+                meshInfo: failedInfo
+            )
+        }
+        let info = FbxSdkAdapter.makeMeshScanInfo(from: fbxData)
+        var details: [String: String] = [:]
+        details["fbxBackend"] = FbxSdkAdapter.backendName(for: fbxData)
+        details["fbxImportMode"] = fbxData.mode.rawValue
+        details["fbxScaleNormalization"] = fbxData.importScaleNormalizationMode
+        details["fbxScaleFactor"] = String(format: "%.6f", fbxData.importScaleFactor)
+        details["fbxScaleSource"] = fbxData.importScaleSource
+
+        let hasMeshes = info.meshCount > 0
+        let hasClips = !info.clipInfos.isEmpty
+        if !hasMeshes && hasClips {
+            details["fbxImportMode"] = "animationOnly"
+            return ImportScanResult(
+                sourceURL: url,
+                assetType: .animationClip,
+                suggestedName: name,
+                details: details,
+                meshInfo: info
+            )
+        }
+        details["fbxImportMode"] = info.isSkinned ? "skeletalMesh" : "staticMesh"
+        return ImportScanResult(
+            sourceURL: url,
+            assetType: .model,
+            suggestedName: name,
+            details: details,
+            meshInfo: info
+        )
+    }
+
+    func defaultSettings(for scan: ImportScanResult) -> ImportSettings {
+        if scan.assetType == .animationClip {
+            return ImportSettings(values: [
+                "associateSkeleton": "auto",
+                "targetSkeletonHandle": ""
+            ])
+        }
+        var values = MeshImporter().defaultSettings(for: scan).values
+        values["fbxImportMode"] = scan.details["fbxImportMode"] ?? "skeletalMesh"
+        return ImportSettings(values: values)
+    }
+
+    func commit(scan: ImportScanResult,
+                settings: ImportSettings,
+                projectManager: EditorProjectManager,
+                resolver: AssetPathResolver) -> ImportCommitResult? {
+        if scan.assetType == .animationClip {
+            return FbxImporter.commitAnimationOnlyFBX(
+                scan: scan,
+                settings: settings,
+                projectManager: projectManager,
+                resolver: resolver,
+                importerId: importerId,
+                importerVersion: importerVersion
+            )
+        }
+        return MeshImporter.commitMesh(
+            scan: scan,
+            settings: settings,
+            projectManager: projectManager,
+            resolver: resolver,
+            importerId: importerId,
+            importerVersion: importerVersion
+        )
+    }
+}
+
 extension MeshImporter {
-    private static func scanMesh(url: URL, suggestedName: String) -> ImportScanResult? {
+    fileprivate static func scanMesh(url: URL, suggestedName: String) -> ImportScanResult? {
         let asset = MDLAsset(url: url)
         asset.loadTextures()
         let meshes = (asset.childObjects(of: MDLMesh.self) as? [MDLMesh]) ?? []
+        let animationData = extractAnimationData(asset: asset, suggestedName: suggestedName)
         if meshes.isEmpty {
             return ImportScanResult(
                 sourceURL: url,
@@ -1067,6 +1262,11 @@ extension MeshImporter {
                 hasTangents: false,
                 suggestFlipNormalY: false,
                 embeddedTextureCount: 0,
+                isSkinned: false,
+                skeletonInfo: animationData.skeletonInfo,
+                clipInfos: animationData.clipInfos,
+                hasRootMotion: animationData.hasRootMotion,
+                rootMotionBoneName: animationData.rootMotionBoneName,
                 warnings: ["No meshes found."],
                 materials: []
             )
@@ -1080,6 +1280,8 @@ extension MeshImporter {
         var warnings: [String] = []
         var embeddedTextureCount = 0
         var suggestFlipNormalY = false
+        var hasJointIndices = false
+        var hasJointWeights = false
 
         var materialList: [MeshScanMaterial] = []
         var materialNames = Set<String>()
@@ -1131,6 +1333,12 @@ extension MeshImporter {
                     }
                     if name == MDLVertexAttributeNormal { hasNormals = true }
                     if name == MDLVertexAttributeTangent { hasTangents = true }
+                    if name == MDLVertexAttributeJointIndices || lowered.contains("jointindices") || lowered.contains("joints") {
+                        hasJointIndices = true
+                    }
+                    if name == MDLVertexAttributeJointWeights || lowered.contains("jointweights") || lowered.contains("weights") {
+                        hasJointWeights = true
+                    }
                 }
             }
         }
@@ -1155,6 +1363,10 @@ extension MeshImporter {
         if embeddedTextureCount > 0 {
             warnings.append("Embedded textures detected; they may not extract automatically.")
         }
+        let isSkinned = hasJointIndices && hasJointWeights && animationData.skeletonInfo != nil
+        if (hasJointIndices || hasJointWeights) && !isSkinned {
+            warnings.append("Skinning streams detected but skeleton data was incomplete.")
+        }
 
         let info = MeshScanInfo(
             meshCount: meshes.count,
@@ -1167,6 +1379,11 @@ extension MeshImporter {
             hasTangents: hasTangents,
             suggestFlipNormalY: suggestFlipNormalY,
             embeddedTextureCount: embeddedTextureCount,
+            isSkinned: isSkinned,
+            skeletonInfo: animationData.skeletonInfo,
+            clipInfos: animationData.clipInfos,
+            hasRootMotion: animationData.hasRootMotion,
+            rootMotionBoneName: animationData.rootMotionBoneName,
             warnings: warnings,
             materials: materialList
         )
@@ -1178,6 +1395,170 @@ extension MeshImporter {
             details: [:],
             meshInfo: info
         )
+    }
+
+    fileprivate struct ExtractedAnimationData {
+        let skeletonInfo: MeshSkeletonScanInfo?
+        let clipInfos: [MeshAnimationClipScanInfo]
+        let hasRootMotion: Bool
+        let rootMotionBoneName: String?
+    }
+
+    fileprivate static func extractAnimationData(asset: MDLAsset, suggestedName: String) -> ExtractedAnimationData {
+        var skeletonInfo: MeshSkeletonScanInfo?
+        let skeletons = (asset.childObjects(of: MDLSkeleton.self) as? [MDLSkeleton]) ?? []
+        if let skeleton = skeletons.first {
+            let jointPaths = skeleton.jointPaths
+            if !jointPaths.isEmpty {
+                var joints: [SkeletonAsset.Joint] = []
+                joints.reserveCapacity(jointPaths.count)
+                for (index, path) in jointPaths.enumerated() {
+                    let parentPath = (path as NSString).deletingLastPathComponent
+                    let parentIndex: Int
+                    if parentPath.isEmpty || parentPath == "." || parentPath == path {
+                        parentIndex = -1
+                    } else {
+                        parentIndex = jointPaths.firstIndex(of: parentPath) ?? -1
+                    }
+                    let restMatrix = skeleton.jointRestTransforms.float4x4Array[index]
+                    let decomposed = TransformMath.decomposeMatrix(restMatrix)
+                    joints.append(
+                        SkeletonAsset.Joint(
+                            name: URL(fileURLWithPath: path).lastPathComponent,
+                            parentIndex: parentIndex,
+                            bindLocalPosition: decomposed.position,
+                            bindLocalRotation: decomposed.rotation,
+                            bindLocalScale: decomposed.scale
+                        )
+                    )
+                }
+                skeletonInfo = MeshSkeletonScanInfo(jointCount: joints.count, joints: joints)
+            }
+        }
+
+        var clips: [MeshAnimationClipScanInfo] = []
+        var hasRootMotion = false
+        let packedAnimations = (asset.childObjects(of: MDLPackedJointAnimation.self) as? [MDLPackedJointAnimation]) ?? []
+        for (index, packed) in packedAnimations.enumerated() {
+            let jointPaths = packed.jointPaths
+            let clipNameBase = packed.name.isEmpty ? "\(suggestedName)_Clip_\(index + 1)" : packed.name
+            let clipName = meshSanitizeFileName(clipNameBase)
+
+            var duration = Float(0)
+            if let maxT = packed.translations.times.max() { duration = max(duration, Float(maxT)) }
+            if let maxR = packed.rotations.times.max() { duration = max(duration, Float(maxR)) }
+            if let maxS = packed.scales.times.max() { duration = max(duration, Float(maxS)) }
+
+            var tracks: [AnimationClipAsset.JointTrack] = []
+            let sampleTimes = (packed.translations.times + packed.rotations.times + packed.scales.times)
+                .sorted()
+                .reduce(into: [TimeInterval]()) { result, value in
+                    if result.last != value { result.append(value) }
+                }
+
+            if !jointPaths.isEmpty, !sampleTimes.isEmpty {
+                for (jointIndex, _) in jointPaths.enumerated() {
+                    var translations: [AnimationClipAsset.TranslationKeyframe] = []
+                    var rotations: [AnimationClipAsset.RotationKeyframe] = []
+                    var scales: [AnimationClipAsset.ScaleKeyframe] = []
+                    for t in sampleTimes {
+                        let tr = packed.translations.float3Array(atTime: t)
+                        let rr = packed.rotations.floatQuaternionArray(atTime: t)
+                        let sr = packed.scales.float3Array(atTime: t)
+                        if jointIndex < tr.count {
+                            translations.append(AnimationClipAsset.TranslationKeyframe(time: Float(t), value: tr[jointIndex]))
+                        }
+                        if jointIndex < rr.count {
+                            let q = rr[jointIndex]
+                            let quat = SIMD4<Float>(q.imag.x, q.imag.y, q.imag.z, q.real)
+                            rotations.append(AnimationClipAsset.RotationKeyframe(time: Float(t), value: quat))
+                        }
+                        if jointIndex < sr.count {
+                            scales.append(AnimationClipAsset.ScaleKeyframe(time: Float(t), value: sr[jointIndex]))
+                        }
+                    }
+                    if !translations.isEmpty || !rotations.isEmpty || !scales.isEmpty {
+                        tracks.append(
+                            AnimationClipAsset.JointTrack(
+                                jointIndex: jointIndex,
+                                translations: translations,
+                                rotations: rotations,
+                                scales: scales
+                            )
+                        )
+                    }
+                }
+            }
+
+            if !hasRootMotion {
+                hasRootMotion = tracks.contains { track in
+                    guard track.jointIndex == 0, track.translations.count > 1 else { return false }
+                    let first = track.translations[0].value
+                    return track.translations.contains { simd_length($0.value - first) > 0.001 }
+                }
+            }
+
+            clips.append(
+                MeshAnimationClipScanInfo(
+                    name: clipName,
+                    durationSeconds: duration,
+                    tracks: tracks
+                )
+            )
+        }
+
+        let rootMotionBoneName = detectRootMotionBoneName(clips: clips, skeleton: skeletonInfo)
+        return ExtractedAnimationData(
+            skeletonInfo: skeletonInfo,
+            clipInfos: clips,
+            hasRootMotion: hasRootMotion,
+            rootMotionBoneName: rootMotionBoneName
+        )
+    }
+
+    fileprivate static func detectRootMotionBoneName(clips: [MeshAnimationClipScanInfo],
+                                                     skeleton: MeshSkeletonScanInfo?) -> String? {
+        guard let skeleton, !skeleton.joints.isEmpty else { return nil }
+        let candidates = clips.flatMap(\.tracks).compactMap { track -> (jointIndex: Int, motion: Float)? in
+            guard track.jointIndex >= 0, track.jointIndex < skeleton.joints.count else { return nil }
+            guard track.translations.count > 1 else { return nil }
+            let first = track.translations[0].value
+            var motion: Float = 0.0
+            for sample in track.translations {
+                motion = max(motion, simd_length(sample.value - first))
+            }
+            guard motion > 0.001 else { return nil }
+            return (track.jointIndex, motion)
+        }
+        guard !candidates.isEmpty else { return nil }
+
+        func depth(for jointIndex: Int) -> Int {
+            var depth = 0
+            var cursor = jointIndex
+            var visited: Set<Int> = []
+            while cursor >= 0, cursor < skeleton.joints.count, !visited.contains(cursor) {
+                visited.insert(cursor)
+                let parent = skeleton.joints[cursor].parentIndex
+                if parent < 0 { break }
+                depth += 1
+                cursor = parent
+            }
+            return depth
+        }
+
+        let minDepth = candidates.map { depth(for: $0.jointIndex) }.min() ?? 0
+        let best = candidates.max { lhs, rhs in
+            let lhsDepth = depth(for: lhs.jointIndex)
+            let rhsDepth = depth(for: rhs.jointIndex)
+            let lhsClose = lhsDepth <= (minDepth + 1)
+            let rhsClose = rhsDepth <= (minDepth + 1)
+            if lhsClose != rhsClose { return !lhsClose && rhsClose }
+            if lhsDepth != rhsDepth { return lhsDepth > rhsDepth }
+            if abs(lhs.motion - rhs.motion) > 1.0e-5 { return lhs.motion < rhs.motion }
+            return lhs.jointIndex > rhs.jointIndex
+        }
+        guard let jointIndex = best?.jointIndex else { return nil }
+        return skeleton.joints[jointIndex].name
     }
 
     private static func extractMaterial(_ material: MDLMaterial, baseURL: URL) -> MeshScanMaterial {
@@ -1253,9 +1634,9 @@ extension MeshImporter {
 
         var alphaMode: MaterialAlphaMode = .opaque
         if alphaCutoffProp != nil {
-            alphaMode = .masked
+            alphaMode = .alphaClip
         } else if opacity < 0.99 {
-            alphaMode = .blended
+            alphaMode = .transparent
         }
 
         let doubleSided = boolFromProperty(doubleSidedProp) ?? false
@@ -1433,7 +1814,7 @@ extension MeshImporter {
         }
     }
 
-    private static func commitMesh(scan: ImportScanResult,
+    fileprivate static func commitMesh(scan: ImportScanResult,
                                    settings: ImportSettings,
                                    projectManager: EditorProjectManager,
                                    resolver: AssetPathResolver,
@@ -1441,20 +1822,35 @@ extension MeshImporter {
                                    importerVersion: String) -> ImportCommitResult? {
         guard let rootURL = projectManager.assetRootURL() else { return nil }
         guard let meshInfo = scan.meshInfo else { return nil }
+        let sourceURL = scan.sourceURL.standardizedFileURL
+        let sourceFolderURL = sourceURL.deletingLastPathComponent().standardizedFileURL
+        let sourceRelativePath = PathUtils.relativePath(from: rootURL, to: sourceURL) ?? sourceURL.lastPathComponent
+        var sourcePathAbs = sourceURL.path
+        let isFBXImporter = importerId == "FbxImporter"
+        let useFBXSourceFolderOutputs = isFBXImporter && isUnderRoot(sourceURL, rootURL: rootURL)
+        let sourceFolderRelativePath = PathUtils.relativePath(from: rootURL, to: sourceFolderURL) ?? sourceFolderURL.lastPathComponent
         guard let meshRoot = resolver.destinationFolder(for: .model) else { return nil }
-        var meshFolder = uniqueFolderURL(in: meshRoot, baseName: scan.suggestedName)
+        var meshFolder = useFBXSourceFolderOutputs ? sourceFolderURL : uniqueFolderURL(in: meshRoot, baseName: scan.suggestedName)
 
         let texturesRoot = resolver.destinationFolder(for: .texture) ?? rootURL.appendingPathComponent("Textures", isDirectory: true)
         let materialsRoot = resolver.destinationFolder(for: .material) ?? rootURL.appendingPathComponent("Materials", isDirectory: true)
+        let skeletonsRoot = resolver.destinationFolder(for: .skeleton) ?? rootURL.appendingPathComponent("Skeletons", isDirectory: true)
+        let clipsRoot = resolver.destinationFolder(for: .animationClip) ?? rootURL.appendingPathComponent("Animations", isDirectory: true)
         let environmentsRoot = resolver.destinationFolder(for: .environment) ?? rootURL.appendingPathComponent("Environments", isDirectory: true)
-        var texturesFolder = texturesRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
-        var materialsFolder = materialsRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
-
-        let sourceURL = scan.sourceURL.standardizedFileURL
-        let sourceRelativePath = PathUtils.relativePath(from: rootURL, to: sourceURL) ?? sourceURL.lastPathComponent
-        var sourcePathAbs = sourceURL.path
+        var texturesFolder = useFBXSourceFolderOutputs ? meshFolder : texturesRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
+        var materialsFolder = useFBXSourceFolderOutputs ? meshFolder : materialsRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
+        var skeletonsFolder = useFBXSourceFolderOutputs ? meshFolder : skeletonsRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
+        var clipsFolder = useFBXSourceFolderOutputs ? meshFolder : clipsRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
         let sourceExt = sourceURL.pathExtension.lowercased()
         let textureOrigin = (sourceExt == "usdz") ? "bottomLeft" : "topLeft"
+        let usesFbxBakedMesh = importerId == "FbxImporter" && scan.assetType == .model
+        let fbxDataForMesh = usesFbxBakedMesh ? FbxSdkAdapter.scanFBX(url: sourceURL, suggestedName: scan.suggestedName) : nil
+        let canBakeFbxMesh = fbxDataForMesh?.mode != .animationOnly && !(fbxDataForMesh?.meshes.isEmpty ?? true)
+        let hasSkinnedMeshDataWithoutSkeleton: Bool = {
+            guard let fbxDataForMesh else { return false }
+            let hasSkinningStreams = fbxDataForMesh.meshes.contains(where: { $0.hasSkinning })
+            return hasSkinningStreams && fbxDataForMesh.skeleton == nil
+        }()
 
         let metadataSnapshotForReimport = projectManager.assetMetadataSnapshot()
         var reimportMeshMeta: AssetMetadata?
@@ -1481,29 +1877,98 @@ extension MeshImporter {
            !originalSourceAbs.isEmpty {
             sourcePathAbs = originalSourceAbs
         }
+        let preExistingGeneratedPaths: Set<String> = Set(metadataSnapshotForReimport.compactMap { meta in
+            if meta.handle == reimportMeshMeta?.handle {
+                return meta.sourcePath
+            }
+            guard let meshSource = meta.importSettings["meshSourcePathAbs"], meshSource == sourcePathAbs else { return nil }
+            if useFBXSourceFolderOutputs {
+                let metaURL = rootURL.appendingPathComponent(meta.sourcePath).standardizedFileURL
+                if metaURL.deletingLastPathComponent() != sourceFolderURL { return nil }
+            }
+            switch meta.type {
+            case .texture, .environment, .material, .skeleton, .animationClip:
+                return meta.sourcePath
+            default:
+                return nil
+            }
+        })
 
         var commitResult: ImportCommitResult?
         let ok = projectManager.performAssetMutation {
-            if let reimportMeshMeta {
+            if hasSkinnedMeshDataWithoutSkeleton {
+                EngineLoggerContext.log(
+                    "FBX import failed for \(sourceURL.lastPathComponent): skinned mesh data present but skeleton extraction failed. Import aborted to prevent invalid skinning output.",
+                    level: .error,
+                    category: .assets
+                )
+                return false
+            }
+            if let reimportMeshMeta, !useFBXSourceFolderOutputs {
                 let existingMeshURL = rootURL.appendingPathComponent(reimportMeshMeta.sourcePath)
                 meshFolder = existingMeshURL.deletingLastPathComponent()
                 texturesFolder = texturesRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
                 materialsFolder = materialsRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
+                skeletonsFolder = skeletonsRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
+                clipsFolder = clipsRoot.appendingPathComponent(meshFolder.lastPathComponent, isDirectory: true)
             }
             try FileManager.default.createDirectory(at: meshFolder, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: texturesFolder, withIntermediateDirectories: true)
             try FileManager.default.createDirectory(at: materialsFolder, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: skeletonsFolder, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: clipsFolder, withIntermediateDirectories: true)
 
             let sourceFileName = sourceURL.lastPathComponent
-            let meshDestinationURL = reimportMeshMeta != nil
-                ? rootURL.appendingPathComponent(reimportMeshMeta!.sourcePath)
-                : meshFolder.appendingPathComponent(sourceFileName)
+            let bakedMeshFileName = "\(sourceURL.deletingPathExtension().lastPathComponent).mcmesh"
+            let meshDestinationURL: URL
+            if let reimportMeshMeta {
+                let existingURL = rootURL.appendingPathComponent(reimportMeshMeta.sourcePath)
+                if useFBXSourceFolderOutputs && canBakeFbxMesh {
+                    meshDestinationURL = meshFolder.appendingPathComponent(bakedMeshFileName)
+                } else if canBakeFbxMesh {
+                    if existingURL.pathExtension.lowercased() == "mcmesh" {
+                        meshDestinationURL = existingURL
+                    } else {
+                        meshDestinationURL = meshFolder.appendingPathComponent(bakedMeshFileName)
+                    }
+                } else {
+                    meshDestinationURL = existingURL
+                }
+            } else if canBakeFbxMesh {
+                meshDestinationURL = meshFolder.appendingPathComponent(bakedMeshFileName)
+            } else {
+                meshDestinationURL = meshFolder.appendingPathComponent(sourceFileName)
+            }
             let meshMetaURL = AssetIO.metaURL(for: meshDestinationURL)
             let sourceMetaURL = AssetIO.metaURL(for: sourceURL)
 
             let existingMeshHandle = reimportMeshMeta?.handle ?? loadHandle(from: sourceMetaURL) ?? loadHandle(from: meshMetaURL)
 
-            if meshDestinationURL.standardizedFileURL.path != sourceURL.standardizedFileURL.path {
+            if canBakeFbxMesh, let fbxDataForMesh {
+                if FileManager.default.fileExists(atPath: meshDestinationURL.path) {
+                    try? FileManager.default.removeItem(at: meshDestinationURL)
+                }
+                let bakedOK = FbxSdkAdapter.writeBakedMeshAsset(
+                    from: fbxDataForMesh,
+                    name: scan.suggestedName,
+                    to: meshDestinationURL
+                )
+                guard bakedOK else {
+                    EngineLoggerContext.log(
+                        "FBX import failed to persist baked mesh asset for \(sourceURL.lastPathComponent).",
+                        level: .error,
+                        category: .assets
+                    )
+                    return false
+                }
+                if meshDestinationURL.standardizedFileURL.path != sourceURL.standardizedFileURL.path,
+                   FileManager.default.fileExists(atPath: sourceMetaURL.path),
+                   let sourceMetaHandle = loadHandle(from: sourceMetaURL),
+                   sourceMetaHandle == existingMeshHandle {
+                    // Avoid duplicate metadata handle collision between raw FBX source and baked runtime mesh.
+                    try? FileManager.default.removeItem(at: sourceMetaURL)
+                }
+            } else if meshDestinationURL.standardizedFileURL.path != sourceURL.standardizedFileURL.path {
                 if FileManager.default.fileExists(atPath: meshDestinationURL.path) {
                     try? FileManager.default.removeItem(at: meshDestinationURL)
                 }
@@ -1520,16 +1985,23 @@ extension MeshImporter {
             var existingBySourceAbs: [String: AssetMetadata] = [:]
             var existingMaterialsByKey: [String: AssetMetadata] = [:]
             var existingTexturesByKey: [String: AssetMetadata] = [:]
+            var existingSkeletonBySource: AssetMetadata?
+            var existingClipByName: [String: AssetMetadata] = [:]
             let meshSourceKey = sourcePathAbs
             for meta in metadataSnapshot {
+                let metaURL = rootURL.appendingPathComponent(meta.sourcePath).standardizedFileURL
+                let isMetaInSourceFamily = metaURL.deletingLastPathComponent() == sourceFolderURL
                 if let abs = meta.importSettings["sourcePathAbs"], !abs.isEmpty {
-                    existingBySourceAbs[abs] = meta
+                    if !useFBXSourceFolderOutputs || isMetaInSourceFamily || meta.type == .texture || meta.type == .environment {
+                        existingBySourceAbs[abs] = meta
+                    }
                 }
                 if meta.type == .material,
                    let meshSource = meta.importSettings["meshSourcePathAbs"],
                    let materialName = meta.importSettings["meshMaterialName"],
                    !meshSource.isEmpty,
-                   meshSource == meshSourceKey {
+                   meshSource == meshSourceKey,
+                   (!useFBXSourceFolderOutputs || isMetaInSourceFamily) {
                     let key = "\(meshSource)|\(materialName)"
                     existingMaterialsByKey[key] = meta
                 }
@@ -1537,16 +2009,31 @@ extension MeshImporter {
                    let meshSource = meta.importSettings["meshSourcePathAbs"],
                    let semantic = meta.importSettings["meshTextureSemantic"],
                    !meshSource.isEmpty,
-                   meshSource == meshSourceKey {
+                   meshSource == meshSourceKey,
+                   (!useFBXSourceFolderOutputs || isMetaInSourceFamily) {
                     let materialName = meta.importSettings["meshMaterialName"] ?? ""
                     let key = "\(meshSource)|\(materialName)|\(semantic)"
                     existingTexturesByKey[key] = meta
+                }
+                if meta.type == .skeleton,
+                   let meshSource = meta.importSettings["meshSourcePathAbs"],
+                   meshSource == meshSourceKey,
+                   (!useFBXSourceFolderOutputs || isMetaInSourceFamily) {
+                    existingSkeletonBySource = meta
+                }
+                if meta.type == .animationClip,
+                   let meshSource = meta.importSettings["meshSourcePathAbs"],
+                   let clipName = meta.importSettings["clipName"],
+                   meshSource == meshSourceKey,
+                   (!useFBXSourceFolderOutputs || isMetaInSourceFamily) {
+                    existingClipByName[clipName] = meta
                 }
             }
 
             var textureHandleMap: [URL: AssetHandle] = [:]
             var textureDependencies: [AssetHandle] = []
             var embeddedTextureHandles: [String: AssetHandle] = [:]
+            var writtenPaths: [String] = []
 
             if settings.boolValue("importTextures", default: true) {
                 let copyTextures = settings.boolValue("copyTextures", default: true)
@@ -1555,7 +2042,7 @@ extension MeshImporter {
                         if let url = texture.url {
                             if textureHandleMap[url] != nil { continue }
                             let ext = url.pathExtension.lowercased()
-                            let destinationFolder = (ext == "hdr" || ext == "exr") ? environmentsRoot : texturesFolder
+                            let destinationFolder = useFBXSourceFolderOutputs ? texturesFolder : ((ext == "hdr" || ext == "exr") ? environmentsRoot : texturesFolder)
                             var destinationURL = url
                             let sourceTextureAbs = url.standardizedFileURL.path
                             let textureKey = "\(meshSourceKey)|\(material.name)|\(texture.semantic.rawValue)"
@@ -1753,7 +2240,7 @@ extension MeshImporter {
                     if let existing = existingMaterialsByKey[materialKey] {
                         materialURL = rootURL.appendingPathComponent(existing.sourcePath)
                         handle = existing.handle
-                    } else if reimportMeshMeta != nil && FileManager.default.fileExists(atPath: candidateURL.path) {
+                    } else if useFBXSourceFolderOutputs || (reimportMeshMeta != nil && FileManager.default.fileExists(atPath: candidateURL.path)) {
                         materialURL = candidateURL
                         handle = loadHandle(from: AssetIO.metaURL(for: materialURL)) ?? AssetHandle()
                     } else {
@@ -1859,6 +2346,127 @@ extension MeshImporter {
                 }
             }
 
+            var skeletonHandle: AssetHandle?
+            var clipHandles: [AssetHandle] = []
+            var clipSummaryEntries: [String] = []
+            if meshInfo.isSkinned, let skeletonInfo = meshInfo.skeletonInfo, skeletonInfo.jointCount > 0 {
+                let skeletonBaseName = useFBXSourceFolderOutputs
+                    ? meshSanitizeFileName(sourceURL.deletingPathExtension().lastPathComponent)
+                    : meshSanitizeFileName("\(scan.suggestedName)_Skeleton")
+                let skeletonCandidateURL = skeletonsFolder.appendingPathComponent("\(skeletonBaseName).mcskeleton")
+                let skeletonURL: URL
+                if let existing = existingSkeletonBySource {
+                    skeletonURL = rootURL.appendingPathComponent(existing.sourcePath)
+                    skeletonHandle = existing.handle
+                } else if useFBXSourceFolderOutputs || (reimportMeshMeta != nil && FileManager.default.fileExists(atPath: skeletonCandidateURL.path)) {
+                    skeletonURL = skeletonCandidateURL
+                    skeletonHandle = loadHandle(from: AssetIO.metaURL(for: skeletonURL)) ?? AssetHandle()
+                } else {
+                    skeletonURL = meshUniqueFileURL(in: skeletonsFolder, baseName: skeletonBaseName, ext: "mcskeleton")
+                    skeletonHandle = loadHandle(from: AssetIO.metaURL(for: skeletonURL)) ?? AssetHandle()
+                }
+
+                let resolvedSkeletonHandle = skeletonHandle ?? AssetHandle()
+                let skeletonAsset = SkeletonAsset(
+                    handle: resolvedSkeletonHandle,
+                    name: skeletonBaseName,
+                    sourcePath: sourceRelativePath,
+                    joints: skeletonInfo.joints
+                )
+                _ = SkeletonAssetSerializer.save(skeletonAsset, to: skeletonURL)
+
+                let skeletonRelativePath = PathUtils.relativePath(from: rootURL, to: skeletonURL) ?? skeletonURL.lastPathComponent
+                let skeletonMetaURL = AssetIO.metaURL(for: skeletonURL)
+                let skeletonMeta = AssetMetadata(
+                    handle: resolvedSkeletonHandle,
+                    type: .skeleton,
+                    sourcePath: skeletonRelativePath,
+                    importSettings: [
+                        "importer": importerId,
+                        "importerVersion": importerVersion,
+                        "sourcePath": sourceRelativePath,
+                        "sourcePathAbs": sourcePathAbs,
+                        "meshSourcePathAbs": meshSourceKey,
+                        "jointCount": String(skeletonInfo.jointCount),
+                        "importScaleApplied": scan.details["fbxScaleFactor"] ?? (settings.values["scale"] ?? "1.0"),
+                        "importScaleNormalization": scan.details["fbxScaleNormalization"] ?? "none",
+                        "importScaleSource": scan.details["fbxScaleSource"] ?? "unknown"
+                    ],
+                    dependencies: [],
+                    lastModified: Date().timeIntervalSince1970
+                )
+                projectManager.saveMetadata(skeletonMeta, to: skeletonMetaURL)
+                writtenPaths.append(skeletonRelativePath)
+                skeletonHandle = resolvedSkeletonHandle
+
+                for (index, clipInfo) in meshInfo.clipInfos.enumerated() {
+                    let clipName = meshSanitizeFileName(clipInfo.name.isEmpty ? "\(scan.suggestedName)_Clip_\(index + 1)" : clipInfo.name)
+                    let clipCandidateURL = clipsFolder.appendingPathComponent("\(clipName).mcanim")
+                    let clipURL: URL
+                    let clipHandle: AssetHandle
+                    if let existing = existingClipByName[clipName] {
+                        clipURL = rootURL.appendingPathComponent(existing.sourcePath)
+                        clipHandle = existing.handle
+                    } else if useFBXSourceFolderOutputs || (reimportMeshMeta != nil && FileManager.default.fileExists(atPath: clipCandidateURL.path)) {
+                        clipURL = clipCandidateURL
+                        clipHandle = loadHandle(from: AssetIO.metaURL(for: clipURL)) ?? AssetHandle()
+                    } else {
+                        clipURL = meshUniqueFileURL(in: clipsFolder, baseName: clipName, ext: "mcanim")
+                        clipHandle = loadHandle(from: AssetIO.metaURL(for: clipURL)) ?? AssetHandle()
+                    }
+
+                    let clipAsset = AnimationClipAsset(
+                        handle: clipHandle,
+                        name: clipName,
+                        sourcePath: sourceRelativePath,
+                        durationSeconds: clipInfo.durationSeconds,
+                        tracks: clipInfo.tracks
+                    )
+                    _ = AnimationClipAssetSerializer.save(clipAsset, to: clipURL)
+
+                    let clipRelativePath = PathUtils.relativePath(from: rootURL, to: clipURL) ?? clipURL.lastPathComponent
+                    let clipMetaURL = AssetIO.metaURL(for: clipURL)
+                    let clipDependencies = skeletonHandle.map { [$0] } ?? []
+                    let clipMeta = AssetMetadata(
+                        handle: clipHandle,
+                        type: .animationClip,
+                        sourcePath: clipRelativePath,
+                        importSettings: [
+                            "importer": importerId,
+                            "importerVersion": importerVersion,
+                            "sourcePath": sourceRelativePath,
+                            "sourcePathAbs": sourcePathAbs,
+                            "meshSourcePathAbs": meshSourceKey,
+                            "clipName": clipName,
+                            "durationSeconds": String(format: "%.6f", clipInfo.durationSeconds),
+                            "skeletonHandle": resolvedSkeletonHandle.rawValue.uuidString,
+                            "importScaleApplied": scan.details["fbxScaleFactor"] ?? (settings.values["scale"] ?? "1.0"),
+                            "importScaleSource": scan.details["fbxScaleSource"] ?? "meshImport",
+                            "associationState": "resolved",
+                            "targetSkeletonJointCount": String(skeletonInfo.jointCount),
+                            "clipCanonicalJointCountAfterRemap": String(skeletonInfo.jointCount)
+                        ],
+                        dependencies: clipDependencies,
+                        lastModified: Date().timeIntervalSince1970
+                    )
+                    projectManager.saveMetadata(clipMeta, to: clipMetaURL)
+                    writtenPaths.append(clipRelativePath)
+                    clipHandles.append(clipHandle)
+                    clipSummaryEntries.append("\(clipName):\(String(format: "%.6f", clipInfo.durationSeconds))")
+                }
+
+                if importerId == "FbxImporter", !clipHandles.isEmpty {
+                    MeshImporter.repairAnimationGraphClipHandlesAfterFbxImport(
+                        projectManager: projectManager,
+                        rootURL: rootURL,
+                        sourceFolderURL: sourceFolderURL,
+                        sourceURL: sourceURL,
+                        newClipHandles: clipHandles,
+                        clipInfos: meshInfo.clipInfos
+                    )
+                }
+            }
+
             let meshHandle = existingMeshHandle ?? AssetHandle()
             let meshRelativePath = PathUtils.relativePath(from: rootURL, to: meshDestinationURL) ?? meshDestinationURL.lastPathComponent
 
@@ -1867,6 +2475,11 @@ extension MeshImporter {
             meshImportSettings["importerVersion"] = importerVersion
             meshImportSettings["sourcePath"] = sourceRelativePath
             meshImportSettings["sourcePathAbs"] = sourcePathAbs
+            if importerId == "FbxImporter" {
+                meshImportSettings["importScaleNormalization"] = scan.details["fbxScaleNormalization"] ?? "none"
+                meshImportSettings["importScaleApplied"] = scan.details["fbxScaleFactor"] ?? (meshImportSettings["scale"] ?? "1.0")
+                meshImportSettings["importScaleSource"] = scan.details["fbxScaleSource"] ?? "unknown"
+            }
             if !meshInfo.submeshMaterialIndices.isEmpty {
                 let handleStrings = meshInfo.submeshMaterialIndices.map { index -> String in
                     if index >= 0 && index < materialHandles.count {
@@ -1876,27 +2489,312 @@ extension MeshImporter {
                 }
                 meshImportSettings["submeshMaterials"] = handleStrings.joined(separator: ",")
             }
+            meshImportSettings["isSkinned"] = meshInfo.isSkinned ? "true" : "false"
+            meshImportSettings["hasRootMotion"] = meshInfo.hasRootMotion ? "true" : "false"
+            if let rootMotionBoneName = meshInfo.rootMotionBoneName?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !rootMotionBoneName.isEmpty {
+                meshImportSettings["rootBoneName"] = rootMotionBoneName
+            } else {
+                meshImportSettings.removeValue(forKey: "rootBoneName")
+            }
+            if let skeletonHandle {
+                meshImportSettings["skeletonHandle"] = skeletonHandle.rawValue.uuidString
+            } else {
+                meshImportSettings.removeValue(forKey: "skeletonHandle")
+            }
+            if !clipHandles.isEmpty {
+                meshImportSettings["clipHandles"] = clipHandles.map { $0.rawValue.uuidString }.joined(separator: ",")
+                meshImportSettings["defaultClipHandle"] = clipHandles[0].rawValue.uuidString
+                meshImportSettings["clipSummaries"] = clipSummaryEntries.joined(separator: ";")
+            } else {
+                meshImportSettings.removeValue(forKey: "clipHandles")
+                meshImportSettings.removeValue(forKey: "defaultClipHandle")
+                meshImportSettings.removeValue(forKey: "clipSummaries")
+            }
 
+            let skeletonDependencies = skeletonHandle.map { [$0] } ?? []
+            let allDependencies = materialHandles + textureDependencies + skeletonDependencies + clipHandles
             let meshMetadata = AssetMetadata(
                 handle: meshHandle,
                 type: .model,
                 sourcePath: meshRelativePath,
                 importSettings: meshImportSettings,
-                dependencies: materialHandles + textureDependencies,
+                dependencies: allDependencies,
                 lastModified: Date().timeIntervalSince1970
             )
             projectManager.saveMetadata(meshMetadata, to: meshMetaURL)
 
+#if DEBUG
+            if importerId == "FbxImporter" {
+                let clipDefault = clipHandles.first?.rawValue.uuidString ?? "<none>"
+                let generatedOutputPaths = ([meshRelativePath] + writtenPaths)
+                let outputPathSummary = generatedOutputPaths.map { path in
+                    let status = preExistingGeneratedPaths.contains(path) ? "overwrite" : "new"
+                    return "\(status):\(path)"
+                }.joined(separator: "\n")
+                EngineLoggerContext.log(
+                    "FBX import summary source=\(sourceURL.path)\nmode=\(scan.details["fbxImportMode"] ?? "<unknown>")\noutputPolicy=\(useFBXSourceFolderOutputs ? "sourceFolder" : "defaultResolverFolders")\nsourceFolder=\(sourceFolderRelativePath)\nmeshHandle=\(meshHandle.rawValue.uuidString)\nmeshPath=\(meshRelativePath)\nskeletonHandle=\(skeletonHandle?.rawValue.uuidString ?? "<none>")\nclipCount=\(clipHandles.count)\ndefaultClip=\(clipDefault)\nmaterialCount=\(materialHandles.count)\ngeneratedOutputs=\n\(outputPathSummary)",
+                    level: .debug,
+                    category: .assets
+                )
+            }
+#endif
+
             commitResult = ImportCommitResult(
                 primaryHandle: meshHandle,
-                writtenPaths: [meshRelativePath],
-                dependencyHandles: materialHandles + textureDependencies
+                writtenPaths: [meshRelativePath] + writtenPaths,
+                dependencyHandles: allDependencies,
+                meshPath: meshRelativePath,
+                skeletonHandle: skeletonHandle,
+                defaultClipHandle: clipHandles.first,
+                submeshMaterialHandles: materialHandles
             )
 
             return true
         }
 
         return ok ? commitResult : nil
+    }
+
+    private struct GraphClipCandidate {
+        let handle: AssetHandle
+        let clipName: String
+        let sourcePath: String
+        let sourceStem: String
+    }
+
+    fileprivate static func repairAnimationGraphClipHandlesAfterFbxImport(projectManager: EditorProjectManager,
+                                                                          rootURL: URL,
+                                                                          sourceFolderURL: URL,
+                                                                          sourceURL: URL,
+                                                                          newClipHandles: [AssetHandle],
+                                                                          clipInfos: [MeshAnimationClipScanInfo]) {
+        let metadataSnapshot = projectManager.assetMetadataSnapshot()
+        let clipMetas = metadataSnapshot.filter { $0.type == .animationClip }
+        let clipMetaByHandle = Dictionary(uniqueKeysWithValues: clipMetas.map { ($0.handle, $0) })
+        let validClipHandleSet = Set(clipMetas.map(\.handle))
+        let graphMetas = metadataSnapshot.filter { meta in
+            guard meta.type == .animationGraph else { return false }
+            let graphURL = rootURL.appendingPathComponent(meta.sourcePath).standardizedFileURL
+            return graphURL.deletingLastPathComponent().standardizedFileURL == sourceFolderURL.standardizedFileURL
+        }
+        guard !graphMetas.isEmpty else { return }
+
+        let sourceStem = sourceURL.deletingPathExtension().lastPathComponent.lowercased()
+        let newClipCandidates: [GraphClipCandidate] = newClipHandles.enumerated().map { index, handle in
+            let clipName = index < clipInfos.count ? clipInfos[index].name : ""
+            let meta = clipMetaByHandle[handle]
+            return GraphClipCandidate(
+                handle: handle,
+                clipName: normalizeGraphClipName(meta?.importSettings["clipName"] ?? clipName),
+                sourcePath: meta?.sourcePath ?? "",
+                sourceStem: normalizedSourceStem(meta: meta, fallback: sourceStem)
+            )
+        }
+        guard !newClipCandidates.isEmpty else { return }
+
+        for graphMeta in graphMetas {
+            let graphURL = rootURL.appendingPathComponent(graphMeta.sourcePath).standardizedFileURL
+            guard let loaded = AnimationGraphAssetSerializer.load(from: graphURL, fallbackHandle: graphMeta.handle) else { continue }
+            var graph = loaded
+            var changed = false
+            var ambiguousWarnings: [String] = []
+
+            func resolveReplacement(for staleHandle: AssetHandle,
+                                    hintName: String) -> AssetHandle? {
+                if let oldMeta = clipMetaByHandle[staleHandle], oldMeta.type == .animationClip {
+                    let samePathMatches = newClipCandidates.filter { !$0.sourcePath.isEmpty && $0.sourcePath == oldMeta.sourcePath }
+                    if let chosen = samePathMatches.first {
+                        if samePathMatches.count > 1 {
+                            ambiguousWarnings.append("path:\(oldMeta.sourcePath)")
+                        }
+                        return chosen.handle
+                    }
+
+                    let oldClipName = normalizeGraphClipName(oldMeta.importSettings["clipName"] ?? "")
+                    if !oldClipName.isEmpty {
+                        let nameMatches = newClipCandidates.filter { $0.clipName == oldClipName }
+                        if let chosen = nameMatches.first {
+                            if nameMatches.count > 1 {
+                                ambiguousWarnings.append("name:\(oldClipName)")
+                            }
+                            return chosen.handle
+                        }
+                    }
+
+                    let oldStem = normalizedSourceStem(meta: oldMeta, fallback: sourceStem)
+                    let stemMatches = newClipCandidates.filter { $0.sourceStem == oldStem }
+                    if let chosen = stemMatches.first {
+                        if stemMatches.count > 1 {
+                            ambiguousWarnings.append("source:\(oldStem)")
+                        }
+                        return chosen.handle
+                    }
+                }
+
+                let hint = normalizeGraphClipName(hintName)
+                if !hint.isEmpty {
+                    let nameMatches = newClipCandidates.filter {
+                        !$0.clipName.isEmpty && ($0.clipName == hint || $0.clipName.contains(hint) || hint.contains($0.clipName))
+                    }
+                    if let chosen = nameMatches.first {
+                        if nameMatches.count > 1 {
+                            ambiguousWarnings.append("hint:\(hint)")
+                        }
+                        return chosen.handle
+                    }
+                }
+
+                let stemMatches = newClipCandidates.filter { $0.sourceStem == sourceStem }
+                if let chosen = stemMatches.first {
+                    if stemMatches.count > 1 {
+                        ambiguousWarnings.append("fallbackSource:\(sourceStem)")
+                    }
+                    return chosen.handle
+                }
+
+                return newClipCandidates.first?.handle
+            }
+
+            func remapHandle(_ handle: AssetHandle?, hintName: String) -> AssetHandle? {
+                guard let handle else { return nil }
+                if validClipHandleSet.contains(handle) {
+                    return handle
+                }
+                guard let replacement = resolveReplacement(for: handle, hintName: hintName) else {
+                    return handle
+                }
+                if replacement != handle {
+                    changed = true
+                }
+                return replacement
+            }
+
+            for nodeIndex in graph.nodes.indices {
+                var node = graph.nodes[nodeIndex]
+                node.clipHandle = remapHandle(node.clipHandle, hintName: node.title)
+
+                if var blend1D = node.blend1D {
+                    for sampleIndex in blend1D.samples.indices {
+                        let sample = blend1D.samples[sampleIndex]
+                        let remapped = remapHandle(sample.clipHandle, hintName: node.title) ?? sample.clipHandle
+                        if remapped != sample.clipHandle {
+                            blend1D.samples[sampleIndex] = AnimationGraphBlend1DSampleDefinition(
+                                clipHandle: remapped,
+                                threshold: sample.threshold
+                            )
+                        }
+                    }
+                    node.blend1D = blend1D
+                }
+
+                if var blend2D = node.blend2D {
+                    for sampleIndex in blend2D.samples.indices {
+                        let sample = blend2D.samples[sampleIndex]
+                        let remapped = remapHandle(sample.clipHandle, hintName: node.title) ?? sample.clipHandle
+                        if remapped != sample.clipHandle {
+                            blend2D.samples[sampleIndex] = AnimationGraphBlend2DSampleDefinition(
+                                clipHandle: remapped,
+                                position: sample.position
+                            )
+                        }
+                    }
+                    node.blend2D = blend2D
+                }
+
+                if var stateMachine = node.stateMachine {
+                    for stateIndex in stateMachine.states.indices {
+                        var state = stateMachine.states[stateIndex]
+                        state.clipHandle = remapHandle(state.clipHandle, hintName: state.name)
+                        stateMachine.states[stateIndex] = state
+                    }
+                    node.stateMachine = stateMachine
+                }
+
+                graph.nodes[nodeIndex] = node
+            }
+
+            let allGraphClipHandles = collectGraphClipHandles(graph)
+            let unresolved = allGraphClipHandles.filter { !validClipHandleSet.contains($0) }
+            if !unresolved.isEmpty {
+                EngineLoggerContext.log(
+                    "AnimationGraph repair unresolved clip handles graph=\(graphURL.lastPathComponent) count=\(unresolved.count)",
+                    level: .warning,
+                    category: .assets
+                )
+            }
+
+            if changed {
+                _ = AnimationGraphAssetSerializer.save(graph, to: graphURL)
+                if let metaURL = projectManager.metaURLForAsset(assetURL: graphURL, relativePath: graphMeta.sourcePath) {
+                    var updatedMeta = graphMeta
+                    updatedMeta.lastModified = Date().timeIntervalSince1970
+                    projectManager.saveMetadata(updatedMeta, to: metaURL)
+                }
+                if !ambiguousWarnings.isEmpty {
+                    EngineLoggerContext.log(
+                        "AnimationGraph clip remap applied graph=\(graphURL.lastPathComponent) ambiguousRules=\(Array(Set(ambiguousWarnings)).joined(separator: ", "))",
+                        level: .warning,
+                        category: .assets
+                    )
+                } else {
+                    EngineLoggerContext.log(
+                        "AnimationGraph clip remap applied graph=\(graphURL.lastPathComponent)",
+                        level: .info,
+                        category: .assets
+                    )
+                }
+            }
+
+
+            let compile = AnimationGraphCompiler.compile(asset: graph) { handle in
+                validClipHandleSet.contains(handle)
+            }
+            if case let .failure(.invalidGraph(errors)) = compile {
+                EngineLoggerContext.log(
+                    "AnimationGraph validation failed after clip remap graph=\(graphURL.lastPathComponent) errors=\(errors.prefix(8).joined(separator: " | "))",
+                    level: .warning,
+                    category: .assets
+                )
+            }
+        }
+    }
+
+    private static func collectGraphClipHandles(_ graph: AnimationGraphAsset) -> [AssetHandle] {
+        var handles: [AssetHandle] = []
+        for node in graph.nodes {
+            if let clip = node.clipHandle {
+                handles.append(clip)
+            }
+            if let blend1D = node.blend1D {
+                handles.append(contentsOf: blend1D.samples.map(\.clipHandle))
+            }
+            if let blend2D = node.blend2D {
+                handles.append(contentsOf: blend2D.samples.map(\.clipHandle))
+            }
+            if let stateMachine = node.stateMachine {
+                handles.append(contentsOf: stateMachine.states.compactMap(\.clipHandle))
+            }
+        }
+        return handles
+    }
+
+    private static func normalizeGraphClipName(_ raw: String) -> String {
+        raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    private static func normalizedSourceStem(meta: AssetMetadata?, fallback: String) -> String {
+        guard let meta else { return fallback }
+        let candidate = (meta.importSettings["sourcePath"] ?? meta.importSettings["sourcePathAbs"] ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        if candidate.isEmpty { return fallback }
+        return URL(fileURLWithPath: candidate).deletingPathExtension().lastPathComponent.lowercased()
+    }
+
+    private static func normalizeClipToken(_ raw: String) -> String {
+        raw.lowercased()
+            .replacingOccurrences(of: "_", with: " ")
+            .replacingOccurrences(of: "-", with: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private static func uniqueFolderURL(in folder: URL, baseName: String) -> URL {
@@ -1911,6 +2809,618 @@ extension MeshImporter {
             if !fm.fileExists(atPath: candidate.path) { return candidate }
             index += 1
         }
+    }
+}
+
+extension FbxImporter {
+    private struct SameFolderSkeletonResolution {
+        let handle: AssetHandle?
+        let skeletonPath: String?
+        let source: String
+        let isAmbiguous: Bool
+    }
+
+    private struct SkeletonAssociationCandidate {
+        let metadata: AssetMetadata
+        let score: Float
+    }
+
+    private struct ClipRemapDiagnostics {
+        let totalChannels: Int
+        let mappedChannels: Int
+        let unmappedChannelNames: [String]
+    }
+
+    private struct AnimationImportScaleResolution {
+        let factor: Float
+        let source: String
+    }
+
+    private static func resolveAnimationImportScale(scan: ImportScanResult,
+                                                    metadataSnapshot: [AssetMetadata],
+                                                    resolvedSkeletonHandle: AssetHandle?) -> AnimationImportScaleResolution {
+        let scanFactor = parseScale(scan.details["fbxScaleFactor"])
+        if abs(scanFactor - 1.0) > 0.0001 {
+            return AnimationImportScaleResolution(
+                factor: scanFactor,
+                source: scan.details["fbxScaleSource"] ?? "fbxScan"
+            )
+        }
+
+        if let resolvedSkeletonHandle,
+           let skeletonMeta = metadataSnapshot.first(where: { $0.type == .skeleton && $0.handle == resolvedSkeletonHandle }) {
+            let skeletonScale = parseScale(skeletonMeta.importSettings["importScaleApplied"])
+            if abs(skeletonScale - 1.0) > 0.0001 {
+                return AnimationImportScaleResolution(factor: skeletonScale, source: "skeletonMetadata")
+            }
+        }
+
+        if let resolvedSkeletonHandle,
+           let skeletonMeta = metadataSnapshot.first(where: { $0.type == .skeleton && $0.handle == resolvedSkeletonHandle }),
+           let meshSourcePathAbs = skeletonMeta.importSettings["meshSourcePathAbs"],
+           let meshMeta = metadataSnapshot.first(where: {
+               $0.type == .model
+                   && $0.importSettings["importer"] == "FbxImporter"
+                   && $0.importSettings["sourcePathAbs"] == meshSourcePathAbs
+           }) {
+            let meshScale = parseScale(meshMeta.importSettings["importScaleApplied"])
+            if abs(meshScale - 1.0) > 0.0001 {
+                return AnimationImportScaleResolution(factor: meshScale, source: "associatedMeshMetadata")
+            }
+        }
+
+        return AnimationImportScaleResolution(factor: scanFactor, source: "default")
+    }
+
+    private static func applyTranslationScaleToClipInfo(_ clip: MeshAnimationClipScanInfo, factor: Float) -> MeshAnimationClipScanInfo {
+        guard abs(factor - 1.0) > 0.0001 else { return clip }
+        let scaledTracks = clip.tracks.map { track in
+            AnimationClipAsset.JointTrack(
+                jointIndex: track.jointIndex,
+                translations: track.translations.map {
+                    AnimationClipAsset.TranslationKeyframe(time: $0.time, value: $0.value * factor)
+                },
+                rotations: track.rotations,
+                scales: track.scales
+            )
+        }
+        return MeshAnimationClipScanInfo(
+            name: clip.name,
+            durationSeconds: clip.durationSeconds,
+            tracks: scaledTracks
+        )
+    }
+
+    private static func parseScale(_ raw: String?) -> Float {
+        guard let raw else { return 1.0 }
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsed = Float(trimmed), parsed.isFinite, parsed > 0 else { return 1.0 }
+        return parsed
+    }
+
+    private static func canonicalJointName(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+        var normalized = trimmed.replacingOccurrences(of: "\\", with: "/")
+        if let lastPath = normalized.split(separator: "/").last {
+            normalized = String(lastPath)
+        }
+        if let lastNode = normalized.split(separator: "|").last {
+            normalized = String(lastNode)
+        }
+        if let namespaceSplit = normalized.split(separator: ":").last {
+            normalized = String(namespaceSplit)
+        }
+        return normalized.lowercased()
+    }
+
+    private static func commitAnimationOnlyFBX(scan: ImportScanResult,
+                                               settings: ImportSettings,
+                                               projectManager: EditorProjectManager,
+                                               resolver: AssetPathResolver,
+                                               importerId: String,
+                                               importerVersion: String) -> ImportCommitResult? {
+        guard let rootURL = projectManager.assetRootURL() else { return nil }
+        guard let meshInfo = scan.meshInfo, !meshInfo.clipInfos.isEmpty else { return nil }
+        let sourceURL = scan.sourceURL.standardizedFileURL
+        let sourceFolderURL = sourceURL.deletingLastPathComponent().standardizedFileURL
+        let clipRoot = isUnderRoot(sourceURL, rootURL: rootURL)
+            ? sourceFolderURL
+            : (resolver.destinationFolder(for: .animationClip) ?? sourceFolderURL)
+        let sourceRelativePath = PathUtils.relativePath(from: rootURL, to: sourceURL) ?? sourceURL.lastPathComponent
+        let sourcePathAbs = sourceURL.path
+        let sourceFolder = sourceURL.deletingLastPathComponent().standardizedFileURL.path
+        let metadataSnapshot = projectManager.assetMetadataSnapshot()
+        var existingClipByName: [String: AssetMetadata] = [:]
+        var existingSkeletonAssociation: AssetHandle?
+        for meta in metadataSnapshot where meta.type == .animationClip {
+            guard meta.importSettings["importer"] == importerId else { continue }
+            if meta.importSettings["sourcePathAbs"] == sourcePathAbs,
+               let clipName = meta.importSettings["clipName"] {
+                existingClipByName[clipName] = meta
+                if existingSkeletonAssociation == nil,
+                   let raw = meta.importSettings["skeletonHandle"],
+                   let uuid = UUID(uuidString: raw) {
+                    existingSkeletonAssociation = AssetHandle(rawValue: uuid)
+                }
+            }
+        }
+        let preExistingClipPaths: Set<String> = Set(metadataSnapshot.compactMap { meta in
+            guard meta.type == .animationClip else { return nil }
+            guard meta.importSettings["importer"] == importerId else { return nil }
+            guard meta.importSettings["sourcePathAbs"] == sourcePathAbs else { return nil }
+            return meta.sourcePath
+        })
+
+        let forcedSkeletonHandle: AssetHandle? = {
+            let raw = settings.values["targetSkeletonHandle"]?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !raw.isEmpty, let uuid = UUID(uuidString: raw) else { return nil }
+            return AssetHandle(rawValue: uuid)
+        }()
+
+        let sameFolderResolution = resolveSameFolderSkeleton(
+            metadataSnapshot: metadataSnapshot,
+            rootURL: rootURL,
+            sourceFolderURL: sourceFolderURL
+        )
+
+        var resolvedSkeletonHandle: AssetHandle? = forcedSkeletonHandle
+            ?? sameFolderResolution.handle
+            ?? existingSkeletonAssociation
+        var skeletonResolutionSource: String = {
+            if forcedSkeletonHandle != nil { return "forcedSkeletonHandle" }
+            if sameFolderResolution.handle != nil { return sameFolderResolution.source }
+            if existingSkeletonAssociation != nil { return "existingClipAssociation" }
+            return "none"
+        }()
+
+        if sameFolderResolution.isAmbiguous {
+#if DEBUG
+            EngineLoggerContext.log(
+                "FBX animation-only skeleton resolution warning source=\(sourceURL.path)\nreason=multipleSameFolderSkeletons\nfolder=\(sourceFolderURL.path)",
+                level: .warning,
+                category: .assets
+            )
+#endif
+        }
+
+        if sameFolderResolution.handle != nil {
+#if DEBUG
+            EngineLoggerContext.log(
+                "FBX animation-only same-folder skeleton resolution sourceClip=\(sourceURL.path)\nchosenSkeletonPath=\(sameFolderResolution.skeletonPath ?? "<none>")\nchosenSkeletonHandle=\(sameFolderResolution.handle?.rawValue.uuidString ?? "<none>")",
+                level: .debug,
+                category: .assets
+            )
+#endif
+        }
+
+        if resolvedSkeletonHandle == nil {
+            resolvedSkeletonHandle = resolveSkeletonFromImportedMeshMetadata(
+                metadataSnapshot: metadataSnapshot,
+                rootURL: rootURL,
+                sourceFolderPath: sourceFolder,
+                sourceSkeleton: meshInfo.skeletonInfo,
+                clipInfos: meshInfo.clipInfos
+            )
+            if resolvedSkeletonHandle != nil {
+                skeletonResolutionSource = "sameFolderMeshMetadata"
+            }
+        }
+        if resolvedSkeletonHandle == nil {
+            let candidates = compatibleSkeletonCandidates(
+                metadataSnapshot: metadataSnapshot,
+                rootURL: rootURL,
+                sourceFolderPath: sourceFolder,
+                sourceSkeleton: meshInfo.skeletonInfo,
+                clipInfos: meshInfo.clipInfos
+            )
+            if let best = candidates.first {
+                if candidates.count == 1 {
+                    resolvedSkeletonHandle = best.metadata.handle
+                    skeletonResolutionSource = "canonicalCompatibilitySingle"
+                } else if let second = candidates.dropFirst().first,
+                          (best.score - second.score) >= 0.05 {
+                    resolvedSkeletonHandle = best.metadata.handle
+                    skeletonResolutionSource = "canonicalCompatibilityBestScore"
+                }
+            }
+        }
+        var importScaleResolution = resolveAnimationImportScale(
+            scan: scan,
+            metadataSnapshot: metadataSnapshot,
+            resolvedSkeletonHandle: resolvedSkeletonHandle
+        )
+        if skeletonResolutionSource == "sameFolderSkeleton",
+           let resolvedSkeletonHandle,
+           let skeletonScale = skeletonImportScale(handle: resolvedSkeletonHandle, metadataSnapshot: metadataSnapshot),
+           abs(skeletonScale - 1.0) > 0.0001 {
+            importScaleResolution = AnimationImportScaleResolution(factor: skeletonScale, source: "sameFolderSkeleton")
+        }
+        let importScaleApplied = importScaleResolution.factor
+        let targetSkeleton = resolvedSkeletonHandle.flatMap {
+            loadSkeletonAsset(handle: $0, metadataSnapshot: metadataSnapshot, rootURL: rootURL)
+        }
+        let remapResult = remapClipInfosToSkeleton(
+            clipInfos: meshInfo.clipInfos,
+            sourceSkeleton: meshInfo.skeletonInfo,
+            targetSkeleton: targetSkeleton
+        )
+        let clipSourceInfos: [MeshAnimationClipScanInfo] = targetSkeleton == nil ? meshInfo.clipInfos : remapResult.clips
+        let canonicalJointCount = meshInfo.skeletonInfo?.jointCount ?? 0
+        let targetSkeletonJointCount = targetSkeleton?.joints.count ?? 0
+
+        var commitResult: ImportCommitResult?
+        let ok = projectManager.performAssetMutation {
+            try FileManager.default.createDirectory(at: clipRoot, withIntermediateDirectories: true)
+            var clipHandles: [AssetHandle] = []
+            var writtenPaths: [String] = []
+            var unresolvedReasons: [String] = []
+
+            for (index, clipInfo) in clipSourceInfos.enumerated() {
+                let clipName = meshSanitizeFileName(clipInfo.name.isEmpty ? "\(scan.suggestedName)_Clip_\(index + 1)" : clipInfo.name)
+                let clipURL: URL
+                let clipHandle: AssetHandle
+                if let existing = existingClipByName[clipName] {
+                    clipURL = rootURL.appendingPathComponent(existing.sourcePath)
+                    clipHandle = existing.handle
+                } else {
+                    let candidate = clipRoot.appendingPathComponent("\(clipName).mcanim")
+                    if FileManager.default.fileExists(atPath: candidate.path) {
+                        let candidateMetaURL = AssetIO.metaURL(for: candidate)
+                        let candidateRelativePath = PathUtils.relativePath(from: rootURL, to: candidate)
+                        let candidateMeta = candidateRelativePath.flatMap { rel in
+                            metadataSnapshot.first(where: { $0.type == .animationClip && $0.sourcePath == rel })
+                        }
+                        let candidateSource = candidateMeta?.importSettings["sourcePathAbs"] ?? ""
+                        if candidateSource == sourcePathAbs {
+                            clipURL = candidate
+                            clipHandle = loadHandle(from: candidateMetaURL) ?? AssetHandle()
+                        } else {
+                            clipURL = meshUniqueFileURL(in: clipRoot, baseName: clipName, ext: "mcanim")
+                            clipHandle = loadHandle(from: AssetIO.metaURL(for: clipURL)) ?? AssetHandle()
+                            if let candidateMeta {
+                                EngineLoggerContext.log(
+                                    "FBX animation import name collision clip=\(clipName).mcanim existingSource=\(candidateSource.isEmpty ? "<unknown>" : candidateSource) newSource=\(sourcePathAbs) action=disambiguate",
+                                    level: .warning,
+                                    category: .assets
+                                )
+                            }
+                        }
+                    } else {
+                        clipURL = meshUniqueFileURL(in: clipRoot, baseName: clipName, ext: "mcanim")
+                        clipHandle = loadHandle(from: AssetIO.metaURL(for: clipURL)) ?? AssetHandle()
+                    }
+                }
+
+                let clipAsset = AnimationClipAsset(
+                    handle: clipHandle,
+                    name: clipName,
+                    sourcePath: sourceRelativePath,
+                    durationSeconds: clipInfo.durationSeconds,
+                    tracks: clipInfo.tracks
+                )
+                _ = AnimationClipAssetSerializer.save(clipAsset, to: clipURL)
+
+                let associationState: String
+                var associationReason = ""
+                if resolvedSkeletonHandle != nil {
+                    associationState = "resolved"
+                } else {
+                    associationState = "unresolved"
+                    associationReason = "No canonical skeleton match found for animation-only FBX."
+                    unresolvedReasons.append("\(clipName): \(associationReason)")
+                }
+
+                var importSettings: [String: String] = [
+                    "importer": importerId,
+                    "importerVersion": importerVersion,
+                    "sourcePath": sourceRelativePath,
+                    "sourcePathAbs": sourcePathAbs,
+                    "fbxImportMode": "animationOnly",
+                    "fileKind": "animationOnly",
+                    "clipName": clipName,
+                    "durationSeconds": String(format: "%.6f", clipInfo.durationSeconds),
+                    "importScaleApplied": String(format: "%.6f", importScaleApplied),
+                    "importScaleSource": importScaleResolution.source,
+                    "associationState": associationState,
+                    "clipCanonicalJointCountAfterRemap": String(remapResult.diagnostics.mappedChannels > 0 ? targetSkeletonJointCount : canonicalJointCount),
+                    "targetSkeletonJointCount": String(targetSkeletonJointCount)
+                ]
+                if let resolvedSkeletonHandle {
+                    importSettings["skeletonHandle"] = resolvedSkeletonHandle.rawValue.uuidString
+                }
+                if !associationReason.isEmpty {
+                    importSettings["associationReason"] = associationReason
+                }
+
+                let clipRelativePath = PathUtils.relativePath(from: rootURL, to: clipURL) ?? clipURL.lastPathComponent
+                let clipMeta = AssetMetadata(
+                    handle: clipHandle,
+                    type: .animationClip,
+                    sourcePath: clipRelativePath,
+                    importSettings: importSettings,
+                    dependencies: resolvedSkeletonHandle.map { [$0] } ?? [],
+                    lastModified: Date().timeIntervalSince1970
+                )
+                projectManager.saveMetadata(clipMeta, to: AssetIO.metaURL(for: clipURL))
+                clipHandles.append(clipHandle)
+                writtenPaths.append(clipRelativePath)
+#if DEBUG
+                EngineLoggerContext.log(
+                    "FBX animation-only clip write source=\(sourceURL.lastPathComponent) clip=\(clipName) path=\(clipRelativePath)",
+                    level: .debug,
+                    category: .assets
+                )
+#endif
+            }
+
+#if DEBUG
+            if !unresolvedReasons.isEmpty {
+                EngineLoggerContext.log(
+                    "FBX animation import unresolved skeleton association:\n" + unresolvedReasons.joined(separator: "\n"),
+                    level: .warning,
+                    category: .assets
+                )
+            }
+            let outputPathSummary = writtenPaths.map { path in
+                let status = preExistingClipPaths.contains(path) ? "overwrite" : "new"
+                return "\(status):\(path)"
+            }.joined(separator: "\n")
+            EngineLoggerContext.log(
+                "FBX animation-only import summary source=\(sourceURL.path)\noutputPolicy=\(isUnderRoot(sourceURL, rootURL: rootURL) ? "sourceFolder" : "defaultResolverFolders")\nclipRoot=\(clipRoot.path)\nclipCount=\(clipHandles.count)\nresolvedSkeleton=\(resolvedSkeletonHandle?.rawValue.uuidString ?? "<none>")\nskeletonResolutionSource=\(skeletonResolutionSource)\ncanonicalJointCount=\(canonicalJointCount)\ntargetSkeletonJointCount=\(targetSkeletonJointCount)\nclipCanonicalJointCountAfterRemap=\(targetSkeletonJointCount > 0 ? targetSkeletonJointCount : canonicalJointCount)\nremappedAnimationChannels=\(remapResult.diagnostics.mappedChannels)/\(remapResult.diagnostics.totalChannels)\nunmappedAnimationChannels=\(remapResult.diagnostics.unmappedChannelNames.count)\nunmappedAnimationChannelNames=\(remapResult.diagnostics.unmappedChannelNames.prefix(8).joined(separator: ", "))\nimportScaleApplied=\(String(format: "%.6f", importScaleApplied))\nimportScaleSource=\(importScaleResolution.source)\ngeneratedOutputs=\n\(outputPathSummary)",
+                level: .debug,
+                category: .assets
+            )
+#endif
+
+            guard let primary = clipHandles.first else { return false }
+            commitResult = ImportCommitResult(
+                primaryHandle: primary,
+                writtenPaths: writtenPaths,
+                dependencyHandles: (resolvedSkeletonHandle.map { [$0] } ?? []) + clipHandles,
+                meshPath: nil,
+                skeletonHandle: resolvedSkeletonHandle,
+                defaultClipHandle: clipHandles.first,
+                submeshMaterialHandles: []
+            )
+            return true
+        }
+
+        return ok ? commitResult : nil
+    }
+
+    private static func compatibleSkeletonCandidates(metadataSnapshot: [AssetMetadata],
+                                                     rootURL: URL,
+                                                     sourceFolderPath: String,
+                                                     sourceSkeleton: MeshSkeletonScanInfo?,
+                                                     clipInfos: [MeshAnimationClipScanInfo]) -> [SkeletonAssociationCandidate] {
+        var candidates: [SkeletonAssociationCandidate] = []
+        for meta in metadataSnapshot where meta.type == .skeleton {
+            guard let skeleton = loadSkeletonAsset(handle: meta.handle, metadataSnapshot: metadataSnapshot, rootURL: rootURL) else { continue }
+            guard let compatibilityScore = skeletonCompatibilityScore(source: sourceSkeleton, clipInfos: clipInfos, candidate: skeleton) else { continue }
+            var score = compatibilityScore
+            let assetURL = rootURL.appendingPathComponent(meta.sourcePath).standardizedFileURL
+            if assetURL.deletingLastPathComponent().path == sourceFolderPath {
+                score += 0.05
+            }
+            candidates.append(SkeletonAssociationCandidate(metadata: meta, score: score))
+        }
+        candidates.sort { lhs, rhs in
+            if lhs.score == rhs.score {
+                return lhs.metadata.handle.rawValue.uuidString < rhs.metadata.handle.rawValue.uuidString
+            }
+            return lhs.score > rhs.score
+        }
+        return candidates
+    }
+
+    private static func resolveSameFolderSkeleton(metadataSnapshot: [AssetMetadata],
+                                                  rootURL: URL,
+                                                  sourceFolderURL: URL) -> SameFolderSkeletonResolution {
+        let candidates: [AssetMetadata] = metadataSnapshot.filter { meta in
+            guard meta.type == .skeleton else { return false }
+            guard meta.sourcePath.lowercased().hasSuffix(".mcskeleton") else { return false }
+            let skeletonURL = rootURL.appendingPathComponent(meta.sourcePath).standardizedFileURL
+            return skeletonURL.deletingLastPathComponent() == sourceFolderURL
+        }
+        if candidates.count == 1, let first = candidates.first {
+            return SameFolderSkeletonResolution(
+                handle: first.handle,
+                skeletonPath: first.sourcePath,
+                source: "sameFolderSkeleton",
+                isAmbiguous: false
+            )
+        }
+        if candidates.count > 1 {
+            return SameFolderSkeletonResolution(
+                handle: nil,
+                skeletonPath: nil,
+                source: "sameFolderSkeletonAmbiguous",
+                isAmbiguous: true
+            )
+        }
+        return SameFolderSkeletonResolution(
+            handle: nil,
+            skeletonPath: nil,
+            source: "none",
+            isAmbiguous: false
+        )
+    }
+
+    private static func skeletonImportScale(handle: AssetHandle,
+                                            metadataSnapshot: [AssetMetadata]) -> Float? {
+        guard let skeletonMeta = metadataSnapshot.first(where: { $0.type == .skeleton && $0.handle == handle }) else {
+            return nil
+        }
+        let value = parseScale(skeletonMeta.importSettings["importScaleApplied"])
+        return value.isFinite && value > 0 ? value : nil
+    }
+
+    private static func resolveSkeletonFromImportedMeshMetadata(metadataSnapshot: [AssetMetadata],
+                                                                rootURL: URL,
+                                                                sourceFolderPath: String,
+                                                                sourceSkeleton: MeshSkeletonScanInfo?,
+                                                                clipInfos: [MeshAnimationClipScanInfo]) -> AssetHandle? {
+        let meshMetas = metadataSnapshot.filter { meta in
+            guard meta.type == .model else { return false }
+            guard meta.importSettings["importer"] == "FbxImporter" else { return false }
+            guard let rawSkeleton = meta.importSettings["skeletonHandle"], UUID(uuidString: rawSkeleton) != nil else { return false }
+            let assetFolder = rootURL.appendingPathComponent(meta.sourcePath).standardizedFileURL.deletingLastPathComponent().path
+            return assetFolder == sourceFolderPath
+        }
+
+        var ranked: [(handle: AssetHandle, score: Float)] = []
+        for meta in meshMetas {
+            guard let rawSkeleton = meta.importSettings["skeletonHandle"],
+                  let skeletonUUID = UUID(uuidString: rawSkeleton) else { continue }
+            let skeletonHandle = AssetHandle(rawValue: skeletonUUID)
+            guard let skeleton = loadSkeletonAsset(handle: skeletonHandle, metadataSnapshot: metadataSnapshot, rootURL: rootURL) else { continue }
+            guard let score = skeletonCompatibilityScore(source: sourceSkeleton, clipInfos: clipInfos, candidate: skeleton) else { continue }
+            ranked.append((handle: skeletonHandle, score: score))
+        }
+        ranked.sort { lhs, rhs in
+            if lhs.score == rhs.score {
+                return lhs.handle.rawValue.uuidString < rhs.handle.rawValue.uuidString
+            }
+            return lhs.score > rhs.score
+        }
+        guard let best = ranked.first else { return nil }
+        if ranked.count == 1 {
+            return best.handle
+        }
+        guard let second = ranked.dropFirst().first else { return best.handle }
+        return (best.score - second.score) >= 0.05 ? best.handle : nil
+    }
+
+    private static func remapClipInfosToSkeleton(clipInfos: [MeshAnimationClipScanInfo],
+                                                 sourceSkeleton: MeshSkeletonScanInfo?,
+                                                 targetSkeleton: SkeletonAsset?) -> (clips: [MeshAnimationClipScanInfo], diagnostics: ClipRemapDiagnostics) {
+        guard let sourceSkeleton, let targetSkeleton else {
+            let totalChannels = clipInfos.reduce(0) { $0 + $1.tracks.count }
+            return (
+                clipInfos,
+                ClipRemapDiagnostics(totalChannels: totalChannels, mappedChannels: totalChannels, unmappedChannelNames: [])
+            )
+        }
+
+        var targetIndexByName: [String: Int] = [:]
+        var targetIndicesByCanonicalName: [String: [Int]] = [:]
+        targetIndexByName.reserveCapacity(targetSkeleton.joints.count)
+        targetIndicesByCanonicalName.reserveCapacity(targetSkeleton.joints.count)
+        for (index, joint) in targetSkeleton.joints.enumerated() {
+            if targetIndexByName[joint.name] == nil {
+                targetIndexByName[joint.name] = index
+            }
+            let canonical = canonicalJointName(joint.name)
+            guard !canonical.isEmpty else { continue }
+            targetIndicesByCanonicalName[canonical, default: []].append(index)
+        }
+        var remappedClips: [MeshAnimationClipScanInfo] = []
+        remappedClips.reserveCapacity(clipInfos.count)
+        var totalChannels = 0
+        var mappedChannels = 0
+        var unmappedChannelNames = Set<String>()
+
+        for clip in clipInfos {
+            var remappedTracks: [AnimationClipAsset.JointTrack] = []
+            remappedTracks.reserveCapacity(clip.tracks.count)
+            for track in clip.tracks {
+                totalChannels += 1
+                guard track.jointIndex >= 0, track.jointIndex < sourceSkeleton.joints.count else { continue }
+                let sourceJointName = sourceSkeleton.joints[track.jointIndex].name
+                let canonicalSourceJointName = canonicalJointName(sourceJointName)
+                let canonicalMatches = targetIndicesByCanonicalName[canonicalSourceJointName] ?? []
+                let canonicalResolved = canonicalMatches.count == 1 ? canonicalMatches[0] : nil
+                guard let targetJointIndex = targetIndexByName[sourceJointName] ?? canonicalResolved else {
+                    if !sourceJointName.isEmpty {
+                        unmappedChannelNames.insert(sourceJointName)
+                    }
+                    continue
+                }
+                mappedChannels += 1
+                remappedTracks.append(
+                    AnimationClipAsset.JointTrack(
+                        jointIndex: targetJointIndex,
+                        translations: track.translations,
+                        rotations: track.rotations,
+                        scales: track.scales
+                    )
+                )
+            }
+            remappedClips.append(
+                MeshAnimationClipScanInfo(
+                    name: clip.name,
+                    durationSeconds: clip.durationSeconds,
+                    tracks: remappedTracks
+                )
+            )
+        }
+
+        return (
+            remappedClips,
+            ClipRemapDiagnostics(
+                totalChannels: totalChannels,
+                mappedChannels: mappedChannels,
+                unmappedChannelNames: Array(unmappedChannelNames).sorted()
+            )
+        )
+    }
+
+    private static func loadSkeletonAsset(handle: AssetHandle,
+                                          metadataSnapshot: [AssetMetadata],
+                                          rootURL: URL) -> SkeletonAsset? {
+        guard let skeletonMeta = metadataSnapshot.first(where: { $0.type == .skeleton && $0.handle == handle }) else { return nil }
+        let skeletonURL = rootURL.appendingPathComponent(skeletonMeta.sourcePath).standardizedFileURL
+        return SkeletonAssetSerializer.load(from: skeletonURL, fallbackHandle: handle)
+    }
+
+    private static func skeletonCompatibilityScore(source: MeshSkeletonScanInfo?,
+                                                   clipInfos: [MeshAnimationClipScanInfo],
+                                                   candidate: SkeletonAsset) -> Float? {
+        guard let source else { return nil }
+        let sourceTrackJointIndices = Set(clipInfos.flatMap { $0.tracks.map(\.jointIndex) })
+        let sourceHierarchy = canonicalHierarchyEntries(from: source.joints, restrictedTo: sourceTrackJointIndices)
+        guard !sourceHierarchy.isEmpty else { return nil }
+        let candidateHierarchy = canonicalHierarchyEntries(from: candidate.joints, restrictedTo: nil)
+        guard !candidateHierarchy.isEmpty else { return nil }
+
+        var mappedCount = 0
+        var parentMatchedCount = 0
+        for (jointName, sourceParentName) in sourceHierarchy {
+            guard let candidateParentName = candidateHierarchy[jointName] else { continue }
+            mappedCount += 1
+            if sourceParentName == candidateParentName {
+                parentMatchedCount += 1
+            }
+        }
+
+        let coverage = Float(mappedCount) / Float(max(1, sourceHierarchy.count))
+        guard coverage >= 0.8 else { return nil }
+        let parentAgreement = mappedCount > 0 ? (Float(parentMatchedCount) / Float(mappedCount)) : 0
+        return (coverage * 0.85) + (parentAgreement * 0.15)
+    }
+
+    private static func canonicalHierarchyEntries(from joints: [SkeletonAsset.Joint],
+                                                  restrictedTo restrictedIndices: Set<Int>?) -> [String: String] {
+        var map: [String: String] = [:]
+        map.reserveCapacity(joints.count)
+        for (index, joint) in joints.enumerated() {
+            if let restrictedIndices, !restrictedIndices.contains(index) {
+                continue
+            }
+            let canonicalName = canonicalJointName(joint.name)
+            guard !canonicalName.isEmpty else { continue }
+            if map[canonicalName] != nil { continue }
+
+            let canonicalParent: String
+            if joint.parentIndex >= 0, joint.parentIndex < joints.count {
+                canonicalParent = canonicalJointName(joints[joint.parentIndex].name)
+            } else {
+                canonicalParent = ""
+            }
+            map[canonicalName] = canonicalParent
+        }
+        return map
     }
 }
 
@@ -1992,7 +3502,11 @@ private func commitSourceAsset(scan: ImportScanResult,
         commitResult = ImportCommitResult(
             primaryHandle: handle,
             writtenPaths: [destinationRelativePath],
-            dependencyHandles: []
+            dependencyHandles: [],
+            meshPath: destinationRelativePath,
+            skeletonHandle: nil,
+            defaultClipHandle: nil,
+            submeshMaterialHandles: []
         )
         return true
     }
@@ -2037,7 +3551,7 @@ private func meshUniqueFileURL(in folder: URL, baseName: String, ext: String) ->
 final class ImportController {
     private let projectManager: EditorProjectManager
     private let logCenter: EngineLogger
-    private let importers: [any AssetImporter] = [TextureImporter(), EnvironmentImporter(), MeshImporter()]
+    private let importers: [any AssetImporter] = [TextureImporter(), EnvironmentImporter(), FbxImporter(), MeshImporter()]
 
     private(set) var isOpen: Bool = false
     private(set) var scanResult: ImportScanResult?

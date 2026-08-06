@@ -14,11 +14,9 @@ void DrawAnimationGraphInspector(void *context,
     (void)hasRuntimeDebugSnapshot;
 
     ImGui::BeginChild("AnimationGraphDetailsBottom", ImVec2(0.0f, 0.0f), true);
-    ImGui::SeparatorText("Details");
     ImGui::Checkbox("Show IDs", &state.showIDs);
     ImGui::Checkbox("Show Sort Indices", &state.showSortIndices);
     ImGui::Checkbox("Show Runtime Debug", &state.showRuntimeDebug);
-    ImGui::TextDisabled("Input and local variable authoring now lives entirely in the left panel.");
 
     DrawAnimationGraphDebugView(snapshot, runtimeDebugSnapshot, state);
     ImGui::EndChild();

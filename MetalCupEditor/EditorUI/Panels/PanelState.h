@@ -5,6 +5,7 @@
 #pragma once
 
 #include "../../EditorCore/Bridge/MCEBridgeMacros.h"
+#include "../../ImGui/imgui.h"
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -22,7 +23,8 @@ namespace MCEPanelState {
         AssetUnknown = 7,
         AssetSkeleton = 8,
         AssetAnimationClip = 9,
-        AssetAudio = 10
+        AssetAudio = 10,
+        AssetAnimationGraph = 11
     };
 
     enum SortMode : int32_t {
@@ -221,10 +223,50 @@ namespace MCEPanelState {
         float scaleSnap = 0.1f;
     };
 
+    struct AnimationGraphPanelState {
+        enum WorkspaceNavigationKind : int32_t {
+            WorkspaceNavigationNone = 0,
+            WorkspaceNavigationStateMachine = 1,
+            WorkspaceNavigationBlendSpace = 2,
+            WorkspaceNavigationStateSubgraph = 3
+        };
+
+        struct NodePopupState {
+            ImVec2 openScreenPos = ImVec2(0.0f, 0.0f);
+            ImVec2 openCanvasPos = ImVec2(40.0f, 40.0f);
+            bool requestOpen = false;
+        };
+
+        std::string activeGraphHandle;
+        std::string selectedNodeId;
+        std::string selectedLinkId;
+        NodePopupState popupContext;
+        std::string contextNodeId;
+        std::string contextLinkId;
+        std::string contextPinNodeId;
+        int contextPinSlot = 0;
+        bool contextPinIsInput = false;
+        bool pendingCreateFromPin = false;
+        bool requestNodeCreatePopup = false;
+        bool hasInteractedWithCanvas = false;
+        char nodeSearchFilter[64] = {0};
+        int selectedInputIndex = -1;
+        int selectedLocalVariableIndex = -1;
+        bool showIDs = false;
+        bool showSortIndices = false;
+        bool showRuntimeDebug = false;
+        float sidebarSplitRatio = 0.58f;
+        int32_t pendingWorkspaceNavigationKind = WorkspaceNavigationNone;
+        std::string pendingWorkspaceNodeId;
+        std::string pendingWorkspaceStateId;
+        std::string pendingWorkspaceTransitionId;
+    };
+
     struct EditorUIPanelState {
         ContentBrowserState contentBrowser;
         SceneHierarchyState sceneHierarchy;
         InspectorState inspector;
         ViewportState viewport;
+        AnimationGraphPanelState animationGraph;
     };
 }

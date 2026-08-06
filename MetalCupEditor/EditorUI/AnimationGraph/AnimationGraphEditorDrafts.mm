@@ -1,7 +1,6 @@
 #include "AnimationGraphEditorDrafts.h"
+#include "AnimationGraphUIStateStore.h"
 
 AnimationGraphEditorDrafts &GetAnimationGraphEditorDrafts() {
-    static AnimationGraphEditorDrafts drafts;
-    return drafts;
+    return AnimationGraphUIStateStore::EditorDrafts();
 }
-

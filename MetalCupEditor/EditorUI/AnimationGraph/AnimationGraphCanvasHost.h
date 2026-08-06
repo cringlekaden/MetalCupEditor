@@ -45,6 +45,8 @@ inline void DrawCanvas(const Config &config, BodyFn &&body) {
     if (config.editorContext == nullptr || config.canvasName == nullptr) {
         return;
     }
+    // Canvas lifetime ownership is centralized here: callers only render into the
+    // active editor context and must not manually end the editor or pop shared style.
     ed::SetCurrentEditor(config.editorContext);
     PushSharedStyle();
     ed::Begin(config.canvasName);

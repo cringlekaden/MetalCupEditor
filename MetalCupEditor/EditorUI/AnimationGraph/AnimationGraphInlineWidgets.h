@@ -1,8 +1,11 @@
 #pragma once
 
+#include "AnimationGraphSchema.h"
+
 #include "../../ImGui/imgui.h"
 
 #include <algorithm>
+#include <functional>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -12,6 +15,26 @@ namespace AnimationGraphInlineWidgets {
 struct ClipOption {
     std::string handle;
     std::string label;
+};
+
+struct SchemaInlineFieldState {
+    std::string title;
+    std::string parameterName;
+    std::string parameterXName;
+    std::string parameterYName;
+    std::string clipHandle;
+    float floatValue = 0.0f;
+    bool boolValue = false;
+    bool synchronizeValue = false;
+    bool hasFloatValue = false;
+    bool hasBoolValue = false;
+    bool hasSynchronizeValue = false;
+};
+
+struct SchemaInlineFieldContext {
+    bool showSelectedOnly = false;
+    const std::vector<ClipOption> *clipOptions = nullptr;
+    std::function<std::string(const std::string &clipHandle)> clipDisplayName;
 };
 
 inline bool DrawTextField(const char *id, const char *label, std::string &value, float width = 180.0f) {
@@ -112,6 +135,80 @@ inline void DrawSummaryLines(const std::vector<std::string> &lines) {
     for (const auto &line : lines) {
         ImGui::TextDisabled("%s", line.c_str());
     }
+}
+
+template <typename DisableBindingFn, typename VisibilityBindingFn>
+inline bool DrawSchemaInlineFields(const AnimationGraphSchema::AnimGraphNodeSchema &schema,
+                                   SchemaInlineFieldState &state,
+                                   const SchemaInlineFieldContext &context,
+                                   VisibilityBindingFn &&showBinding,
+                                   DisableBindingFn &&disableBinding) {
+    bool changed = false;
+    for (const auto &field : schema.inlineFields) {
+        if (field.visibility == AnimationGraphSchema::FieldVisibility::SelectedOnly && !context.showSelectedOnly) {
+            continue;
+        }
+        if (!showBinding(field.binding)) {
+            continue;
+        }
+        const std::string id = "##InlineField_" + field.id;
+        switch (field.binding) {
+            case AnimationGraphSchema::FieldBinding::Title:
+                changed = DrawTextField(id.c_str(), field.label.empty() ? nullptr : field.label.c_str(), state.title) || changed;
+                break;
+            case AnimationGraphSchema::FieldBinding::ClipHandle: {
+                const std::string popupId = "InlineFieldPopup_" + field.id;
+                const std::string displayName = context.clipDisplayName ? context.clipDisplayName(state.clipHandle) : state.clipHandle;
+                const std::vector<ClipOption> emptyOptions;
+                const std::vector<ClipOption> &options = context.clipOptions ? *context.clipOptions : emptyOptions;
+                changed = DrawClipField(id.c_str(),
+                                        popupId.c_str(),
+                                        state.clipHandle,
+                                        displayName.empty() ? "<None>" : displayName,
+                                        options) || changed;
+                break;
+            }
+            case AnimationGraphSchema::FieldBinding::ParameterName:
+                changed = DrawTextField(id.c_str(), field.label.empty() ? nullptr : field.label.c_str(), state.parameterName) || changed;
+                break;
+            case AnimationGraphSchema::FieldBinding::ParameterXName:
+                changed = DrawTextField(id.c_str(), field.label.empty() ? nullptr : field.label.c_str(), state.parameterXName) || changed;
+                break;
+            case AnimationGraphSchema::FieldBinding::ParameterYName:
+                changed = DrawTextField(id.c_str(), field.label.empty() ? nullptr : field.label.c_str(), state.parameterYName) || changed;
+                break;
+            case AnimationGraphSchema::FieldBinding::FloatValue:
+            case AnimationGraphSchema::FieldBinding::Duration:
+                changed = DrawFloatField(id.c_str(),
+                                         field.label.empty() ? nullptr : field.label.c_str(),
+                                         state.floatValue,
+                                         0.01f,
+                                         0.0f,
+                                         20.0f,
+                                         "%.3f",
+                                         field.binding == AnimationGraphSchema::FieldBinding::Duration,
+                                         disableBinding(field.binding)) || changed;
+                state.hasFloatValue = true;
+                break;
+            case AnimationGraphSchema::FieldBinding::BoolValue:
+                changed = DrawBoolField(id.c_str(),
+                                        field.label.empty() ? nullptr : field.label.c_str(),
+                                        state.boolValue,
+                                        disableBinding(field.binding)) || changed;
+                state.hasBoolValue = true;
+                break;
+            case AnimationGraphSchema::FieldBinding::SynchronizeValue:
+                changed = DrawBoolField(id.c_str(),
+                                        field.label.empty() ? nullptr : field.label.c_str(),
+                                        state.synchronizeValue,
+                                        disableBinding(field.binding)) || changed;
+                state.hasSynchronizeValue = true;
+                break;
+            default:
+                break;
+        }
+    }
+    return changed;
 }
 
 } // namespace AnimationGraphInlineWidgets
