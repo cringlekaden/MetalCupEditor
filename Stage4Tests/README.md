@@ -4,4 +4,4 @@
 
 It intentionally remains outside the Editor application target. The Editor project has no shared unit-test scheme, and Stage 4 does not alter schemes solely to expose tests.
 
-`verify_repository_resources.sh` checks the recorded canonical shader hashes and exact file set, the 18-file asset inventory, validation-project structure, PBX ownership, and Git tracking. Run it from either repository after both Stage 4 changes have been staged or committed.
+`verify_repository_resources.sh` checks the recorded canonical shader and Editor icon-font hashes, exact file sets, the 18-file asset inventory, validation-project structure, PBX ownership, and Git tracking. Run it from either repository after both Stage 4 changes have been staged or committed. Pass a built `MetalCupEditor.app` path to additionally verify the packaged `Icons` directory and confirm that mutable Application Support settings and projects were not bundled.

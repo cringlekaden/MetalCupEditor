@@ -132,21 +132,16 @@ static std::string ResolveEditorIconFontPath(const char *fileName) {
     NSString *fileNameString = [NSString stringWithUTF8String:fileName];
     NSString *basename = [fileNameString stringByDeletingPathExtension];
     NSString *extension = [fileNameString pathExtension];
-    NSArray<NSString *> *candidates = @[
-        // Folder reference copied to bundle root as "MetalCupEditor"
-        [[NSBundle mainBundle] pathForResource:basename ofType:extension inDirectory:@"MetalCupEditor/Icons"] ?: @"",
-        // Direct Icons folder under bundle resources
-        [[NSBundle mainBundle] pathForResource:basename ofType:extension inDirectory:@"Icons"] ?: @"",
-        // Flat copy fallback
-        [[NSBundle mainBundle] pathForResource:basename ofType:extension] ?: @""
-    ];
+    NSString *candidate = [[NSBundle mainBundle] pathForResource:basename
+                                                         ofType:extension
+                                                    inDirectory:@"Icons"];
+    if (candidate.length == 0) {
+        return {};
+    }
 
-    for (NSString *candidate in candidates) {
-        if (candidate.length == 0) { continue; }
-        BOOL exists = [fileManager fileExistsAtPath:candidate];
-        if (exists) {
-            return std::string(candidate.UTF8String);
-        }
+    BOOL isDirectory = NO;
+    if ([fileManager fileExistsAtPath:candidate isDirectory:&isDirectory] && !isDirectory) {
+        return std::string(candidate.UTF8String);
     }
     return {};
 }
@@ -442,6 +437,7 @@ extern "C" int32_t MCEEditorLogCount(MCE_CTX);
 extern "C" uint32_t MCEEditorLogEntryAt(MCE_CTX,  int32_t index, int32_t *levelOut, int32_t *categoryOut, double *timestampOut, char *messageBuffer, int32_t messageBufferSize);
 extern "C" uint64_t MCEEditorLogRevision(MCE_CTX);
 extern "C" void MCEEditorLogClear(MCE_CTX);
+extern "C" void MCEEditorLogMessage(MCE_CTX, int32_t level, int32_t category, const char *message);
 extern "C" void MCEEditorRequestQuit(MCE_CTX);
 extern "C" uint32_t MCEImportIsOpen(MCE_CTX);
 extern "C" uint32_t MCEImportIsReimport(MCE_CTX);
@@ -2228,18 +2224,51 @@ static ImGuiKey MapKeyCode(uint16_t keyCode) {
     iconConfig.OversampleH = 1;
     iconConfig.OversampleV = 1;
 
-    bool loadedAnyIconFont = false;
     const std::string solidFontPath = ResolveEditorIconFontPath("FA7Free-Solid-900.otf");
-    if (!solidFontPath.empty()) {
-        loadedAnyIconFont = io.Fonts->AddFontFromFileTTF(solidFontPath.c_str(), 13.0f, &iconConfig, iconRanges) != nullptr || loadedAnyIconFont;
-    }
     const std::string regularFontPath = ResolveEditorIconFontPath("FA7Free-Regular-400.otf");
-    if (!regularFontPath.empty()) {
-        loadedAnyIconFont = io.Fonts->AddFontFromFileTTF(regularFontPath.c_str(), 13.0f, &iconConfig, iconRanges) != nullptr || loadedAnyIconFont;
+    if (solidFontPath.empty()) {
+        MCEEditorLogMessage(_context, 3, 1,
+                            "Bundled Editor icon font is missing: Icons/FA7Free-Solid-900.otf");
     }
-    (void)loadedAnyIconFont;
+    if (regularFontPath.empty()) {
+        MCEEditorLogMessage(_context, 3, 1,
+                            "Bundled Editor icon font is missing: Icons/FA7Free-Regular-400.otf");
+    }
 
-    io.Fonts->Build();
+    bool loadedAnyIconFont = false;
+    bool loadedAllIconFonts = !solidFontPath.empty() && !regularFontPath.empty();
+    if (!solidFontPath.empty()) {
+        ImFont *solidFont = io.Fonts->AddFontFromFileTTF(solidFontPath.c_str(), 13.0f, &iconConfig, iconRanges);
+        if (solidFont == nullptr) {
+            loadedAllIconFonts = false;
+            MCEEditorLogMessage(_context, 3, 1,
+                                "Failed to load bundled Editor icon font: Icons/FA7Free-Solid-900.otf");
+        } else {
+            loadedAnyIconFont = true;
+        }
+    }
+    if (!regularFontPath.empty()) {
+        ImFont *regularFont = io.Fonts->AddFontFromFileTTF(regularFontPath.c_str(), 13.0f, &iconConfig, iconRanges);
+        if (regularFont == nullptr) {
+            loadedAllIconFonts = false;
+            MCEEditorLogMessage(_context, 3, 1,
+                                "Failed to load bundled Editor icon font: Icons/FA7Free-Regular-400.otf");
+        } else {
+            loadedAnyIconFont = true;
+        }
+    }
+    if (!loadedAnyIconFont) {
+        MCEEditorLogMessage(_context, 3, 1,
+                            "No bundled Editor icon fonts loaded; icon glyphs will be unavailable.");
+    } else if (!loadedAllIconFonts) {
+        MCEEditorLogMessage(_context, 3, 1,
+                            "The bundled Editor icon font set is incomplete; some icon glyphs may be unavailable.");
+    }
+
+    if (!io.Fonts->Build()) {
+        MCEEditorLogMessage(_context, 3, 1,
+                            "Failed to build the Editor font atlas; embedded default text remains available.");
+    }
 }
 
 - (void)newFrameWithView:(MTKView *)view deltaTime:(float)dt {

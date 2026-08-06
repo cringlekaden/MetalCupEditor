@@ -12,6 +12,7 @@
 		37BA04A32F5F3E790085FBA6 /* Assimp in Frameworks */ = {isa = PBXBuildFile; productRef = 37BA04A22F5F3E790085FBA6 /* Assimp */; };
 		37BA04A62F5F3F890085FBA6 /* libassimp.dylib in CopyFiles */ = {isa = PBXBuildFile; fileRef = 37BA04A52F5F3F890085FBA6 /* libassimp.dylib */; settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
 		5A4C10012F00000000000001 /* Textures in Resources */ = {isa = PBXBuildFile; fileRef = 5A4C10022F00000000000002 /* Textures */; };
+		5A4C10032F00000000000003 /* Icons in Resources */ = {isa = PBXBuildFile; fileRef = 5A4C10042F00000000000004 /* Icons */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -44,6 +45,7 @@
 		378652292F32EE2800321B24 /* MetalCupEngine.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; path = MetalCupEngine.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		37BA04A52F5F3F890085FBA6 /* libassimp.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; path = libassimp.dylib; sourceTree = "<group>"; };
 		5A4C10022F00000000000002 /* Textures */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Textures; path = MetalCupEditor/Projects/Sandbox/Assets/Textures; sourceTree = SOURCE_ROOT; };
+		5A4C10042F00000000000004 /* Icons */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Icons; path = MetalCupEditor/Resources/Icons; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -73,6 +75,10 @@
 				Projects/Sandbox/Assets/Textures/Sky/Clouds/cloud_atlas_4k.png,
 				Projects/Sandbox/Assets/Textures/Sky/MilkyWay/milkyway_2020_4k.exr,
 				"ImGuizmo/README-ImGuizmo.md",
+				Resources/Icons,
+				Resources/Icons/FA7Free-Regular-400.otf,
+				Resources/Icons/FA7Free-Solid-900.otf,
+				Resources/Icons/FONT-AWESOME-LICENSE.txt,
 				README.md,
 				"ThirdParty/imgui-node-editor/docs/CHANGELOG.txt",
 				"ThirdParty/imgui-node-editor/docs/README.md",
@@ -198,6 +204,7 @@
 			children = (
 				37BA04A52F5F3F890085FBA6 /* libassimp.dylib */,
 				375E99272F3F589A00F39780 /* AGENTS.md */,
+				5A4C10042F00000000000004 /* Icons */,
 				5A4C10022F00000000000002 /* Textures */,
 				3786521C2F32EDBB00321B24 /* MetalCupEditor */,
 				378652282F32EE2800321B24 /* Frameworks */,
@@ -292,6 +299,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5A4C10032F00000000000003 /* Icons in Resources */,
 				5A4C10012F00000000000001 /* Textures in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

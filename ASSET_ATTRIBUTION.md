@@ -4,6 +4,17 @@ The files below are repository-owned inputs used to reproduce the current render
 
 The user confirms that all listed resources were acquired legally, are free public resources, and may be used and redistributed through the public `cringlekaden/MetalCupEditor` repository.
 
+## Editor icon fonts
+
+The Editor bundles the following unmodified Font Awesome Free 7.2.0 desktop fonts in `Contents/Resources/Icons`. The version is recorded in both fonts' embedded name metadata. These font files remain licensed under the SIL Open Font License 1.1 with the reserved font name “Font Awesome”; they are not covered or relicensed by MetalCup's MIT code license. The official Font Awesome Free license distributed with them is retained at `MetalCupEditor/Resources/Icons/FONT-AWESOME-LICENSE.txt`.
+
+| Repository path | Bytes | SHA-256 | Purpose | Source / license |
+|---|---:|---|---|---|
+| `MetalCupEditor/Resources/Icons/FA7Free-Regular-400.otf` | 87340 | `9d943a4c4ddb556a21862a008b5b64a8d8aeba982b2faf948bdf8e46ff554c91` | Regular-style ImGui icon glyphs | Font Awesome Free 7.2.0 desktop font; SIL Open Font License 1.1; https://fontawesome.com |
+| `MetalCupEditor/Resources/Icons/FA7Free-Solid-900.otf` | 414664 | `8a2db53f7927abee48e52262090d99ced56a22d46752fba13c8f8782ce632d73` | Solid-style ImGui icon glyphs | Font Awesome Free 7.2.0 desktop font; SIL Open Font License 1.1; https://fontawesome.com |
+
+The former machine-local `Icons/metadata/` directory contained `categories.yml`, `icons.json`, `icons.yml`, `icon-families.json`, `icon-families.yml`, `shims.json`, `shims.yml`, and `sponsors.yml`. None is a runtime input: the Editor does not read these files, and `EditorUI/EditorIcons.h` contains the exact glyph definitions and UTF-8 mappings used by the UI. The metadata catalog and machine-local `.DS_Store` are therefore intentionally not bundled or tracked.
+
 ## Runtime and preserved resources
 
 | Repository path | Bytes | SHA-256 | Purpose | Source / permission | Duplicate relationship |
