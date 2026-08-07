@@ -95,18 +95,26 @@ Phase 3 retains one selected probe, the existing opaque-geometry/sky capture pol
 
 ### `SkySunReference.mcscene`
 
-The authoritative Phase 4 fixed-time lab uses the canonical procedural atmosphere at source `0 EV`, camera `0 EV`, one Environment-owned analytic Sun, and no authored directional light. AO, fog, clouds, bloom, moonlight, and stars are disabled. Its references are white and 18% gray diffuse, smooth/rough dielectric, and smooth/rough metal; fixed axis markers expose solar and shadow direction.
+The authoritative Phase 4 fixed-time lab uses the canonical procedural atmosphere at Environment Source EV `0`, Camera Exposure EV `0`, one Environment-owned analytic Sun, and no authored directional light. Source EV scales sky, Sun, and captured IBL energy together; Camera EV changes only final output. AO, fog, clouds, bloom, moonlight, and stars are disabled.
 
-- Noon: set fixed time to `12:00` (checked-in state).
-- Mid-elevation daylight: set fixed time to `09:00` or `15:00`.
-- Golden hour: set fixed time to `07:00` or `17:00`.
-- Sunset/horizon: use approximately `06:00` or `18:00` and confirm a continuous fade.
+The primary row is deliberately texture-free and uses constant materials on the built-in smooth sphere: white diffuse (`roughness 0.80`), 18% gray diffuse (`0.80`), smooth dielectric (`0.06`), rough dielectric (`0.80`), smooth neutral metal (`0.06`), rough neutral metal (`0.80`), and copper-colored metal (`0.25`). The rounded neutral box behind the row uses roughness `0.25` to expose normal continuity on flat and curved regions. Smooth surfaces should show a localized environment reflection, increasing roughness should broaden it, metals must have no diffuse term but remain visible through environment specular, and dielectrics retain base-color diffuse plus neutral `0.04` F0. Small emissive direction markers sit outside the material row and are not calibration materials.
+
+Do not judge PBR correctness using texture detail: these constant-material spheres are the authoritative chromaticity, energy, and BRDF references. Texture-based showcase materials belong to a later integration scene.
+
+- High sun: `12:00` is the checked-in state and resolves to elevation `88 degrees`.
+- Daylight reference: elevation `60 degrees` resolves to `08:51:57` or `15:08:03`.
+- Mid elevation: `30 degrees` resolves to `07:19:44` or `16:40:16`.
+- Golden hour: `10 degrees` resolves to `06:26:06` or `17:33:54`; direct sunlight should be warm while the opposite upper sky remains visibly cooler.
+- Low golden hour: `5 degrees` resolves to `06:13:02` or `17:46:58`.
+- Sunset/horizon: elevation `0 degrees` is `06:00:00` or `18:00:00`; confirm a continuous source transition.
 - Civil twilight: inspect down to solar elevation `-6 degrees`; night calibration starts below this point in Phase 6.
 - Direct only: disable global IBL while retaining the Environment-owned Sun.
 - IBL only: leave IBL enabled and disable the generated analytic Sun through the Environment debug isolation control.
 - Combined: enable both. Direct-only plus IBL-only must equal combined in pre-exposure HDR.
 
-The visible view includes atmosphere, aureole, and the unscattered disk. IBL capture intentionally excludes the unscattered disk because its projected integral is represented by the analytic Sun. Never compensate this scene with global IBL gain, camera exposure, fog, or AO.
+The visible view includes atmosphere, aureole, and the unscattered disk. IBL capture intentionally excludes the unscattered disk because its projected integral is represented by the analytic Sun. Never compensate source energy with global IBL gain, fog, material multipliers, or AO. Camera EV may be chosen photographically, but it must not be confused with Environment Source EV or used to alter IBL resources.
+
+The calibrated lower hemisphere is a bounded neutral-ground response, but the background horizon has no camera-space fog or aerial perspective. A visibly hard presentation boundary remains a Phase 5 limitation, not a reason to tint or brighten the sky. Raw and filtered SAO still appear white everywhere in the live Editor; keep SAO disabled and do not compensate sky, IBL, Sun, exposure, or material values for that separate production-input defect.
 
 ### `SkyTimeValidation.mcscene`
 

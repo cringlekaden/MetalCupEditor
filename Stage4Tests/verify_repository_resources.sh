@@ -95,6 +95,12 @@ for scene_name in SkySunReference SkyTimeValidation; do
 done
 jq -e '[.entities[].components.environment? | select(. != null)][0].celestial | .timeControlMode == 0 and .defaultTimeOfDay == 12' \
     "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
+jq -e '[.entities[] | select(.components.name.name == "White Diffuse Reference" or .components.name.name == "18 Percent Gray Diffuse Reference" or .components.name.name == "Smooth Dielectric" or .components.name.name == "Rough Dielectric" or .components.name.name == "Smooth Metal" or .components.name.name == "Rough Neutral Metal" or .components.name.name == "Copper Metal") | select(.components.meshRenderer.meshHandle == "00000000-0000-0000-0000-000000000008" and .components.meshRenderer.material.emissiveScalar == 0)] | length == 7' \
+    "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
+jq -e '[.entities[] | select(.components.name.name == "Rounded Neutral Box" and .components.meshRenderer.meshHandle == "00000000-0000-0000-0000-000000000009" and .components.meshRenderer.material.roughnessScalar == 0.25)] | length == 1' \
+    "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
+jq -e '[.entities[].components.meshRenderer?.material? | select(. != null and .metallicScalar == 1)] | map(.roughnessScalar) | contains([0.06, 0.25, 0.8])' \
+    "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
 jq -e '[.entities[].components.environment? | select(. != null)][0].celestial | .timeControlMode == 1 and .dayLengthSeconds == 60 and .timeScale == 1' \
     "$validation_root/Assets/Scenes/SkyTimeValidation.mcscene" >/dev/null
 

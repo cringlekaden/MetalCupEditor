@@ -12,6 +12,7 @@ struct ProjectPolicyTests {
         try validationProjectIsCanonical()
         try phase2ValidationLabScenesDecode()
         try phase3ValidationLabScenesDecode()
+        try phase4ValidationLabScenesDecode()
         print("Stage 4 Editor policy tests passed")
     }
 
@@ -205,6 +206,47 @@ struct ProjectPolicyTests {
                      "Global Only Smooth Metal Reference"] {
             require(names.contains(role), "ReflectionProbeValidation is missing \(role)")
         }
+    }
+
+    private static func phase4ValidationLabScenesDecode() throws {
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).standardizedFileURL
+        let scenes = root.appendingPathComponent("Assets/Scenes", isDirectory: true)
+        let sky = try decodeScene(named: "SkySunReference", in: scenes)
+        require(sky.entities.compactMap { $0.components.light }.isEmpty,
+                "SkySunReference must use only the Environment-owned analytic Sun")
+        guard let camera = sky.entities.compactMap({ $0.components.camera }).first else {
+            throw TestFailure("SkySunReference must contain a camera")
+        }
+        require(!camera.autoExposureEnabled && camera.exposureEV == 0,
+                "SkySunReference must use deterministic Camera Exposure EV 0")
+        guard let environment = sky.entities.compactMap({ $0.components.environment }).first else {
+            throw TestFailure("SkySunReference must contain one Environment")
+        }
+        require(environment.atmosphere.sourceEV == 0,
+                "SkySunReference must use Environment Source EV 0")
+
+        let sphereRoles = [
+            "White Diffuse Reference", "18 Percent Gray Diffuse Reference",
+            "Smooth Dielectric", "Rough Dielectric", "Smooth Metal",
+            "Rough Neutral Metal", "Copper Metal"
+        ]
+        for role in sphereRoles {
+            guard let entity = sky.entities.first(where: { $0.components.name?.name == role }),
+                  let renderer = entity.components.meshRenderer,
+                  let material = renderer.material else {
+                throw TestFailure("SkySunReference is missing \(role)")
+            }
+            require(renderer.meshHandle == BuiltinAssets.sphereMesh,
+                    "\(role) must use the built-in smooth sphere")
+            require(material.emissiveScalar == 0,
+                    "Reference materials must not be emissive")
+        }
+        guard let rounded = sky.entities.first(where: { $0.components.name?.name == "Rounded Neutral Box" }),
+              let roundedRenderer = rounded.components.meshRenderer else {
+            throw TestFailure("SkySunReference is missing its rounded box")
+        }
+        require(roundedRenderer.meshHandle == BuiltinAssets.roundedCubeMesh,
+                "Rounded Neutral Box must use the built-in rounded geometry")
     }
 
     private static func decodeScene(named name: String, in scenes: URL) throws -> SceneDocument {
