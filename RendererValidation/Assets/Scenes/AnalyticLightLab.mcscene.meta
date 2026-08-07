@@ -1,8 +1,12 @@
 {
-  "dependencies" : [],
+  "dependencies" : [
+
+  ],
   "handle" : "21000000-0000-4000-8000-000000000101",
-  "importSettings" : {},
-  "lastModified" : 0,
-  "sourcePath" : "Scenes/AnalyticLightLab.mcscene",
+  "importSettings" : {
+
+  },
+  "lastModified" : 1786053140.364078,
+  "sourcePath" : "Scenes\/AnalyticLightLab.mcscene",
   "type" : "scene"
 }

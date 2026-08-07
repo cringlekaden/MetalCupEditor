@@ -1,8 +1,12 @@
 {
-  "dependencies": [],
-  "handle": "31000000-0000-4000-8000-000000000101",
-  "importSettings": {},
-  "lastModified": 0,
-  "sourcePath": "Scenes/IBLRoughness.mcscene",
-  "type": "scene"
+  "dependencies" : [
+
+  ],
+  "handle" : "31000000-0000-4000-8000-000000000101",
+  "importSettings" : {
+
+  },
+  "lastModified" : 1786058974.2597091,
+  "sourcePath" : "Scenes\/IBLRoughness.mcscene",
+  "type" : "scene"
 }

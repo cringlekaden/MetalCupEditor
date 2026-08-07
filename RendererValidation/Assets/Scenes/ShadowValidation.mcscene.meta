@@ -1,8 +1,12 @@
 {
-  "dependencies" : [],
+  "dependencies" : [
+
+  ],
   "handle" : "22000000-0000-4000-8000-000000000101",
-  "importSettings" : {},
-  "lastModified" : 0,
-  "sourcePath" : "Scenes/ShadowValidation.mcscene",
+  "importSettings" : {
+
+  },
+  "lastModified" : 1786053140.3652732,
+  "sourcePath" : "Scenes\/ShadowValidation.mcscene",
   "type" : "scene"
 }

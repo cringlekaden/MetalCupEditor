@@ -1,8 +1,12 @@
 {
-  "dependencies" : [],
+  "dependencies" : [
+
+  ],
   "handle" : "20000000-0000-4000-8000-000000000101",
-  "importSettings" : {},
-  "lastModified" : 0,
-  "sourcePath" : "Scenes/MaterialReference.mcscene",
+  "importSettings" : {
+
+  },
+  "lastModified" : 1786053140.3644245,
+  "sourcePath" : "Scenes\/MaterialReference.mcscene",
   "type" : "scene"
 }

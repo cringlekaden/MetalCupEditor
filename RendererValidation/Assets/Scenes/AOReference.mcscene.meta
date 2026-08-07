@@ -1,8 +1,12 @@
 {
-  "dependencies" : [],
+  "dependencies" : [
+
+  ],
   "handle" : "23000000-0000-4000-8000-000000000101",
-  "importSettings" : {},
-  "lastModified" : 0,
-  "sourcePath" : "Scenes/AOReference.mcscene",
+  "importSettings" : {
+
+  },
+  "lastModified" : 1786053140.363827,
+  "sourcePath" : "Scenes\/AOReference.mcscene",
   "type" : "scene"
 }
