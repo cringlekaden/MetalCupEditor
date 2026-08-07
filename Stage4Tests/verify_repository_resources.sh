@@ -50,7 +50,7 @@ jq -e '.entities[] | select(.components.camera != null) | .components.camera | .
 jq -e '.rendererSettingsOverride | .iblEnabled == 1 and .iblIntensity == 1 and .tonemap == 5 and .gamma == 2.2' \
     "$validation_root/Assets/Scenes/RendererValidation.mcscene" >/dev/null
 
-for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference IBLOrientation IBLRoughness ReflectionProbeValidation; do
+for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference IBLOrientation IBLRoughness ReflectionProbeValidation SkySunReference SkyTimeValidation; do
     scene="$validation_root/Assets/Scenes/$scene_name.mcscene"
     meta="$scene.meta"
     test -f "$scene"
@@ -87,6 +87,17 @@ jq -e '[.entities[].components.meshRenderer?.material? | select(. != null)] | ma
 jq -e '[.entities[].components.reflectionProbe? | select(. != null)] | length == 1 and .[0].intensity == 1' \
     "$validation_root/Assets/Scenes/ReflectionProbeValidation.mcscene" >/dev/null
 
+for scene_name in SkySunReference SkyTimeValidation; do
+    scene="$validation_root/Assets/Scenes/$scene_name.mcscene"
+    jq -e '[.entities[].components.environment? | select(. != null)] | length == 1 and .[0].source.mode == 1 and .[0].atmosphere.sourceEV == 0 and .[0].clouds.coverage == 0 and .[0].fog.amount == 0' "$scene" >/dev/null
+    jq -e '[.entities[].components.light? | select(. != null)] | length == 0' "$scene" >/dev/null
+    jq -e '.rendererSettingsOverride | .iblEnabled == 1 and .iblIntensity == 1 and .ssaoEnabled == 0 and .bloomEnabled == 0 and .shadows.enabled == 1' "$scene" >/dev/null
+done
+jq -e '[.entities[].components.environment? | select(. != null)][0].celestial | .timeControlMode == 0 and .defaultTimeOfDay == 12' \
+    "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
+jq -e '[.entities[].components.environment? | select(. != null)][0].celestial | .timeControlMode == 1 and .dayLengthSeconds == 60 and .timeScale == 1' \
+    "$validation_root/Assets/Scenes/SkyTimeValidation.mcscene" >/dev/null
+
 if rg -n '/Volumes/External/kadencringle|Library/Application Support/MetalCupEditor' "$validation_root" >/dev/null; then
     echo "RendererValidation contains a machine-local path." >&2
     exit 1
@@ -103,7 +114,7 @@ grep -q 'path = MetalCupEditor/Resources/Icons;' "$pbx"
 if git -C "$engine_root" rev-parse --git-dir >/dev/null 2>&1; then
     git -C "$engine_root" ls-files --error-unmatch MetalCupEngine/Assets/Shaders/BasicShaders.metal >/dev/null
     git -C "$editor_root" ls-files --error-unmatch RendererValidation/Project.mcp >/dev/null
-    for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference IBLOrientation IBLRoughness ReflectionProbeValidation; do
+    for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReference IBLOrientation IBLRoughness ReflectionProbeValidation SkySunReference SkyTimeValidation; do
         git -C "$editor_root" ls-files --error-unmatch "RendererValidation/Assets/Scenes/$scene_name.mcscene" >/dev/null
         git -C "$editor_root" ls-files --error-unmatch "RendererValidation/Assets/Scenes/$scene_name.mcscene.meta" >/dev/null
     done

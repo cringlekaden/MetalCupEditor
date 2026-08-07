@@ -35,6 +35,7 @@ public struct MCEEnvironmentAtmosphereBridge {
     public var density: Float
     public var temperature: Float
     public var mood: Float
+    public var sourceEV: Float
 }
 
 public struct MCEEnvironmentCelestialBridge {
@@ -73,6 +74,16 @@ public struct MCEEnvironmentIBLBridge {
     public var currentRebuildQuality: Int32
     public var lastBuiltQuality: Int32
     public var hasFailure: UInt32
+    public var phase: Int32
+    public var currentTimeOfDay: Float
+    public var representedTimeOfDay: Float
+    public var angularLagDegrees: Float
+    public var lastBuildDuration: Float
+    public var solarElevationDegrees: Float
+    public var sunDirectionX: Float
+    public var sunDirectionY: Float
+    public var sunDirectionZ: Float
+    public var sunIlluminance: Float
 }
 
 #if DEBUG
@@ -3896,6 +3907,9 @@ public func MCEEditorSetEnvironmentTimeBridge(_ contextPtr: UnsafeRawPointer?,
     var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
     environment.look.preset = .custom
     environment.celestial.defaultTimeOfDay = clampSkyFacade(input.defaultTimeOfDay, min: 0.0, max: 24.0)
+    environment.celestial.timeControlMode = EnvironmentTimeControlMode(rawValue: UInt32(max(0, input.timeControlMode))) ?? .fixed
+    environment.celestial.dayLengthSeconds = max(1.0, input.dayLengthSeconds)
+    environment.celestial.timeScale = input.timeScale.isFinite ? max(input.timeScale, 0) : 1.0
     ecs.add(environment, to: entity)
 
     var runtime = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
@@ -3928,7 +3942,8 @@ public func MCEEditorGetEnvironmentAtmosphereBridge(_ contextPtr: UnsafeRawPoint
         haze: environment.atmosphere.haze,
         density: environment.atmosphere.density,
         temperature: environment.atmosphere.temperature,
-        mood: environment.atmosphere.mood
+        mood: environment.atmosphere.mood,
+        sourceEV: environment.atmosphere.sourceEV
     )
     return 1
 }
@@ -3951,6 +3966,7 @@ public func MCEEditorSetEnvironmentAtmosphereBridge(_ contextPtr: UnsafeRawPoint
     environment.atmosphere.density = max(0.0, input.density)
     environment.atmosphere.temperature = clampSkyFacade(input.temperature, min: -1.0, max: 1.0)
     environment.atmosphere.mood = clampSkyFacade(input.mood, min: -1.0, max: 1.0)
+    environment.atmosphere.sourceEV = clampSkyFacade(input.sourceEV, min: -2.0, max: 1.0)
     ecs.add(environment, to: entity)
     _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
     if environment.source.mode == .procedural {
@@ -4116,6 +4132,20 @@ public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointe
           let environment = ecs.get(EnvironmentComponent.self, for: entity),
           let outValue else { return 0 }
     let state = ecs.get(EnvironmentIBLStateComponent.self, for: entity) ?? EnvironmentIBLStateComponent.defaultNeedsRebuild
+    let renderState = ecs.get(EnvironmentFrameStateComponent.self, for: entity)?.renderState
+        ?? EnvironmentRenderStateBuilder.build(
+            environment: environment,
+            runtime: ecs.get(EnvironmentRuntimeStateComponent.self, for: entity)
+        )
+    let freshness = EnvironmentIBLRebuildLifecycle.freshness(state: state, current: renderState)
+    let phaseCode: Int32
+    switch state.phase {
+    case .dirty: phaseCode = 0
+    case .rebuildingInteractive: phaseCode = 1
+    case .interactiveReady: phaseCode = 2
+    case .rebuildingFinal: phaseCode = 3
+    case .finalReady: phaseCode = 4
+    }
     let output = outValue.assumingMemoryBound(to: MCEEnvironmentIBLBridge.self)
     output.pointee = MCEEnvironmentIBLBridge(
         realtimeUpdate: environment.ibl.realtimeUpdate ? 1 : 0,
@@ -4125,7 +4155,17 @@ public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointe
         isRebuilding: state.isRebuilding ? 1 : 0,
         currentRebuildQuality: environmentIBLQualityCode(state.currentRebuildQuality),
         lastBuiltQuality: environmentIBLQualityCode(state.lastBuiltQuality),
-        hasFailure: (state.lastFailureMessage?.isEmpty == false) ? 1 : 0
+        hasFailure: (state.lastFailureMessage?.isEmpty == false) ? 1 : 0,
+        phase: phaseCode,
+        currentTimeOfDay: renderState.finalTimeOfDay,
+        representedTimeOfDay: freshness.representedTimeOfDay ?? -1,
+        angularLagDegrees: freshness.angularLagDegrees ?? -1,
+        lastBuildDuration: Float(freshness.lastBuildDuration ?? -1),
+        solarElevationDegrees: renderState.solarElevationDegrees,
+        sunDirectionX: renderState.sunDirection.x,
+        sunDirectionY: renderState.sunDirection.y,
+        sunDirectionZ: renderState.sunDirection.z,
+        sunIlluminance: renderState.sunIntensity
     )
     return 1
 }

@@ -2,7 +2,7 @@
 
 Open `Project.mcp` directly from the MetalCup Editor project chooser. The project opens in place, uses canonical Engine shaders, and intentionally contains no `Assets/Shaders` directory. Every camera is fixed at `0 EV` with automatic exposure disabled. MetalCup Filmic v1 and neutral legacy gamma state are explicit in every scene.
 
-This is a deterministic numerical-regression lab, not a claim of calibrated visual correctness. Phase 1 intentionally invalidated older compensated brightness values. The procedural sky still appears somewhat dark and is reserved for Phase 4 calibration; do not compensate for that observation here.
+This is a deterministic numerical-regression lab, not a claim of calibrated visual correctness. Phase 1 intentionally invalidated older compensated brightness values. Phase 4 replaces the formerly weak procedural daytime source with one coupled sky/sun energy model. Night below civil twilight remains outside this lab.
 
 ## Scene index
 
@@ -92,6 +92,32 @@ The top dielectric row and bottom metal row use roughness `0.06`, `0.10`, `0.20`
 4. The marker color, side, and within-face up/right placement must match the global convention. Probe intensity is compatibility-only and must not rescale captured energy.
 
 Phase 3 retains one selected probe, the existing opaque-geometry/sky capture policy, and current blend-shell selection. Overlapping-probe redesign and parallax-corrected box projection remain later quality work.
+
+### `SkySunReference.mcscene`
+
+The authoritative Phase 4 fixed-time lab uses the canonical procedural atmosphere at source `0 EV`, camera `0 EV`, one Environment-owned analytic Sun, and no authored directional light. AO, fog, clouds, bloom, moonlight, and stars are disabled. Its references are white and 18% gray diffuse, smooth/rough dielectric, and smooth/rough metal; fixed axis markers expose solar and shadow direction.
+
+- Noon: set fixed time to `12:00` (checked-in state).
+- Mid-elevation daylight: set fixed time to `09:00` or `15:00`.
+- Golden hour: set fixed time to `07:00` or `17:00`.
+- Sunset/horizon: use approximately `06:00` or `18:00` and confirm a continuous fade.
+- Civil twilight: inspect down to solar elevation `-6 degrees`; night calibration starts below this point in Phase 6.
+- Direct only: disable global IBL while retaining the Environment-owned Sun.
+- IBL only: leave IBL enabled and disable the generated analytic Sun through the Environment debug isolation control.
+- Combined: enable both. Direct-only plus IBL-only must equal combined in pre-exposure HDR.
+
+The visible view includes atmosphere, aureole, and the unscattered disk. IBL capture intentionally excludes the unscattered disk because its projected integral is represented by the analytic Sun. Never compensate this scene with global IBL gain, camera exposure, fog, or AO.
+
+### `SkyTimeValidation.mcscene`
+
+The accelerated lab begins at `06:00` and advances a full day in 60 seconds. It has the same fixed camera/output and disabled AO/fog/cloud/bloom state as `SkySunReference`. Stationary world-axis markers and the reflective material row reveal direction mismatch while the generated Sun and cascaded shadow owner follow the authoritative environment frame.
+
+- Watch solar elevation/direction, analytic RGB irradiance, active IBL source time/direction, angular lag, and rebuild phase in Environment status.
+- Visible disk, direct highlight, shadow ray, and current IBL marker should describe the same solar direction. Interactive IBL is allowed to lag visibly and must report that lag.
+- During continuous motion, rebuilds are coalesced. When time stops, status must advance from interactive/lagging through rebuilding-final to final/current without a black resource gap.
+- Exposure must remain `0 EV` and must not trigger an IBL rebuild.
+
+Static checkpoints are authoritative. Do not save exploratory runtime state over these scenes. Raw and filtered SAO currently appear white everywhere in the live Editor; Phase 4 deliberately leaves AO disabled and does not compensate sky or material energy for that separate defect.
 
 ## Static checkpoints and optional motion
 

@@ -232,6 +232,7 @@ struct MCEEnvironmentAtmosphereBridge {
     float density;
     float temperature;
     float mood;
+    float sourceEV;
 };
 
 struct MCEEnvironmentCelestialBridge {
@@ -270,6 +271,16 @@ struct MCEEnvironmentIBLBridge {
     int32_t currentRebuildQuality;
     int32_t lastBuiltQuality;
     uint32_t hasFailure;
+    int32_t phase;
+    float currentTimeOfDay;
+    float representedTimeOfDay;
+    float angularLagDegrees;
+    float lastBuildDuration;
+    float solarElevationDegrees;
+    float sunDirectionX;
+    float sunDirectionY;
+    float sunDirectionZ;
+    float sunIlluminance;
 };
 
 extern "C" uint32_t MCEEditorGetEnvironmentLookBridge(MCE_CTX, const char *entityId,
@@ -3975,6 +3986,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             float atmosphereDensity = 1.0f;
             float atmosphereTemperature = 0.0f;
             float atmosphereMood = 0.0f;
+            float atmosphereSourceEV = 0.0f;
             float cloudCoverage = 0.30f;
             int32_t cloudStyle = AtmosphereCloudPuffy;
             int32_t cloudRenderMode = 0;
@@ -4047,6 +4059,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 atmosphereDensity = atmosphereBridge.density;
                 atmosphereTemperature = atmosphereBridge.temperature;
                 atmosphereMood = atmosphereBridge.mood;
+                atmosphereSourceEV = atmosphereBridge.sourceEV;
                 cloudCoverage = weatherCloudBridge.cloudCoverage;
                 cloudStyle = weatherCloudBridge.cloudStyle;
                 cloudRenderMode = weatherCloudBridge.cloudRenderMode;
@@ -4095,6 +4108,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 float editAtmosphereDensity = atmosphereDensity;
                 float editAtmosphereTemperature = atmosphereTemperature;
                 float editAtmosphereMood = atmosphereMood;
+                float editAtmosphereSourceEV = atmosphereSourceEV;
                 float editCloudCoverage = cloudCoverage;
                 int32_t editCloudStyle = cloudStyle;
                 int32_t editCloudRenderMode = cloudRenderMode;
@@ -4404,24 +4418,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                                true,
                                                                true,
                                                                1.0f);
-                    atmosphereDirty |= EditorUI::PropertyFloat("Temperature",
-                                                               &editAtmosphereTemperature,
-                                                               0.02f,
-                                                               -1.0f,
+                    atmosphereDirty |= EditorUI::PropertyFloat("Source EV",
+                                                               &editAtmosphereSourceEV,
+                                                               0.05f,
+                                                               -2.0f,
                                                                1.0f,
-                                                               "%.2f",
+                                                               "%+.2f EV",
                                                                true,
                                                                true,
                                                                0.0f);
-                    atmosphereDirty |= EditorUI::PropertyFloat("Mood Bias",
-                                                               &editAtmosphereMood,
-                                                               0.02f,
-                                                               -1.0f,
-                                                               1.0f,
-                                                               "%.2f",
-                                                               true,
-                                                               true,
-                                                               0.0f);
+                    ImGui::TextDisabled("Temperature and mood are legacy inert fields.");
                     EditorUI::EndPropertyTable();
                 }
 
@@ -4460,17 +4466,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
 
                 ImGui::Spacing();
                 ImGui::TextDisabled("Lighting / IBL");
-                bool realtimeBool = editRealtimeUpdate != 0;
-                if (ImGui::Checkbox("Realtime Update", &realtimeBool)) {
-                    editRealtimeUpdate = realtimeBool ? 1 : 0;
-                    iblDirty = true;
-                }
-                ImGui::SameLine();
-                bool autoRebuildBool = editAutoRebuildOnChange != 0;
-                if (ImGui::Checkbox("Auto Rebuild", &autoRebuildBool)) {
-                    editAutoRebuildOnChange = autoRebuildBool ? 1 : 0;
-                    iblDirty = true;
-                }
+                ImGui::TextDisabled("Automatic: interactive while changing, final after settling");
                 if (ImGui::Button("Rebuild IBL##EnvironmentLighting")) {
                     MCEEditorRequestEnvironmentIBLRebuild(context, selectedEntityId);
                 }
@@ -4500,6 +4496,24 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
 
                 if (ImGui::TreeNodeEx("EnvironmentAdvanced", ImGuiTreeNodeFlags_None, "Advanced / Debug")) {
                     ImGui::TextWrapped("Runtime preview state and IBL rebuild state are transient. Raw timing controls are shown here for diagnostics.");
+                    const char *phaseLabels[] = {"dirty", "rebuilding interactive", "interactive ready", "rebuilding final", "final ready"};
+                    const int phaseIndex = iblBridge.phase >= 0 && iblBridge.phase < 5 ? iblBridge.phase : 0;
+                    ImGui::Text("Solar elevation: %.2f deg", iblBridge.solarElevationDegrees);
+                    ImGui::Text("Sun direction: (%.4f, %.4f, %.4f)",
+                                iblBridge.sunDirectionX, iblBridge.sunDirectionY, iblBridge.sunDirectionZ);
+                    ImGui::Text("Sun illuminance: %.4f scene units", iblBridge.sunIlluminance);
+                    ImGui::Text("IBL phase: %s", phaseLabels[phaseIndex]);
+                    if (iblBridge.representedTimeOfDay >= 0.0f) {
+                        ImGui::Text("IBL source time: %.3f h (current %.3f h)",
+                                    iblBridge.representedTimeOfDay, iblBridge.currentTimeOfDay);
+                    }
+                    if (iblBridge.angularLagDegrees >= 0.0f) {
+                        ImGui::Text("IBL angular lag: %.3f deg", iblBridge.angularLagDegrees);
+                    }
+                    if (iblBridge.lastBuildDuration >= 0.0f) {
+                        ImGui::Text("Last source + convolution: %.3f s", iblBridge.lastBuildDuration);
+                    }
+                    ImGui::TextDisabled("Energy partition: visible disk; capture excludes disk; analytic Sun owns disk integral");
                     MCEEnvironmentTimeBridge editTime = timeBridge;
                     bool timeRuntimeDirty = false;
                     if (EditorUI::BeginPropertyTable("EnvironmentAdvancedProps")) {
@@ -4572,6 +4586,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     editAtmosphere.density = editAtmosphereDensity;
                     editAtmosphere.temperature = editAtmosphereTemperature;
                     editAtmosphere.mood = editAtmosphereMood;
+                    editAtmosphere.sourceEV = editAtmosphereSourceEV;
                     MCEEditorSetEnvironmentAtmosphereBridge(context, selectedEntityId, &editAtmosphere);
                 }
                 if (fogDirty) {
