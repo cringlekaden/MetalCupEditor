@@ -60,9 +60,14 @@ public struct MCEEnvironmentWeatherCloudBridge {
 }
 
 public struct MCEEnvironmentFogBridge {
-    public var amount: Float
-    public var height: Float
-    public var distance: Float
+    public var enabled: UInt32
+    public var extinction: Float
+    public var scatteringAlbedoR: Float
+    public var scatteringAlbedoG: Float
+    public var scatteringAlbedoB: Float
+    public var baseHeight: Float
+    public var scaleHeight: Float
+    public var anisotropy: Float
 }
 
 public struct MCEEnvironmentIBLBridge {
@@ -4094,9 +4099,14 @@ public func MCEEditorGetEnvironmentFogBridge(_ contextPtr: UnsafeRawPointer?,
           let outValue else { return 0 }
     let output = outValue.assumingMemoryBound(to: MCEEnvironmentFogBridge.self)
     output.pointee = MCEEnvironmentFogBridge(
-        amount: environment.fog.amount,
-        height: environment.fog.height,
-        distance: environment.fog.distance
+        enabled: environment.fog.enabled ? 1 : 0,
+        extinction: environment.fog.extinction,
+        scatteringAlbedoR: environment.fog.scatteringAlbedo.x,
+        scatteringAlbedoG: environment.fog.scatteringAlbedo.y,
+        scatteringAlbedoB: environment.fog.scatteringAlbedo.z,
+        baseHeight: environment.fog.baseHeight,
+        scaleHeight: environment.fog.scaleHeight,
+        anisotropy: environment.fog.anisotropy
     )
     return 1
 }
@@ -4114,9 +4124,16 @@ public func MCEEditorSetEnvironmentFogBridge(_ contextPtr: UnsafeRawPointer?,
     let input = value.assumingMemoryBound(to: MCEEnvironmentFogBridge.self).pointee
     var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
     environment.look.preset = .custom
-    environment.fog.amount = clampSkyFacade(input.amount, min: 0.0, max: 1.0)
-    environment.fog.height = input.height
-    environment.fog.distance = max(0.0, input.distance)
+    environment.fog.enabled = input.enabled != 0
+    environment.fog.extinction = clampSkyFacade(input.extinction, min: 0.0, max: 10.0)
+    environment.fog.scatteringAlbedo = SIMD3<Float>(
+        clampSkyFacade(input.scatteringAlbedoR, min: 0.0, max: 1.0),
+        clampSkyFacade(input.scatteringAlbedoG, min: 0.0, max: 1.0),
+        clampSkyFacade(input.scatteringAlbedoB, min: 0.0, max: 1.0)
+    )
+    environment.fog.baseHeight = input.baseHeight
+    environment.fog.scaleHeight = max(0.001, input.scaleHeight)
+    environment.fog.anisotropy = clampSkyFacade(input.anisotropy, min: -0.9, max: 0.9)
     ecs.add(environment, to: entity)
     _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
     context.bridgeServices.notifySceneMutation()
@@ -4494,9 +4511,9 @@ public func MCEEditorGetEnvironmentFog(_ contextPtr: UnsafeRawPointer?,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           let environment = ecs.get(EnvironmentComponent.self, for: entity) else { return 0 }
-    amount?.pointee = environment.fog.amount
-    height?.pointee = environment.fog.height
-    distance?.pointee = environment.fog.distance
+    amount?.pointee = environment.fog.extinction
+    height?.pointee = environment.fog.baseHeight
+    distance?.pointee = environment.fog.scaleHeight
     return 1
 }
 
@@ -4513,9 +4530,10 @@ public func MCEEditorSetEnvironmentFog(_ contextPtr: UnsafeRawPointer?,
           let entity = entity(from: entityId, context: context) else { return }
     var environment = ecs.get(EnvironmentComponent.self, for: entity) ?? EnvironmentComponent()
     environment.look.preset = .custom
-    environment.fog.amount = clampSkyFacade(amount, min: 0.0, max: 1.0)
-    environment.fog.height = height
-    environment.fog.distance = max(0.0, distance)
+    environment.fog.extinction = clampSkyFacade(amount, min: 0.0, max: 10.0)
+    environment.fog.enabled = environment.fog.extinction > 0.0001
+    environment.fog.baseHeight = height
+    environment.fog.scaleHeight = max(0.001, distance)
     ecs.add(environment, to: entity)
     _ = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
     context.bridgeServices.notifySceneMutation()

@@ -235,79 +235,9 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
     }
 
     if (SectionEnabled(sectionMask, RendererSectionCore)) {
-        SectionTitle("Fog");
-        if (EditorUI::BeginPropertyTable("HeightFogTable")) {
-            ImGui::BeginDisabled(true);
-            bool fogDerived = true;
-            EditorUI::SetNextPropertyInfoTooltip("Normal fog authoring now belongs to the active atmosphere component in the Sky inspector.\nThe renderer consumes derived fog settings from that atmosphere owner.");
-            EditorUI::PropertyBool("Atmosphere Owned", &fogDerived);
-            ImGui::EndDisabled();
-
-            const char* fogColorModes[] = { "Manual", "Match Active Sky" };
-            int fogColorMode = static_cast<int>(MCERendererGetFogColorMode(engineContext));
-            if (fogColorMode < 0 || fogColorMode > 1) { fogColorMode = 0; }
-            EditorUI::SetNextPropertyInfoTooltip("Renderer-side fog color consumption mode.\nNormal amount/height/distance authoring now lives on the active atmosphere.");
-            if (EditorUI::PropertyCombo("Color Mode", &fogColorMode, fogColorModes, IM_ARRAYSIZE(fogColorModes))) {
-                MCERendererSetFogColorMode(engineContext, static_cast<uint32_t>(fogColorMode));
-                NotifyRendererSettingsChanged(context);
-            }
-
-            if (fogColorMode == 0) {
-                float fogColor[3] = { 0.62f, 0.68f, 0.74f };
-                MCERendererGetFogManualColor(engineContext, &fogColor[0], &fogColor[1], &fogColor[2]);
-                EditorUI::SetNextPropertyInfoTooltip("Manual fog color.\nUnits: RGB.\nPersistence: Project.");
-                if (EditorUI::PropertyColor3("Manual Color", fogColor)) {
-                    MCERendererSetFogManualColor(engineContext, fogColor[0], fogColor[1], fogColor[2]);
-                    NotifyRendererSettingsChanged(context);
-                }
-            }
-            EditorUI::EndPropertyTable();
-        }
-        ImGui::TextDisabled("Edit fog look-dev from the active atmosphere in the Sky inspector. This panel now only exposes renderer-side consumption/debug settings.");
-        if (MCERendererGetFogColorMode(engineContext) == 1) {
-            ImGui::TextDisabled("Fog color is currently derived from the active sky atmosphere.");
-        }
-        if (ImGui::TreeNodeEx("FogAdvancedTuning", ImGuiTreeNodeFlags_None, "Advanced Fog Controls")) {
-            ImGui::TextWrapped("These controls map directly to the current fog implementation. They are renderer-consumption/internal tuning controls, not the main atmosphere authoring workflow.");
-            if (EditorUI::BeginPropertyTable("FogAdvancedTable")) {
-                float baseHeight = MCERendererGetHeightFogBaseHeight(engineContext);
-                EditorUI::SetNextPropertyInfoTooltip("Raw world-space base height for the current fog layer.\nUnits: scene units.\nPersistence: Project.");
-                if (EditorUI::PropertyFloat("Base Height", &baseHeight, 0.1f, -1000.0f, 1000.0f, "%.2f", true, true, 0.0f)) {
-                    MCERendererSetHeightFogBaseHeight(engineContext, baseHeight);
-                    NotifyRendererSettingsChanged(context);
-                }
-
-                float density = MCERendererGetHeightFogDensity(engineContext);
-                EditorUI::SetNextPropertyInfoTooltip("Raw extinction density used by the current fog shader.\nUnits: scalar.\nPersistence: Project.");
-                if (EditorUI::PropertyFloat("Density", &density, 0.005f, 0.0f, 1.0f, "%.3f", true, true, 0.03f)) {
-                    MCERendererSetHeightFogDensity(engineContext, density);
-                    NotifyRendererSettingsChanged(context);
-                }
-
-                float heightFalloff = MCERendererGetHeightFogHeightFalloff(engineContext);
-                EditorUI::SetNextPropertyInfoTooltip("How quickly fog thins above the base height.\nUnits: scalar.\nPersistence: Project.");
-                if (EditorUI::PropertyFloat("Height Falloff", &heightFalloff, 0.01f, 0.0f, 4.0f, "%.3f", true, true, 0.15f)) {
-                    MCERendererSetHeightFogHeightFalloff(engineContext, heightFalloff);
-                    NotifyRendererSettingsChanged(context);
-                }
-
-                float startDistance = MCERendererGetHeightFogStartDistance(engineContext);
-                EditorUI::SetNextPropertyInfoTooltip("Raw start distance used by the current fog shader.\nUnits: scene units.\nPersistence: Project.");
-                if (EditorUI::PropertyFloat("Start Distance", &startDistance, 0.1f, 0.0f, 1000.0f, "%.2f", true, true, 3.0f)) {
-                    MCERendererSetHeightFogStartDistance(engineContext, startDistance);
-                    NotifyRendererSettingsChanged(context);
-                }
-
-                float distanceDensity = MCERendererGetHeightFogDistanceDensity(engineContext);
-                EditorUI::SetNextPropertyInfoTooltip("Optional extra distance extinction layered on top of the height fog.\nUnits: scalar.\nPersistence: Project.");
-                if (EditorUI::PropertyFloat("Distance Density", &distanceDensity, 0.005f, 0.0f, 1.0f, "%.3f", true, true, 0.0f)) {
-                    MCERendererSetHeightFogDistanceDensity(engineContext, distanceDensity);
-                    NotifyRendererSettingsChanged(context);
-                }
-                EditorUI::EndPropertyTable();
-            }
-            ImGui::TreePop();
-        }
+        SectionTitle("Local Fog");
+        ImGui::TextWrapped("Local participating-medium controls live on the active Environment component. Renderer-global fog color, start-distance, horizon, and extra-distance compensation controls are inert compatibility data.");
+        ImGui::TextDisabled("Use the Environment inspector to author extinction, scattering albedo, base height, scale height, and anisotropy.");
         EditorUI::StandardSpacing();
     }
 
@@ -743,7 +673,14 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
                 "Direct + Local Specular",
                 "Direct + Mixed Specular",
                 "Direct Specular Only",
-                "Sun Vector Alignment"
+                "Sun Vector Alignment",
+                "Fog Optical Depth",
+                "Fog In-scattered Radiance",
+                "Fog Linear Distance",
+                "Fog Density",
+                "Fog Ambient Scattering",
+                "Fog Directional Scattering",
+                "Fog Pixel Classification"
             };
             int debugMode = static_cast<int>(MCERendererGetShadingDebugMode(engineContext));
             EditorUI::SetNextPropertyInfoTooltip("Visualization mode for renderer debugging.\nIncludes shadow-specific views for cascade selection, blend bands, final shadowing, and bias pressure.\nPersistence: Project.");
@@ -830,6 +767,20 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
                 ImGui::TextDisabled("Direct Specular Only: analytic direct BRDF specular from lights only, excluding direct diffuse, IBL, local probes, and emissive.");
             } else if (debugMode == 40) {
                 ImGui::TextDisabled("Sun Vector Alignment: sharp mirror lobe from the brightest directional light vector only, excluding BRDF, roughness, IBL, shadows, and emissive.");
+            } else if (debugMode == 41) {
+                ImGui::TextDisabled("Fog Optical Depth: grayscale tau / 8; white means tau >= 8.");
+            } else if (debugMode == 42) {
+                ImGui::TextDisabled("Fog In-scattered Radiance: scene-linear ambient plus directional scattering.");
+            } else if (debugMode == 43) {
+                ImGui::TextDisabled("Fog Linear Distance: geometry distance / 100; background is white.");
+            } else if (debugMode == 44) {
+                ImGui::TextDisabled("Fog Density: extinction coefficient at the camera height.");
+            } else if (debugMode == 45) {
+                ImGui::TextDisabled("Fog Ambient Scattering: irradiance-derived scene-linear contribution.");
+            } else if (debugMode == 46) {
+                ImGui::TextDisabled("Fog Directional Scattering: authoritative analytic-Sun contribution.");
+            } else if (debugMode == 47) {
+                ImGui::TextDisabled("Fog Pixel Classification: green geometry, blue background.");
             }
             const uint32_t tileOverflow = MCERendererGetForwardPlusTileOverflowCount(engineContext);
             const uint32_t clusterOverflow = MCERendererGetForwardPlusClusterOverflowCount(engineContext);

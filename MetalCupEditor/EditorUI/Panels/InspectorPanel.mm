@@ -257,9 +257,14 @@ struct MCEEnvironmentWeatherCloudBridge {
 };
 
 struct MCEEnvironmentFogBridge {
-    float amount;
-    float height;
-    float distance;
+    uint32_t enabled;
+    float extinction;
+    float scatteringAlbedoR;
+    float scatteringAlbedoG;
+    float scatteringAlbedoB;
+    float baseHeight;
+    float scaleHeight;
+    float anisotropy;
 };
 
 struct MCEEnvironmentIBLBridge {
@@ -4063,9 +4068,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 cloudCoverage = weatherCloudBridge.cloudCoverage;
                 cloudStyle = weatherCloudBridge.cloudStyle;
                 cloudRenderMode = weatherCloudBridge.cloudRenderMode;
-                fogAmount = fogBridge.amount;
-                fogHeight = fogBridge.height;
-                fogDistance = fogBridge.distance;
+                fogAmount = fogBridge.extinction;
+                fogHeight = fogBridge.baseHeight;
+                fogDistance = fogBridge.scaleHeight;
                 realtimeUpdate = iblBridge.realtimeUpdate;
                 autoRebuildOnChange = iblBridge.autoRebuildOnChange;
                 needsRebuild = iblBridge.needsRebuild;
@@ -4115,6 +4120,13 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 float editFogAmount = fogAmount;
                 float editFogHeight = fogHeight;
                 float editFogDistance = fogDistance;
+                bool editFogEnabled = fogBridge.enabled != 0;
+                float editFogAlbedo[3] = {
+                    fogBridge.scatteringAlbedoR,
+                    fogBridge.scatteringAlbedoG,
+                    fogBridge.scatteringAlbedoB
+                };
+                float editFogAnisotropy = fogBridge.anisotropy;
                 uint32_t editRealtimeUpdate = realtimeUpdate;
                 uint32_t editAutoRebuildOnChange = autoRebuildOnChange;
                 int32_t editLookPreset = lookPreset;
@@ -4432,18 +4444,24 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
 
                 ImGui::Spacing();
-                ImGui::TextDisabled("Fog / Aerial Perspective");
+                ImGui::TextDisabled("Local Fog / Aerial Perspective");
                 if (EditorUI::BeginPropertyTable("EnvironmentFogProps")) {
-                    fogDirty |= EditorUI::PropertyFloat("Fog Amount",
+                    fogDirty |= EditorUI::PropertyBool("Enabled", &editFogEnabled);
+                    fogDirty |= EditorUI::PropertyFloat("Extinction",
                                                         &editFogAmount,
-                                                        0.005f,
+                                                        0.001f,
                                                         0.0f,
-                                                        1.0f,
-                                                        "%.3f",
+                                                        10.0f,
+                                                        "%.4f / world unit",
                                                         true,
                                                         true,
-                                                        0.03f);
-                    fogDirty |= EditorUI::PropertyFloat("Height",
+                                                        0.02f);
+                    const float albedoDefault[3] = {0.9f, 0.9f, 0.9f};
+                    fogDirty |= EditorUI::PropertyColor3("Scattering Albedo",
+                                                         editFogAlbedo,
+                                                         albedoDefault,
+                                                         true);
+                    fogDirty |= EditorUI::PropertyFloat("Base Height",
                                                         &editFogHeight,
                                                         0.1f,
                                                         -1000.0f,
@@ -4452,17 +4470,28 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                         true,
                                                         true,
                                                         0.0f);
-                    fogDirty |= EditorUI::PropertyFloat("Distance",
+                    fogDirty |= EditorUI::PropertyFloat("Scale Height",
                                                         &editFogDistance,
                                                         0.1f,
-                                                        0.0f,
+                                                        0.001f,
                                                         1000.0f,
+                                                        "%.2f world units",
+                                                        true,
+                                                        true,
+                                                        12.0f);
+                    fogDirty |= EditorUI::PropertyFloat("Anisotropy",
+                                                        &editFogAnisotropy,
+                                                        0.01f,
+                                                        -0.9f,
+                                                        0.9f,
                                                         "%.2f",
                                                         true,
                                                         true,
-                                                        3.0f);
+                                                        0.2f);
                     EditorUI::EndPropertyTable();
                 }
+                ImGui::TextDisabled("Extinction is sigmaT at base height; albedo is sigmaS / sigmaT.");
+                ImGui::TextDisabled("Illumination comes from the active sky irradiance and analytic Sun.");
 
                 ImGui::Spacing();
                 ImGui::TextDisabled("Lighting / IBL");
@@ -4591,9 +4620,14 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
                 if (fogDirty) {
                     MCEEnvironmentFogBridge editFog = fogBridge;
-                    editFog.amount = editFogAmount;
-                    editFog.height = editFogHeight;
-                    editFog.distance = editFogDistance;
+                    editFog.enabled = editFogEnabled ? 1u : 0u;
+                    editFog.extinction = editFogAmount;
+                    editFog.scatteringAlbedoR = editFogAlbedo[0];
+                    editFog.scatteringAlbedoG = editFogAlbedo[1];
+                    editFog.scatteringAlbedoB = editFogAlbedo[2];
+                    editFog.baseHeight = editFogHeight;
+                    editFog.scaleHeight = editFogDistance;
+                    editFog.anisotropy = editFogAnisotropy;
                     MCEEditorSetEnvironmentFogBridge(context, selectedEntityId, &editFog);
                 }
                 if (iblDirty) {
