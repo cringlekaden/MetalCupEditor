@@ -13,6 +13,7 @@ struct ProjectPolicyTests {
         try phase2ValidationLabScenesDecode()
         try phase3ValidationLabScenesDecode()
         try phase4ValidationLabScenesDecode()
+        try phase5ValidationLabScenesDecode()
         print("Stage 4 Editor policy tests passed")
     }
 
@@ -247,6 +248,44 @@ struct ProjectPolicyTests {
         }
         require(roundedRenderer.meshHandle == BuiltinAssets.roundedCubeMesh,
                 "Rounded Neutral Box must use the built-in rounded geometry")
+    }
+
+    private static func phase5ValidationLabScenesDecode() throws {
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).standardizedFileURL
+        let scenes = root.appendingPathComponent("Assets/Scenes", isDirectory: true)
+        for name in ["FogReference", "AerialPerspectiveValidation"] {
+            let scene = try decodeScene(named: name, in: scenes)
+            guard let camera = scene.entities.compactMap({ $0.components.camera }).first,
+                  let environment = scene.entities.compactMap({ $0.components.environment }).first,
+                  let settings = scene.rendererSettingsOverride?.makeRendererSettings() else {
+                throw TestFailure("\(name) must contain camera, Environment, and renderer settings")
+            }
+            require(!camera.autoExposureEnabled && camera.exposureEV == 0,
+                    "\(name) must use deterministic Camera Exposure EV 0")
+            require(environment.atmosphere.sourceEV == 0,
+                    "\(name) must use Environment Source EV 0")
+            require(environment.fog.enabled && environment.fog.extinction > 0,
+                    "\(name) must explicitly enable the Phase 5 local medium")
+            require(environment.fog.scaleHeight > 0,
+                    "\(name) must use a positive world-unit fog scale height")
+            require(settings.ssaoEnabled == 0 && settings.bloomEnabled == 0,
+                    "\(name) must disable unresolved SAO and bloom")
+            require(scene.entities.compactMap { $0.components.light }.isEmpty,
+                    "\(name) must use only the Environment-owned analytic Sun")
+        }
+
+        let fog = try decodeScene(named: "FogReference", in: scenes)
+        let names = Set(fog.entities.compactMap { $0.components.name?.name })
+        for distance in ["1", "5", "10", "25", "50", "100"] {
+            require(names.contains(where: { $0.contains("Distance \(distance) ") }),
+                    "FogReference is missing distance marker \(distance)")
+        }
+        let aerial = try decodeScene(named: "AerialPerspectiveValidation", in: scenes)
+        let aerialNames = Set(aerial.entities.compactMap { $0.components.name?.name })
+        require(aerialNames.contains("Horizon Crossing Receiver"),
+                "AerialPerspectiveValidation needs a sky/object continuity silhouette")
+        require(aerialNames.contains("Below Base Height Geometry"),
+                "AerialPerspectiveValidation needs a below-layer sample")
     }
 
     private static func decodeScene(named name: String, in scenes: URL) throws -> SceneDocument {

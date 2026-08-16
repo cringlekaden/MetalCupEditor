@@ -4,6 +4,28 @@ Open `Project.mcp` directly from the MetalCup Editor project chooser. The projec
 
 This is a deterministic numerical-regression lab, not a claim of calibrated visual correctness. Phase 1 intentionally invalidated older compensated brightness values. Phase 4 replaces the formerly weak procedural daytime source with one coupled sky/sun energy model. Night below civil twilight remains outside this lab.
 
+## Phase 5 local fog and aerial perspective
+
+`Scenes/FogReference.mcscene` is the numeric local-medium reference. Camera Exposure EV and
+Environment Source EV are both `0`; AO, clouds, and bloom are disabled. Its neutral objects are
+named for approximate camera distances `1`, `5`, `10`, `25`, `50`, and `100` world units, with
+elevated and base-layer samples. Toggle only the Environment's Local Fog `Enabled` field for the
+fog-off identity comparison. Inspect Optical Depth, Transmittance, In-scattered Radiance, Linear
+Distance, Density, Ambient Scattering, Directional Scattering, and Pixel Classification debug views.
+
+`Scenes/AerialPerspectiveValidation.mcscene` provides near/mid/far neutral geometry, an elevated
+sample, a below-base sample, and a horizon-crossing silhouette. Use fixed high Sun first, then set
+the Environment time to the existing golden-hour checkpoint. Compare direct-only, IBL-only, and
+combined modes without changing exposure. For camera-height checks, use static checkpoints at
+roughly `y = -2`, `5`, and `25`; do not save those runtime views into the canonical scene.
+
+Expected behavior: fog-off is the Phase 4 image; enabled transmittance decreases monotonically with
+distance/density; sky and geometry share the same boundary equation; upward background rays have a
+finite integral; horizontal/downward infinite rays naturally approach opaque fog. The hard no-fog
+horizon is still a presentation limitation, not a second atmosphere term. Local fog is not captured
+into IBL or reflection probes. Live SAO remains unresolved and is intentionally disabled. Existing
+MSAA is accepted; Phase 5 adds no AA work.
+
 ## Scene index
 
 ### `RendererValidation.mcscene`
