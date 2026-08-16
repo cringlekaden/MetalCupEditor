@@ -1,0 +1,42 @@
+{
+  "alphaCutoff" : 0.5,
+  "alphaMode" : "opaque",
+  "aoFactor" : 1,
+  "baseColorAlpha" : 1,
+  "baseColorFactor" : {
+    "x" : 1,
+    "y" : 0.3214286,
+    "z" : 0.3214286
+  },
+  "doubleSided" : false,
+  "emissiveColor" : {
+    "x" : 0,
+    "y" : 0,
+    "z" : 0
+  },
+  "emissiveIntensity" : 1,
+  "id" : "7662A3C5-61F7-4E63-8E11-DBEC9FA71B0C",
+  "metallicFactor" : 1,
+  "name" : "Sphere",
+  "pbrMaskChannels" : {
+    "ao" : 0,
+    "metallic" : 2,
+    "roughness" : 1
+  },
+  "pbrMaskMode" : "separate",
+  "roughnessFactor" : 0.52,
+  "schemaVersion" : 1,
+  "textures" : {
+
+  },
+  "unlit" : false,
+  "uvOffset" : {
+    "x" : 0,
+    "y" : 0
+  },
+  "uvTiling" : {
+    "x" : 1,
+    "y" : 1
+  },
+  "version" : 1
+}

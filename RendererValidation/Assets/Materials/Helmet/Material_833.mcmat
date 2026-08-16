@@ -1,0 +1,46 @@
+{
+  "alphaCutoff" : 0.5,
+  "alphaMode" : "opaque",
+  "aoFactor" : 1,
+  "baseColorAlpha" : 1,
+  "baseColorFactor" : {
+    "x" : 1,
+    "y" : 1,
+    "z" : 1
+  },
+  "doubleSided" : false,
+  "emissiveColor" : {
+    "x" : 0,
+    "y" : 0,
+    "z" : 0
+  },
+  "emissiveIntensity" : 7.5,
+  "id" : "4AE7285A-3FAD-4435-8825-C57867426412",
+  "metallicFactor" : 1,
+  "name" : "Material_833",
+  "pbrMaskChannels" : {
+    "ao" : 0,
+    "metallic" : 2,
+    "roughness" : 1
+  },
+  "pbrMaskMode" : "separate",
+  "roughnessFactor" : 1,
+  "schemaVersion" : 1,
+  "textures" : {
+    "ao" : "73C4C0B7-A82B-4C42-A6C7-EC5370A9B696",
+    "baseColor" : "1C97B72F-E0AC-471C-B548-7A929F612353",
+    "emissive" : "840D1BBA-3C94-473F-B7F6-21A3E834CF48",
+    "metalRoughness" : "24985ED5-69B7-4641-AFEC-83D2D5034927",
+    "normal" : "9A9B0737-0F7F-43A2-872D-D355332C1E41"
+  },
+  "unlit" : false,
+  "uvOffset" : {
+    "x" : 0,
+    "y" : 0
+  },
+  "uvTiling" : {
+    "x" : 1,
+    "y" : 1
+  },
+  "version" : 1
+}

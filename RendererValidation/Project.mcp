@@ -40,10 +40,10 @@
   "name" : "RendererValidation",
   "rootPath" : ".",
   "savedDirectory" : "Saved",
-  "scenesDirectory" : "Assets/Scenes",
+  "scenesDirectory" : "Assets\/Scenes",
   "schemaVersion" : 5,
   "shaderSource" : {
     "mode" : "canonical"
   },
-  "startScene" : "Assets/Scenes/RendererValidation.mcscene"
+  "startScene" : "Assets\/Scenes\/RendererValidation.mcscene"
 }
