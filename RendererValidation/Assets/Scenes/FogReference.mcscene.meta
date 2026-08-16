@@ -1,8 +1,12 @@
 {
-  "dependencies" : [],
+  "dependencies" : [
+
+  ],
   "handle" : "50000000-0000-4000-8000-000000000101",
-  "importSettings" : {},
-  "lastModified" : 1786920000,
+  "importSettings" : {
+
+  },
+  "lastModified" : 1786922546.901409,
   "sourcePath" : "Scenes\/FogReference.mcscene",
   "type" : "scene"
 }
