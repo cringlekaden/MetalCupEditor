@@ -7,7 +7,7 @@
             "manualEV100" : 15,
             "mode" : 1
           },
-          "farPlane" : 1000,
+          "farPlane" : 100,
           "fovDegrees" : 45,
           "isEditor" : true,
           "isPrimary" : true,
@@ -21,20 +21,20 @@
           "schemaVersion" : 1
         },
         "name" : {
-          "name" : "Validation Camera",
+          "name" : "Accelerated Sky Time Camera",
           "schemaVersion" : 1
         },
         "transform" : {
           "position" : {
-            "x" : 11.31016,
-            "y" : 2.6321108,
-            "z" : 0.031405926
+            "x" : 4.4313927,
+            "y" : 11.439875,
+            "z" : -18.51755
           },
           "rotationQuat" : {
-            "w" : -0.5006134,
-            "x" : -0.009011934,
-            "y" : -0.8654839,
-            "z" : 0.015580253
+            "w" : 0.04029574,
+            "x" : -0.01178378,
+            "y" : 0.958956,
+            "z" : 0.2804298
           },
           "scale" : {
             "x" : 1,
@@ -44,54 +44,87 @@
           "schemaVersion" : 2
         }
       },
-      "id" : "980ACDBE-232D-4BE0-BB04-D73D205D1520"
+      "id" : "30000000-0000-4000-8000-000000000010"
     },
     {
       "components" : {
+        "environment" : {
+          "atmosphere" : {
+            "amount" : 0.28,
+            "density" : 1,
+            "haze" : 0.16,
+            "mood" : 0,
+            "schemaVersion" : 2,
+            "sourceEV" : 0,
+            "temperature" : 0
+          },
+          "celestial" : {
+            "dayLengthSeconds" : 60,
+            "defaultTimeOfDay" : 12,
+            "milkyWayChroma" : 1,
+            "milkyWayIntensity" : 1,
+            "milkyWayRotation" : 0,
+            "moonIntensity" : 0.12,
+            "moonPhase" : 0.5,
+            "moonSizeDegrees" : 0.54,
+            "nightBrightness" : 1,
+            "schemaVersion" : 4,
+            "starIntensity" : 0.75,
+            "starRichness" : 1,
+            "timeControlMode" : 1,
+            "timeScale" : 1
+          },
+          "clouds" : {
+            "coverage" : 0.45,
+            "renderMode" : 1,
+            "schemaVersion" : 1,
+            "style" : 0
+          },
+          "enabled" : true,
+          "fog" : {
+            "anisotropy" : 0.2,
+            "baseHeight" : 0,
+            "enabled" : true,
+            "extinction" : 0.008,
+            "scaleHeight" : 18,
+            "scatteringAlbedo" : [
+              0.9,
+              0.9,
+              0.9
+            ],
+            "schemaVersion" : 2
+          },
+          "ibl" : {
+            "autoRebuildOnChange" : false,
+            "realtimeUpdate" : false,
+            "schemaVersion" : 1
+          },
+          "look" : {
+            "cinematicAmount" : 0,
+            "mood" : 0,
+            "preset" : 0,
+            "schemaVersion" : 1,
+            "warmth" : 0
+          },
+          "schemaVersion" : 1,
+          "source" : {
+            "mode" : 1,
+            "schemaVersion" : 1
+          },
+          "weather" : {
+            "amount" : 0,
+            "blend" : 0,
+            "primaryType" : 0,
+            "schemaVersion" : 1,
+            "secondaryType" : 0
+          }
+        },
         "layer" : {
           "layerIndex" : 0,
           "schemaVersion" : 1
         },
-        "light" : {
-          "castsShadows" : true,
-          "data" : {
-            "ambientIntensity" : 1,
-            "brightness" : 3.1415927,
-            "color" : {
-              "x" : 1,
-              "y" : 1,
-              "z" : 1
-            },
-            "diffuseIntensity" : 1,
-            "direction" : {
-              "x" : -0.5050763,
-              "y" : -0.808122,
-              "z" : -0.3030458
-            },
-            "innerConeCos" : 0.95,
-            "outerConeCos" : 0.9,
-            "position" : {
-              "x" : 0,
-              "y" : 0,
-              "z" : 0
-            },
-            "range" : 0,
-            "specularIntensity" : 1,
-            "type" : 2
-          },
-          "direction" : {
-            "x" : -0.5050763,
-            "y" : -0.80812204,
-            "z" : -0.30304575
-          },
-          "innerConeCos" : 0.95,
-          "outerConeCos" : 0.9,
-          "range" : 0,
-          "schemaVersion" : 2,
-          "type" : "directional"
-        },
         "name" : {
-          "name" : "Validation Sun",
+          "name" : "Accelerated Authoritative Environment",
           "schemaVersion" : 1
         },
         "transform" : {
@@ -101,9 +134,9 @@
             "z" : 0
           },
           "rotationQuat" : {
-            "w" : 0.80716974,
-            "x" : -0.50058997,
-            "y" : 0.31286874,
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
             "z" : 0
           },
           "scale" : {
@@ -114,7 +147,71 @@
           "schemaVersion" : 2
         }
       },
-      "id" : "53D87889-31A7-4F7F-BE13-D594EAC7FC00"
+      "id" : "30000000-0000-4000-8000-000000000011"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "CHECKPOINTS — 12 Midday | 17 Golden | 18 Sunset | 18.5 Civil | 19 Nautical | 19.5 Astronomical | 0 Deep Night | 5.5 Dawn",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 1,
+            "y" : 1,
+            "z" : 1
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "40000000-0000-4000-8000-000000000042"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "ISOLATION — toggle Clouds\/Fog; use Direct, Diffuse IBL, Global\/Local Probe, and Fog diagnostics; rebuild Final IBL after each checkpoint",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 1,
+            "y" : 1,
+            "z" : 1
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "40000000-0000-4000-8000-000000000043"
     },
     {
       "components" : {
@@ -128,9 +225,9 @@
             "aoChannel" : 0,
             "aoScalar" : 1,
             "baseColor" : {
-              "x" : 0.5,
-              "y" : 0.5,
-              "z" : 0.5
+              "x" : 0.8,
+              "y" : 0.8,
+              "z" : 0.8
             },
             "clearcoatFactor" : 0,
             "clearcoatRoughness" : 0,
@@ -145,7 +242,7 @@
             "metallicScalar" : 0,
             "pbrMaskMode" : 0,
             "roughnessChannel" : 1,
-            "roughnessScalar" : 0.6,
+            "roughnessScalar" : 0.8,
             "schemaVersion" : 1,
             "sheenColor" : {
               "x" : 0,
@@ -162,17 +259,17 @@
               "y" : 1
             }
           },
-          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "meshHandle" : "00000000-0000-0000-0000-000000000002",
           "schemaVersion" : 1
         },
         "name" : {
-          "name" : "Neutral Floor",
+          "name" : "Diffuse Dielectric",
           "schemaVersion" : 1
         },
         "transform" : {
           "position" : {
-            "x" : 0,
-            "y" : 0,
+            "x" : -4,
+            "y" : 1,
             "z" : 0
           },
           "rotationQuat" : {
@@ -182,14 +279,14 @@
             "z" : 0
           },
           "scale" : {
-            "x" : 10,
-            "y" : 0.1,
-            "z" : 10
+            "x" : 1,
+            "y" : 1,
+            "z" : 1
           },
           "schemaVersion" : 2
         }
       },
-      "id" : "B6C25780-C90A-4C63-8F8F-89B2B4319B2F"
+      "id" : "30000000-0000-4000-8000-000000000020"
     },
     {
       "components" : {
@@ -203,9 +300,9 @@
             "aoChannel" : 0,
             "aoScalar" : 1,
             "baseColor" : {
-              "x" : 0.5,
-              "y" : 0.5,
-              "z" : 0.5
+              "x" : 0.8,
+              "y" : 0.8,
+              "z" : 0.8
             },
             "clearcoatFactor" : 0,
             "clearcoatRoughness" : 0,
@@ -241,12 +338,12 @@
           "schemaVersion" : 1
         },
         "name" : {
-          "name" : "Neutral Diffuse Reference",
+          "name" : "Rough Dielectric",
           "schemaVersion" : 1
         },
         "transform" : {
           "position" : {
-            "x" : -1.5,
+            "x" : -2,
             "y" : 1,
             "z" : 0
           },
@@ -264,7 +361,832 @@
           "schemaVersion" : 2
         }
       },
-      "id" : "85B07EA1-6A65-447C-87B8-6BE928DB41AE"
+      "id" : "30000000-0000-4000-8000-000000000021"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 0.8,
+              "y" : 0.8,
+              "z" : 0.8
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "emissiveScalar" : 0,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 0.06,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000002",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "Smooth Dielectric",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 0,
+            "y" : 1,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 1,
+            "y" : 1,
+            "z" : 1
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000022"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 0.92,
+              "y" : 0.92,
+              "z" : 0.92
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "emissiveScalar" : 0,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 1,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 0.8,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000002",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "Rough Metal",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 2,
+            "y" : 1,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 1,
+            "y" : 1,
+            "z" : 1
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000023"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 0.92,
+              "y" : 0.92,
+              "z" : 0.92
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "emissiveScalar" : 0,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 1,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 0.06,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000002",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "Smooth Metal",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 4,
+            "y" : 1,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 1,
+            "y" : 1,
+            "z" : 1
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000024"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 1,
+              "y" : 0,
+              "z" : 0
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 1,
+              "y" : 0,
+              "z" : 0
+            },
+            "emissiveScalar" : 4,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 1,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "+X Red Marker",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 7,
+            "y" : 1,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 0.35,
+            "y" : 0.35,
+            "z" : 0.35
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000030"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 0,
+              "y" : 1,
+              "z" : 1
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 0,
+              "y" : 1,
+              "z" : 1
+            },
+            "emissiveScalar" : 4,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 1,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "-X Cyan Marker",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : -7,
+            "y" : 1,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 0.35,
+            "y" : 0.35,
+            "z" : 0.35
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000031"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 0,
+              "y" : 1,
+              "z" : 0
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 0,
+              "y" : 1,
+              "z" : 0
+            },
+            "emissiveScalar" : 4,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 1,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "+Y Green Marker",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 0,
+            "y" : 7,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 0.35,
+            "y" : 0.35,
+            "z" : 0.35
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000032"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 1,
+              "y" : 0,
+              "z" : 1
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 1,
+              "y" : 0,
+              "z" : 1
+            },
+            "emissiveScalar" : 4,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 1,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "-Y Magenta Marker",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 0,
+            "y" : -5,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 0.35,
+            "y" : 0.35,
+            "z" : 0.35
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000033"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 0,
+              "y" : 0.15,
+              "z" : 1
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 0,
+              "y" : 0.15,
+              "z" : 1
+            },
+            "emissiveScalar" : 4,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 1,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "+Z Blue Marker",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 0,
+            "y" : 1,
+            "z" : 7
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 0.35,
+            "y" : 0.35,
+            "z" : 0.35
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000034"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 1,
+              "y" : 1,
+              "z" : 0
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 1,
+              "y" : 1,
+              "z" : 0
+            },
+            "emissiveScalar" : 4,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 1,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "-Z Yellow Marker",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 0,
+            "y" : 1,
+            "z" : -7
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 0.35,
+            "y" : 0.35,
+            "z" : 0.35
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000035"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 1,
+              "y" : 1,
+              "z" : 1
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 1,
+              "y" : 1,
+              "z" : 1
+            },
+            "emissiveScalar" : 6,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 1,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "+X Up-Right White Marker",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 7,
+            "y" : 3,
+            "z" : -2
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 0.18,
+            "y" : 0.5,
+            "z" : 0.18
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "30000000-0000-4000-8000-000000000036"
+    },
+    {
+      "components" : {
+        "layer" : {
+          "layerIndex" : 0,
+          "schemaVersion" : 1
+        },
+        "meshRenderer" : {
+          "material" : {
+            "alphaCutoff" : 0.5,
+            "aoChannel" : 0,
+            "aoScalar" : 1,
+            "baseColor" : {
+              "x" : 0.5,
+              "y" : 0.5,
+              "z" : 0.5
+            },
+            "clearcoatFactor" : 0,
+            "clearcoatRoughness" : 0,
+            "emissiveColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "emissiveScalar" : 0,
+            "flags" : 0,
+            "metallicChannel" : 2,
+            "metallicScalar" : 0,
+            "pbrMaskMode" : 0,
+            "roughnessChannel" : 1,
+            "roughnessScalar" : 0.8,
+            "schemaVersion" : 1,
+            "sheenColor" : {
+              "x" : 0,
+              "y" : 0,
+              "z" : 0
+            },
+            "sheenRoughness" : 0,
+            "uvOffset" : {
+              "x" : 0,
+              "y" : 0
+            },
+            "uvTiling" : {
+              "x" : 1,
+              "y" : 1
+            }
+          },
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
+          "schemaVersion" : 1
+        },
+        "name" : {
+          "name" : "Accelerated Shadow Receiver Floor",
+          "schemaVersion" : 1
+        },
+        "transform" : {
+          "position" : {
+            "x" : 0,
+            "y" : -0.25,
+            "z" : 0
+          },
+          "rotationQuat" : {
+            "w" : 1,
+            "x" : 0,
+            "y" : 0,
+            "z" : 0
+          },
+          "scale" : {
+            "x" : 10,
+            "y" : 0.25,
+            "z" : 10
+          },
+          "schemaVersion" : 2
+        }
+      },
+      "id" : "40000000-0000-4000-8000-000000000040"
     },
     {
       "components" : {
@@ -292,10 +1214,10 @@
             "emissiveScalar" : 0,
             "flags" : 0,
             "metallicChannel" : 2,
-            "metallicScalar" : 1,
+            "metallicScalar" : 0,
             "pbrMaskMode" : 0,
             "roughnessChannel" : 1,
-            "roughnessScalar" : 0.25,
+            "roughnessScalar" : 0.5,
             "schemaVersion" : 1,
             "sheenColor" : {
               "x" : 0,
@@ -312,18 +1234,18 @@
               "y" : 1
             }
           },
-          "meshHandle" : "00000000-0000-0000-0000-000000000002",
+          "meshHandle" : "00000000-0000-0000-0000-000000000007",
           "schemaVersion" : 1
         },
         "name" : {
-          "name" : "Neutral Metal Reference",
+          "name" : "Accelerated Celestial Shadow Caster",
           "schemaVersion" : 1
         },
         "transform" : {
           "position" : {
-            "x" : 1.5,
+            "x" : 0,
             "y" : 1,
-            "z" : 0
+            "z" : 3
           },
           "rotationQuat" : {
             "w" : 1,
@@ -332,113 +1254,18 @@
             "z" : 0
           },
           "scale" : {
-            "x" : 1,
-            "y" : 1,
-            "z" : 1
+            "x" : 0.7,
+            "y" : 1.5,
+            "z" : 0.7
           },
           "schemaVersion" : 2
         }
       },
-      "id" : "6B5ED80A-896B-4D83-B1C9-C8A99714006F"
-    },
-    {
-      "components" : {
-        "environment" : {
-          "atmosphere" : {
-            "amount" : 0.92,
-            "density" : 0.72,
-            "haze" : 1,
-            "mood" : -1,
-            "schemaVersion" : 2,
-            "sourceEV" : 0,
-            "temperature" : 0
-          },
-          "celestial" : {
-            "dayLengthSeconds" : 600,
-            "defaultTimeOfDay" : 15.9,
-            "milkyWayChroma" : 1,
-            "milkyWayIntensity" : 1,
-            "milkyWayRotation" : 0,
-            "moonIntensity" : 0.18,
-            "moonSizeDegrees" : 0.54,
-            "nightBrightness" : 1,
-            "schemaVersion" : 3,
-            "starIntensity" : 0.75,
-            "starRichness" : 1,
-            "timeControlMode" : 0,
-            "timeScale" : 1
-          },
-          "clouds" : {
-            "coverage" : 0.3,
-            "renderMode" : 0,
-            "schemaVersion" : 1,
-            "style" : 2
-          },
-          "enabled" : true,
-          "fog" : {
-            "amount" : 0,
-            "distance" : 105.5,
-            "height" : 105.7,
-            "schemaVersion" : 1
-          },
-          "ibl" : {
-            "autoRebuildOnChange" : false,
-            "realtimeUpdate" : false,
-            "schemaVersion" : 1
-          },
-          "look" : {
-            "cinematicAmount" : 0,
-            "mood" : 0,
-            "preset" : 0,
-            "schemaVersion" : 1,
-            "warmth" : 0
-          },
-          "schemaVersion" : 1,
-          "source" : {
-            "mode" : 1,
-            "schemaVersion" : 1
-          },
-          "weather" : {
-            "amount" : 0,
-            "blend" : 0,
-            "primaryType" : 0,
-            "schemaVersion" : 1,
-            "secondaryType" : 0
-          }
-        },
-        "layer" : {
-          "layerIndex" : 0,
-          "schemaVersion" : 1
-        },
-        "name" : {
-          "name" : "Validation Environment",
-          "schemaVersion" : 1
-        },
-        "transform" : {
-          "position" : {
-            "x" : 0,
-            "y" : 0,
-            "z" : 0
-          },
-          "rotationQuat" : {
-            "w" : 1,
-            "x" : 0,
-            "y" : 0,
-            "z" : 0
-          },
-          "scale" : {
-            "x" : 1,
-            "y" : 1,
-            "z" : 1
-          },
-          "schemaVersion" : 2
-        }
-      },
-      "id" : "B59B98B3-D676-4D12-9CBA-0F029255CF82"
+      "id" : "40000000-0000-4000-8000-000000000041"
     }
   ],
-  "id" : "F72218BB-9411-4764-BD6F-8A1EDAD97FB0",
-  "name" : "RendererValidation",
+  "id" : "30000000-0000-4000-8000-000000000001",
+  "name" : "SkyTimeValidation",
   "physicsSettingsOverride" : {
     "ccdEnabled" : false,
     "collisionLayerNames" : [
@@ -508,7 +1335,7 @@
   "rendererSettingsOverride" : {
     "aoMethod" : 0,
     "aoQuality" : 0,
-    "bloomEnabled" : 1,
+    "bloomEnabled" : 0,
     "bloomIntensity" : 0.12,
     "bloomKnee" : 0.16,
     "bloomMaxMips" : 4,
@@ -522,16 +1349,16 @@
     "gridOpacity" : 0.85,
     "heightFogBaseHeight" : 0,
     "heightFogColor" : {
-      "x" : 0.62,
-      "y" : 0.68,
-      "z" : 0.74
+      "x" : 0.9,
+      "y" : 0.9,
+      "z" : 0.9
     },
     "heightFogColorMode" : 0,
-    "heightFogDensity" : 0.03,
-    "heightFogDistanceDensity" : 0,
+    "heightFogDensity" : 0.02,
+    "heightFogDistanceDensity" : 0.2,
     "heightFogEnabled" : 0,
-    "heightFogHeightFalloff" : 0.15,
-    "heightFogStartDistance" : 3,
+    "heightFogHeightFalloff" : 12,
+    "heightFogStartDistance" : 0,
     "iblEnabled" : 1,
     "iblFireflyClamp" : 100,
     "iblFireflyClampEnabled" : 0,
@@ -560,9 +1387,9 @@
       "cascadeSplitLambda" : 0.65,
       "depthBias" : 0.0005,
       "directionalEnabled" : 1,
-      "enabled" : 0,
+      "enabled" : 1,
       "fadeOutDistance" : 10,
-      "filterMode" : 1,
+      "filterMode" : 0,
       "maxShadowDistance" : 100,
       "normalBias" : 0.01,
       "pcfRadius" : 1,
@@ -584,7 +1411,7 @@
     "specularAAStrength" : 1,
     "ssaoBias" : 0.008,
     "ssaoBlurSharpness" : 24,
-    "ssaoEnabled" : 1,
+    "ssaoEnabled" : 0,
     "ssaoIntensity" : 1.25,
     "ssaoPower" : 1,
     "ssaoRadius" : 0.35,
