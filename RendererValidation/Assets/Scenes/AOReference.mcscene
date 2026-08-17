@@ -40,6 +40,26 @@
       "components": { "name": { "schemaVersion": 1, "name": "Isolated Silhouette" }, "transform": { "schemaVersion": 2, "position": { "x": 5.5, "y": 2, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.4, "y": 2, "z": 0.4 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
     },
     {
+      "id": "23000000-0000-4000-8000-000000000019",
+      "components": { "name": { "schemaVersion": 1, "name": "Convex Rounded Edge" }, "transform": { "schemaVersion": 2, "position": { "x": 5, "y": 1, "z": -3 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000009" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-00000000001a",
+      "components": { "name": { "schemaVersion": 1, "name": "Thin Silhouette Stress" }, "transform": { "schemaVersion": 2, "position": { "x": 6, "y": 1.5, "z": 2.5 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.08, "y": 1.5, "z": 0.5 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-00000000001b",
+      "components": { "name": { "schemaVersion": 1, "name": "AO Distance Marker Near" }, "transform": { "schemaVersion": 2, "position": { "x": -6, "y": 0.3, "z": 8 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.25, "y": 0.25, "z": 0.25 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-00000000001c",
+      "components": { "name": { "schemaVersion": 1, "name": "AO Distance Marker Mid" }, "transform": { "schemaVersion": 2, "position": { "x": -6, "y": 0.3, "z": 2 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.25, "y": 0.25, "z": 0.25 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
+      "id": "23000000-0000-4000-8000-00000000001d",
+      "components": { "name": { "schemaVersion": 1, "name": "AO Distance Marker Far" }, "transform": { "schemaVersion": 2, "position": { "x": -6, "y": 0.3, "z": -6 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.25, "y": 0.25, "z": 0.25 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000002" } }
+    },
+    {
       "id": "23000000-0000-4000-8000-000000000018",
       "components": {
         "name": { "schemaVersion": 1, "name": "Controlled Procedural Indirect Environment" },
@@ -57,5 +77,5 @@
       }
     }
   ],
-  "rendererSettingsOverride": { "schemaVersion": 4, "tonemap": 5, "gamma": 2.2, "iblEnabled": 1, "iblIntensity": 1, "ssaoEnabled": 1, "aoMethod": 0, "ssaoRadius": 0.35, "ssaoIntensity": 1.25, "ssaoPower": 1, "ssaoBias": 0.008, "shadows": { "enabled": 0, "directionalEnabled": 1, "filterMode": 0, "cascadeCount": 3 } }
+  "rendererSettingsOverride": { "schemaVersion": 4, "tonemap": 5, "gamma": 2.2, "iblEnabled": 1, "iblIntensity": 1, "ssaoEnabled": 1, "aoMethod": 0, "ssaoRadius": 0.35, "ssaoIntensity": 1.25, "ssaoPower": 1, "ssaoBias": 0.008, "ssaoThickness": 0.22, "ssaoBlurSharpness": 24, "shadows": { "enabled": 0, "directionalEnabled": 1, "filterMode": 0, "cascadeCount": 3 } }
 }

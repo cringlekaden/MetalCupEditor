@@ -167,9 +167,13 @@ struct ProjectPolicyTests {
             throw TestFailure("AOReference must persist AO settings")
         }
         require(aoSettings.ssaoEnabled != 0, "AOReference must enable SAO")
+        require(aoSettings.ssaoThickness == 0.22 && aoSettings.ssaoBlurSharpness == 24,
+                "AOReference must persist the deterministic production thickness and blur settings")
         let aoNames = Set(ao.entities.compactMap { $0.components.name?.name })
         for role in ["Isolated Elevated Object", "Touching Pair Left", "Touching Pair Right",
-                     "Wall Floor Corner", "Wedge Grazing Contact", "Isolated Silhouette"] {
+                     "Wall Floor Corner", "Wedge Grazing Contact", "Isolated Silhouette",
+                     "Convex Rounded Edge", "Thin Silhouette Stress", "AO Distance Marker Near",
+                     "AO Distance Marker Mid", "AO Distance Marker Far"] {
             require(aoNames.contains(role), "AOReference is missing \(role)")
         }
     }

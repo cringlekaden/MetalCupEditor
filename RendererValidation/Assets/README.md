@@ -77,14 +77,17 @@ Validate hard shadows before PCF. Inspect Renderer debug modes `Shadow Cascade I
 
 ### `AOReference.mcscene`
 
-The fixed procedural environment provides controlled indirect illumination. Entities cover an isolated elevated object, a touching pair, a wall/floor corner, a grazing wedge, an isolated silhouette, and open background/no-sample pixels.
+The fixed procedural environment provides controlled indirect illumination at Camera EV `0` and Environment Source EV `0`. The primary reference keeps local fog off and uses the normal 4x MSAA scene configuration while AO owns a coherent single-sample depth/normal pair. Entities cover an isolated elevated object, a touching pair, a wall/floor corner, a grazing wedge, a convex rounded edge, thin and isolated silhouettes, three camera-distance markers, and open background/no-sample pixels.
 
 - Inspect `AO Raw` (27), then `AO Filtered` (28).
+- Inspect `AO Normals` (29), reconstructed view position (30), valid samples (48), obscurance (49), AO production depth (50), and the final indirect factor (51) to trace the production inputs.
 - Background and no-valid-sample pixels must be visibility `1`.
+- The isolated floor stays close to visibility `1`; touching objects and the wall/floor corner must fall below `1` locally without broad silhouette halos.
 - More obscurance or greater intensity must not increase visibility.
 - Bilateral blur averages visibility and uses `1` as the neutral fallback.
 - To verify isolation, compare with AO on/off while direct-only: AO must not darken analytic direct lighting. Disable IBL and retain one analytic light in a disposable copy for this check.
-- Coplanar/lateral-contact response and evaluate-time normal rejection remain diagnostic follow-ups, not Phase 2 aesthetic tuning.
+- For the secondary fog interaction check, enable the existing scene-linear local fog temporarily: AO inputs and visibility must remain unchanged while the fogged composite changes. Do not save that runtime state over this source scene.
+- Static-camera output must be deterministic. Small translations or rotations may move screen-space detail, but must not flash, invert, or erase the whole AO field.
 
 ### `IBLOrientation.mcscene`
 
