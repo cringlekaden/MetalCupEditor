@@ -897,7 +897,7 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
             } else if (debugMode == 44) {
                 ImGui::TextDisabled("Fog Density: extinction coefficient at the camera height.");
             } else if (debugMode == 45) {
-                ImGui::TextDisabled("Fog Ambient Scattering: irradiance-derived scene-linear contribution.");
+                ImGui::TextDisabled("Fog Ambient Scattering: live Environment sky-radiance contribution (independent of captured IBL freshness).");
             } else if (debugMode == 46) {
                 ImGui::TextDisabled("Fog Directional Scattering: authoritative analytic-Sun contribution.");
             } else if (debugMode == 47) {

@@ -330,7 +330,15 @@ struct MCEEnvironmentIBLBridge {
     float moonIlluminatedFraction;
     float moonIlluminance;
     uint32_t directionalSource;
+    uint32_t exactSignatureMatch;
+    uint32_t isCurrentFinal;
+    uint64_t sourceGeneration;
+    uint64_t representedGeneration;
+    float skyDiffuseIrradiance;
+    float skyAmbientRadiance;
 };
+static_assert(sizeof(MCEEnvironmentIBLBridge) == 136,
+              "Environment IBL diagnostics bridge ABI changed");
 
 extern "C" uint32_t MCEEditorGetEnvironmentLookBridge(MCE_CTX, const char *entityId,
                                                        MCEEnvironmentLookBridge *outValue);
@@ -4400,7 +4408,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 const char *sourceModeNames[] = {"HDRI", "Procedural"};
                 const char *weatherTypeNames[] = {"Clear", "Partly Cloudy", "Overcast", "Storm", "Foggy", "Custom"};
                 const char *cloudStyleNames[] = {"Clear", "Wispy", "Puffy", "Layered", "Overcast", "Storm", "Custom"};
-                const char *cloudRenderModeNames[] = {"Both", "Procedural", "Cards"};
+                const char *cloudRenderModeNames[] = {"Both (Diagnostic)", "Procedural", "Cards (Diagnostic)"};
                 const int lookPresetCount = IM_ARRAYSIZE(lookPresetNames);
                 int lookPresetIndex = editLookPreset;
                 if (lookPresetIndex < 0 || lookPresetIndex >= lookPresetCount) {
@@ -4440,7 +4448,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 if (iblFailureMessage[0] != 0 && ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("%s", iblFailureMessage);
                 }
-                if (ImGui::Button("Rebuild IBL##EnvironmentSummary")) {
+                if (ImGui::Button("Rebuild Final IBL##EnvironmentSummary")) {
                     MCEEditorRequestEnvironmentIBLRebuild(context, selectedEntityId);
                 }
                 ImGui::SameLine();
@@ -4760,7 +4768,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 ImGui::Spacing();
                 ImGui::TextDisabled("Lighting / IBL");
                 ImGui::TextDisabled("Automatic: interactive while changing, final after settling");
-                if (ImGui::Button("Rebuild IBL##EnvironmentLighting")) {
+                if (ImGui::Button("Rebuild Final IBL##EnvironmentLighting")) {
                     MCEEditorRequestEnvironmentIBLRebuild(context, selectedEntityId);
                 }
                 if (iblRebuildingState != 0) {
@@ -4800,10 +4808,19 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     ImGui::Text("Moon phase: %.3f (%.1f%% illuminated)",
                                 iblBridge.moonPhase, iblBridge.moonIlluminatedFraction * 100.0f);
                     ImGui::Text("Moon illuminance: %.8f scene units", iblBridge.moonIlluminance);
+                    ImGui::Text("Live sky diffuse irradiance: %.8f scene units", iblBridge.skyDiffuseIrradiance);
+                    ImGui::Text("Live sky ambient radiance: %.8f scene units", iblBridge.skyAmbientRadiance);
                     const char *directionalSource = iblBridge.directionalSource == 1 ? "Sun"
                         : (iblBridge.directionalSource == 2 ? "Moon" : "None");
                     ImGui::Text("Shadow / analytic owner: %s", directionalSource);
                     ImGui::Text("IBL phase: %s", phaseLabels[phaseIndex]);
+                    ImGui::Text("Exact source signature: %s", iblBridge.exactSignatureMatch != 0 ? "yes" : "no");
+                    ImGui::Text("Final-quality exact current: %s", iblBridge.isCurrentFinal != 0 ? "yes" : "no");
+                    if (iblBridge.representedGeneration != UINT64_MAX) {
+                        ImGui::Text("IBL generation: %llu (source %llu)",
+                                    (unsigned long long)iblBridge.representedGeneration,
+                                    (unsigned long long)iblBridge.sourceGeneration);
+                    }
                     if (iblBridge.representedTimeOfDay >= 0.0f) {
                         ImGui::Text("IBL source time: %.3f h (current %.3f h)",
                                     iblBridge.representedTimeOfDay, iblBridge.currentTimeOfDay);
@@ -5503,7 +5520,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     dirty = true;
                 }
                 ImGui::SameLine();
-                if (ImGui::Button("Rebuild IBL")) {
+                if (ImGui::Button("Rebuild Final IBL")) {
                     MCEEditorRequestSkyRebuild(context, selectedEntityId);
                 }
                 if (needsRebuild != 0) {

@@ -97,6 +97,12 @@ public struct MCEEnvironmentIBLBridge {
     public var moonIlluminatedFraction: Float
     public var moonIlluminance: Float
     public var directionalSource: UInt32
+    public var exactSignatureMatch: UInt32
+    public var isCurrentFinal: UInt32
+    public var sourceGeneration: UInt64
+    public var representedGeneration: UInt64
+    public var skyDiffuseIrradiance: Float
+    public var skyAmbientRadiance: Float
 }
 
 #if DEBUG
@@ -4128,7 +4134,7 @@ public func MCEEditorSetEnvironmentWeatherCloudBridge(_ contextPtr: UnsafeRawPoi
     environment.weather.amount = clampSkyFacade(input.weatherAmount, min: 0.0, max: 1.0)
     environment.clouds.coverage = clampSkyFacade(input.cloudCoverage, min: 0.0, max: 1.0)
     environment.clouds.style = EnvironmentCloudStyle(rawValue: UInt32(max(0, input.cloudStyle))) ?? .puffy
-    environment.clouds.renderMode = EnvironmentCloudRenderMode(rawValue: UInt32(max(0, input.cloudRenderMode))) ?? .both
+    environment.clouds.renderMode = EnvironmentCloudRenderMode(rawValue: UInt32(max(0, input.cloudRenderMode))) ?? .procedural
     ecs.add(environment, to: entity)
 
     var runtime = ensureEnvironmentRuntimeState(ecs, entity: entity, environment: environment)
@@ -4198,6 +4204,10 @@ public func MCEEditorSetEnvironmentFogBridge(_ contextPtr: UnsafeRawPointer?,
 public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointer?,
                                                    _ entityId: UnsafePointer<CChar>?,
                                                    _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    #if DEBUG
+    MC_ASSERT(MemoryLayout<MCEEnvironmentIBLBridge>.stride == 136,
+              "Environment IBL diagnostics bridge ABI changed")
+    #endif
     guard let context = resolveContext(contextPtr),
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
@@ -4244,7 +4254,13 @@ public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointe
         moonPhase: renderState.moonPhase,
         moonIlluminatedFraction: renderState.moonIlluminatedFraction,
         moonIlluminance: DaytimeAtmosphereModel.rec709Luminance(renderState.moonIrradianceRGB),
-        directionalSource: renderState.directionalLightSource.rawValue
+        directionalSource: renderState.directionalLightSource.rawValue,
+        exactSignatureMatch: freshness.exactSignatureMatch ? 1 : 0,
+        isCurrentFinal: freshness.isCurrentFinal ? 1 : 0,
+        sourceGeneration: freshness.sourceGeneration,
+        representedGeneration: freshness.representedGeneration ?? UInt64.max,
+        skyDiffuseIrradiance: DaytimeAtmosphereModel.rec709Luminance(renderState.skyDiffuseIrradianceRGB),
+        skyAmbientRadiance: DaytimeAtmosphereModel.rec709Luminance(renderState.skyAmbientRadianceRGB)
     )
     return 1
 }
