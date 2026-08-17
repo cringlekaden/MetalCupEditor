@@ -24,7 +24,7 @@
           "atmosphere": { "schemaVersion": 2, "amount": 0.28, "haze": 0.16, "density": 1, "temperature": 0, "mood": 0, "sourceEV": 0 },
           "clouds": { "schemaVersion": 1, "coverage": 0.45, "style": 0, "renderMode": 1 },
           "fog": { "schemaVersion": 2, "enabled": true, "extinction": 0.008, "scatteringAlbedo": [0.9, 0.9, 0.9], "baseHeight": 0, "scaleHeight": 18, "anisotropy": 0.2 },
-          "ibl": { "schemaVersion": 1, "realtimeUpdate": false, "autoRebuildOnChange": false }
+          "ibl": { "schemaVersion": 1, "realtimeUpdate": true, "autoRebuildOnChange": true }
         }
       }
     },
@@ -38,7 +38,7 @@
     {
       "id": "40000000-0000-4000-8000-000000000043",
       "components": {
-        "name": { "schemaVersion": 1, "name": "ISOLATION — toggle Clouds/Fog; use Direct, Diffuse IBL, Global/Local Probe, and Fog diagnostics; rebuild Final IBL after each checkpoint" },
+        "name": { "schemaVersion": 1, "name": "CONTINUOUS IBL — run 60 s and 10 s cycles; scrub both directions; pause for automatic Final settlement" },
         "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 0, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }
       }
     },

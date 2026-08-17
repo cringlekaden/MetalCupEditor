@@ -95,8 +95,8 @@
             "schemaVersion" : 2
           },
           "ibl" : {
-            "autoRebuildOnChange" : false,
-            "realtimeUpdate" : false,
+            "autoRebuildOnChange" : true,
+            "realtimeUpdate" : true,
             "schemaVersion" : 1
           },
           "look" : {
@@ -188,7 +188,7 @@
           "schemaVersion" : 1
         },
         "name" : {
-          "name" : "ISOLATION — toggle Clouds\/Fog; use Direct, Diffuse IBL, Global\/Local Probe, and Fog diagnostics; rebuild Final IBL after each checkpoint",
+          "name" : "CONTINUOUS IBL — run 60 s and 10 s cycles; scrub both directions; pause for automatic Final settlement",
           "schemaVersion" : 1
         },
         "transform" : {

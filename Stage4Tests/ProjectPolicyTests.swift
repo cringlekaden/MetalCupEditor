@@ -114,17 +114,13 @@ struct ProjectPolicyTests {
         require(renderer.effectiveGlobalIBLSamplingGain == 1.0, "Validation scene must sample captured IBL at unit gain")
         require(renderer.tonemap == TonemapType.filmic.rawValue, "Validation scene must resolve to MetalCup Filmic v1")
         require(renderer.gamma == 2.2, "Validation scene must retain neutral legacy gamma state")
-        guard let validationLightEntity = scene.entities.first(where: { $0.components.name?.name == "Validation Sun" }),
-              let validationLight = validationLightEntity.components.light,
-              let validationTransform = validationLightEntity.components.transform else {
-            throw TestFailure("Validation scene must contain its transform-authored directional light")
+        guard let environment = scene.entities.compactMap({ $0.components.environment }).first else {
+            throw TestFailure("Phase 3 validation start scene must contain an Environment")
         }
-        require(validationLight.schemaVersion == LightComponentDTO.currentSchemaVersion,
-                "Validation Sun must use modern transform-authoritative serialization")
-        require(validationLight.data.type == 2 && abs(validationLight.data.brightness - .pi) < 0.0001,
-                "Validation Sun must persist directional illuminance pi")
-        require(abs(validationTransform.rotationQuat.w) < 0.99,
-                "Validation Sun must not retain an identity transform with a redundant diagonal direction")
+        require(environment.ibl.realtimeUpdate && environment.ibl.autoRebuildOnChange,
+                "Phase 3 validation start scene must exercise continuous IBL")
+        require(scene.entities.compactMap { $0.components.light }.isEmpty,
+                "Phase 3 validation start scene must use only the Environment-owned key light")
     }
 
     private static func phase2ValidationLabScenesDecode() throws {
@@ -321,8 +317,10 @@ struct ProjectPolicyTests {
         require(environment.clouds.coverage > 0
                     && environment.clouds.renderMode == EnvironmentCloudRenderMode.procedural.rawValue,
                 "Phase 2 exterior cycle must exercise procedural radiometric clouds")
-        require(!environment.ibl.realtimeUpdate && !environment.ibl.autoRebuildOnChange,
-                "Phase 2 static checkpoints must require explicit final-quality IBL rebuilds")
+        require(environment.ibl.realtimeUpdate && environment.ibl.autoRebuildOnChange,
+                "Phase 3 cycle must exercise continuous global IBL updates")
+        require(scene.entities.compactMap { $0.components.reflectionProbe }.isEmpty,
+                "SkyTimeValidation must not retain a one-shot daytime local probe")
         require(settings.ssaoEnabled == 0 && settings.bloomEnabled == 0 && settings.iblEnabled != 0,
                 "Phase 6 reference must isolate celestial lighting with IBL enabled")
         require(settings.shadows.enabled != 0 && settings.shadows.directionalEnabled != 0,
@@ -334,7 +332,7 @@ struct ProjectPolicyTests {
                      "Rough Metal", "Smooth Metal", "Accelerated Shadow Receiver Floor",
                      "Accelerated Celestial Shadow Caster",
                      "CHECKPOINTS — 12 Midday | 17 Golden | 18 Sunset | 18.5 Civil | 19 Nautical | 19.5 Astronomical | 0 Deep Night | 5.5 Dawn",
-                     "ISOLATION — toggle Clouds/Fog; use Direct, Diffuse IBL, Global/Local Probe, and Fog diagnostics; rebuild Final IBL after each checkpoint"] {
+                     "CONTINUOUS IBL — run 60 s and 10 s cycles; scrub both directions; pause for automatic Final settlement"] {
             require(names.contains(role), "SkyTimeValidation is missing \(role)")
         }
     }
