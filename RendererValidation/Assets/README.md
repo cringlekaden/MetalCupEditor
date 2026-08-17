@@ -156,4 +156,4 @@ Static checkpoints are authoritative. Do not save exploratory runtime state over
 
 The Engine has an existing `LightOrbitComponent`, so an orbit can be added manually for exploratory sweeps without a new scripting architecture. It depends on runtime time progression and is not serialized into these authoritative references. The checked-in static positions remain the reproducible checkpoints.
 
-Do not save manual acceptance changes into these files. The Phase 1 manual shadow reproduction remains preserved outside Git at `.git-recovery/RendererValidation-manual-acceptance-2026-08-06`.
+Do not save manual acceptance changes into these files.

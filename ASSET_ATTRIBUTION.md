@@ -1,12 +1,12 @@
 # Renderer asset manifest and attribution
 
-The files below are repository-owned inputs used to reproduce the current renderer baseline or preserved as source/reference material. The MetalCup source code is MIT-licensed, but that code license does **not** relicense third-party artwork. Each asset retains the source/permission statement listed here.
+The files below are repository-owned inputs used to reproduce the current renderer baseline or preserved as source/reference material. This repository has no top-level license file, so this document makes no license claim for MetalCup-owned code. That code status does **not** alter the third-party artwork permissions below; each asset retains the source/permission statement listed here.
 
 The user confirms that all listed resources were acquired legally, are free public resources, and may be used and redistributed through the public `cringlekaden/MetalCupEditor` repository.
 
 ## Editor icon fonts
 
-The Editor bundles the following unmodified Font Awesome Free 7.2.0 desktop fonts in `Contents/Resources/Icons`. The version is recorded in both fonts' embedded name metadata. These font files remain licensed under the SIL Open Font License 1.1 with the reserved font name “Font Awesome”; they are not covered or relicensed by MetalCup's MIT code license. The official Font Awesome Free license distributed with them is retained at `MetalCupEditor/Resources/Icons/FONT-AWESOME-LICENSE.txt`.
+The Editor bundles the following unmodified Font Awesome Free 7.2.0 desktop fonts in `Contents/Resources/Icons`. The version is recorded in both fonts' embedded name metadata. These font files remain licensed under the SIL Open Font License 1.1 with the reserved font name “Font Awesome”; they are not covered or relicensed by any MetalCup-owned-code terms. The official Font Awesome Free license distributed with them is retained at `MetalCupEditor/Resources/Icons/FONT-AWESOME-LICENSE.txt`.
 
 | Repository path | Bytes | SHA-256 | Purpose | Source / license |
 |---|---:|---|---|---|
