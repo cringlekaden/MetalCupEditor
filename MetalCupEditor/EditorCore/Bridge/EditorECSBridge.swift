@@ -41,6 +41,7 @@ public struct MCEEnvironmentAtmosphereBridge {
 public struct MCEEnvironmentCelestialBridge {
     public var moonIntensity: Float
     public var moonSizeDegrees: Float
+    public var moonPhase: Float
     public var starIntensity: Float
     public var starRichness: Float
     public var milkyWayIntensity: Float
@@ -89,6 +90,13 @@ public struct MCEEnvironmentIBLBridge {
     public var sunDirectionY: Float
     public var sunDirectionZ: Float
     public var sunIlluminance: Float
+    public var moonDirectionX: Float
+    public var moonDirectionY: Float
+    public var moonDirectionZ: Float
+    public var moonPhase: Float
+    public var moonIlluminatedFraction: Float
+    public var moonIlluminance: Float
+    public var directionalSource: UInt32
 }
 
 #if DEBUG
@@ -3993,6 +4001,7 @@ public func MCEEditorGetEnvironmentCelestialBridge(_ contextPtr: UnsafeRawPointe
     output.pointee = MCEEnvironmentCelestialBridge(
         moonIntensity: environment.celestial.moonIntensity,
         moonSizeDegrees: environment.celestial.moonSizeDegrees,
+        moonPhase: environment.celestial.moonPhase,
         starIntensity: environment.celestial.starIntensity,
         starRichness: environment.celestial.starRichness,
         milkyWayIntensity: environment.celestial.milkyWayIntensity,
@@ -4018,6 +4027,9 @@ public func MCEEditorSetEnvironmentCelestialBridge(_ contextPtr: UnsafeRawPointe
     environment.look.preset = .custom
     environment.celestial.moonIntensity = max(0.0, input.moonIntensity)
     environment.celestial.moonSizeDegrees = max(0.01, input.moonSizeDegrees)
+    environment.celestial.moonPhase = input.moonPhase.isFinite
+        ? input.moonPhase - floor(input.moonPhase)
+        : 0.5
     environment.celestial.starIntensity = max(0.0, input.starIntensity)
     environment.celestial.starRichness = clampSkyFacade(input.starRichness, min: 0.0, max: 3.0)
     environment.celestial.milkyWayIntensity = clampSkyFacade(input.milkyWayIntensity, min: 0.0, max: 3.0)
@@ -4182,7 +4194,14 @@ public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointe
         sunDirectionX: renderState.sunDirection.x,
         sunDirectionY: renderState.sunDirection.y,
         sunDirectionZ: renderState.sunDirection.z,
-        sunIlluminance: renderState.sunIntensity
+        sunIlluminance: renderState.sunIntensity,
+        moonDirectionX: renderState.moonDirection.x,
+        moonDirectionY: renderState.moonDirection.y,
+        moonDirectionZ: renderState.moonDirection.z,
+        moonPhase: renderState.moonPhase,
+        moonIlluminatedFraction: renderState.moonIlluminatedFraction,
+        moonIlluminance: DaytimeAtmosphereModel.rec709Luminance(renderState.moonIrradianceRGB),
+        directionalSource: renderState.directionalLightSource.rawValue
     )
     return 1
 }

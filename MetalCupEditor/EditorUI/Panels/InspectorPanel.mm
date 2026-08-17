@@ -238,6 +238,7 @@ struct MCEEnvironmentAtmosphereBridge {
 struct MCEEnvironmentCelestialBridge {
     float moonIntensity;
     float moonSizeDegrees;
+    float moonPhase;
     float starIntensity;
     float starRichness;
     float milkyWayIntensity;
@@ -286,6 +287,13 @@ struct MCEEnvironmentIBLBridge {
     float sunDirectionY;
     float sunDirectionZ;
     float sunIlluminance;
+    float moonDirectionX;
+    float moonDirectionY;
+    float moonDirectionZ;
+    float moonPhase;
+    float moonIlluminatedFraction;
+    float moonIlluminance;
+    uint32_t directionalSource;
 };
 
 extern "C" uint32_t MCEEditorGetEnvironmentLookBridge(MCE_CTX, const char *entityId,
@@ -3974,7 +3982,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
             char hdriHandle[64] = {0};
             float defaultTimeOfDay = 14.0f;
             float previewTimeOfDay = 14.0f;
-            float moonIntensity = 0.18f;
+            float moonIntensity = 0.12f;
             float moonSizeDegrees = 0.54f;
             float starIntensity = 0.75f;
             float starRichness = 1.0f;
@@ -4098,6 +4106,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 float editPreviewTimeOfDay = previewTimeOfDay;
                 float editMoonIntensity = moonIntensity;
                 float editMoonSizeDegrees = moonSizeDegrees;
+                float editMoonPhase = celestialBridge.moonPhase;
                 float editStarIntensity = starIntensity;
                 float editStarRichness = starRichness;
                 float editMilkyWayIntensity = milkyWayIntensity;
@@ -4261,7 +4270,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
 
                 ImGui::Spacing();
-                ImGui::TextDisabled("Time & Sun");
+                ImGui::TextDisabled("Time & Celestial Light");
                 if (EditorUI::BeginPropertyTable("EnvironmentCelestialProps")) {
                     celestialDirty |= EditorUI::PropertyFloat("Default Time",
                                                               &editDefaultTimeOfDay,
@@ -4287,16 +4296,16 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 ImGui::Spacing();
                 ImGui::TextDisabled("Celestial / Night");
                 if (EditorUI::BeginPropertyTable("EnvironmentNightProps")) {
-                    celestialDirty |= EditorUI::PropertyFloat("Moon Intensity",
+                    celestialDirty |= EditorUI::PropertyFloat("Lunar Albedo",
                                                               &editMoonIntensity,
                                                               0.01f,
                                                               0.0f,
-                                                              10.0f,
+                                                              1.0f,
                                                               "%.2f",
                                                               true,
                                                               true,
-                                                              0.18f);
-                    celestialDirty |= EditorUI::PropertyFloat("Moon Size",
+                                                              0.12f);
+                    celestialDirty |= EditorUI::PropertyFloat("Moon Diameter",
                                                               &editMoonSizeDegrees,
                                                               0.01f,
                                                               0.01f,
@@ -4305,6 +4314,15 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                               true,
                                                               true,
                                                               0.54f);
+                    celestialDirty |= EditorUI::PropertyFloat("Moon Phase",
+                                                              &editMoonPhase,
+                                                              0.01f,
+                                                              0.0f,
+                                                              1.0f,
+                                                              "%.2f",
+                                                              true,
+                                                              true,
+                                                              0.5f);
                     celestialDirty |= EditorUI::PropertyFloat("Star Visibility",
                                                               &editStarIntensity,
                                                               0.01f,
@@ -4350,7 +4368,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                               true,
                                                               true,
                                                               0.0f);
-                    celestialDirty |= EditorUI::PropertyFloat("Night Brightness",
+                    celestialDirty |= EditorUI::PropertyFloat("Night Airglow",
                                                               &editNightBrightness,
                                                               0.02f,
                                                               0.0f,
@@ -4361,6 +4379,8 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                                                               1.0f);
                     EditorUI::EndPropertyTable();
                 }
+                ImGui::TextDisabled("Moon phase: 0/1 new, 0.5 full. Lunar albedo scales reflected solar energy, not exposure.");
+                ImGui::TextDisabled("Night Airglow is the scene-linear atmospheric background; stars and Milky Way are separate sources.");
                 ImGui::TextDisabled("Moon texture and Milky Way texture use built-in runtime assets.");
 
                 ImGui::Spacing();
@@ -4491,7 +4511,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     EditorUI::EndPropertyTable();
                 }
                 ImGui::TextDisabled("Extinction is sigmaT at base height; albedo is sigmaS / sigmaT.");
-                ImGui::TextDisabled("Illumination comes from the active sky irradiance and analytic Sun.");
+                ImGui::TextDisabled("Illumination comes from the active sky irradiance and selected analytic Sun or Moon.");
 
                 ImGui::Spacing();
                 ImGui::TextDisabled("Lighting / IBL");
@@ -4531,6 +4551,14 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     ImGui::Text("Sun direction: (%.4f, %.4f, %.4f)",
                                 iblBridge.sunDirectionX, iblBridge.sunDirectionY, iblBridge.sunDirectionZ);
                     ImGui::Text("Sun illuminance: %.4f scene units", iblBridge.sunIlluminance);
+                    ImGui::Text("Moon direction: (%.4f, %.4f, %.4f)",
+                                iblBridge.moonDirectionX, iblBridge.moonDirectionY, iblBridge.moonDirectionZ);
+                    ImGui::Text("Moon phase: %.3f (%.1f%% illuminated)",
+                                iblBridge.moonPhase, iblBridge.moonIlluminatedFraction * 100.0f);
+                    ImGui::Text("Moon illuminance: %.8f scene units", iblBridge.moonIlluminance);
+                    const char *directionalSource = iblBridge.directionalSource == 1 ? "Sun"
+                        : (iblBridge.directionalSource == 2 ? "Moon" : "None");
+                    ImGui::Text("Shadow / analytic owner: %s", directionalSource);
                     ImGui::Text("IBL phase: %s", phaseLabels[phaseIndex]);
                     if (iblBridge.representedTimeOfDay >= 0.0f) {
                         ImGui::Text("IBL source time: %.3f h (current %.3f h)",
@@ -4542,7 +4570,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     if (iblBridge.lastBuildDuration >= 0.0f) {
                         ImGui::Text("Last source + convolution: %.3f s", iblBridge.lastBuildDuration);
                     }
-                    ImGui::TextDisabled("Energy partition: visible disk; capture excludes disk; analytic Sun owns disk integral");
+                    ImGui::TextDisabled("Energy partition: visible Sun/Moon disks; capture excludes both; analytic owner carries the selected disk integral.");
                     MCEEnvironmentTimeBridge editTime = timeBridge;
                     bool timeRuntimeDirty = false;
                     if (EditorUI::BeginPropertyTable("EnvironmentAdvancedProps")) {
@@ -4586,6 +4614,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     MCEEnvironmentCelestialBridge editCelestial = celestialBridge;
                     editCelestial.moonIntensity = editMoonIntensity;
                     editCelestial.moonSizeDegrees = editMoonSizeDegrees;
+                    editCelestial.moonPhase = editMoonPhase;
                     editCelestial.starIntensity = editStarIntensity;
                     editCelestial.starRichness = editStarRichness;
                     editCelestial.milkyWayIntensity = editMilkyWayIntensity;
