@@ -4308,7 +4308,7 @@ public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointe
         dynamicEnvironmentResolution: 256,
         dynamicDiffuseResolution: 16,
         dynamicSpecularResolution: 128,
-        globalMemoryBytes: 180_772_864
+        globalMemoryBytes: 180_772_736
     )
     return 1
 }
