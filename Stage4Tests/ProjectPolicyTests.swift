@@ -14,6 +14,7 @@ struct ProjectPolicyTests {
         try phase3ValidationLabScenesDecode()
         try phase4ValidationLabScenesDecode()
         try phase5ValidationLabScenesDecode()
+        try phase6ValidationLabScenesDecode()
         print("Stage 4 Editor policy tests passed")
     }
 
@@ -290,6 +291,43 @@ struct ProjectPolicyTests {
                 "AerialPerspectiveValidation needs a sky/object continuity silhouette")
         require(aerialNames.contains("Below Base Height Geometry"),
                 "AerialPerspectiveValidation needs a below-layer sample")
+    }
+
+    private static func phase6ValidationLabScenesDecode() throws {
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).standardizedFileURL
+        let scenes = root.appendingPathComponent("Assets/Scenes", isDirectory: true)
+        let scene = try decodeScene(named: "SkyTimeValidation", in: scenes)
+        guard let camera = scene.entities.compactMap({ $0.components.camera }).first,
+              let environment = scene.entities.compactMap({ $0.components.environment }).first,
+              let settings = scene.rendererSettingsOverride?.makeRendererSettings() else {
+            throw TestFailure("SkyTimeValidation must contain its camera, Environment, and settings")
+        }
+        require(!camera.autoExposureEnabled && camera.exposureEV == 0,
+                "Phase 6 keeps Camera EV 0 as its numeric source reference")
+        require(environment.atmosphere.sourceEV == 0,
+                "Phase 6 must keep Environment Source EV 0")
+        require(environment.celestial.moonIntensity == 0.12,
+                "Phase 6 reference must use the documented effective lunar albedo")
+        require(environment.celestial.moonSizeDegrees == 0.54,
+                "Phase 6 reference must use the physical lunar angular diameter")
+        require(environment.celestial.moonPhase == 0.5,
+                "Phase 6 reference must begin with a deterministic full Moon")
+        require(environment.celestial.starIntensity > 0 && environment.celestial.milkyWayIntensity > 0,
+                "Phase 6 reference must exercise stars and the Milky Way")
+        require(!environment.fog.enabled && environment.clouds.coverage == 0,
+                "Primary Phase 6 calibration must disable local fog and clouds")
+        require(settings.ssaoEnabled == 0 && settings.bloomEnabled == 0 && settings.iblEnabled != 0,
+                "Phase 6 reference must isolate celestial lighting with IBL enabled")
+        require(settings.shadows.enabled != 0 && settings.shadows.directionalEnabled != 0,
+                "Phase 6 reference must exercise the selected celestial shadow caster")
+        require(scene.entities.compactMap { $0.components.light }.isEmpty,
+                "Phase 6 must use only the Environment-owned Sun/Moon key light")
+        let names = Set(scene.entities.compactMap { $0.components.name?.name })
+        for role in ["Diffuse Dielectric", "Rough Dielectric", "Smooth Dielectric",
+                     "Rough Metal", "Smooth Metal", "Accelerated Shadow Receiver Floor",
+                     "Accelerated Celestial Shadow Caster"] {
+            require(names.contains(role), "SkyTimeValidation is missing \(role)")
+        }
     }
 
     private static func decodeScene(named name: String, in scenes: URL) throws -> SceneDocument {

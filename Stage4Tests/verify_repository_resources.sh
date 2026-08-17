@@ -103,6 +103,8 @@ jq -e '[.entities[].components.meshRenderer?.material? | select(. != null and .m
     "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
 jq -e '[.entities[].components.environment? | select(. != null)][0].celestial | .timeControlMode == 1 and .dayLengthSeconds == 60 and .timeScale == 1' \
     "$validation_root/Assets/Scenes/SkyTimeValidation.mcscene" >/dev/null
+jq -e '[.entities[].components.environment? | select(. != null)][0] | .celestial.schemaVersion == 4 and .celestial.moonIntensity == 0.12 and .celestial.moonSizeDegrees == 0.54 and .celestial.moonPhase == 0.5 and .celestial.starIntensity > 0 and .celestial.milkyWayIntensity > 0 and .atmosphere.sourceEV == 0 and .clouds.coverage == 0 and .fog.schemaVersion == 2 and .fog.enabled == false' \
+    "$validation_root/Assets/Scenes/SkyTimeValidation.mcscene" >/dev/null
 
 for scene_name in FogReference AerialPerspectiveValidation; do
     scene="$validation_root/Assets/Scenes/$scene_name.mcscene"

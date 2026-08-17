@@ -2,7 +2,22 @@
 
 Open `Project.mcp` directly from the MetalCup Editor project chooser. The project opens in place, uses canonical Engine shaders, and intentionally contains no `Assets/Shaders` directory. Every camera is fixed at `0 EV` with automatic exposure disabled. MetalCup Filmic v1 and neutral legacy gamma state are explicit in every scene.
 
-This is a deterministic numerical-regression lab, not a claim of calibrated visual correctness. Phase 1 intentionally invalidated older compensated brightness values. Phase 4 replaces the formerly weak procedural daytime source with one coupled sky/sun energy model. Night below civil twilight remains outside this lab.
+This is a deterministic numerical-regression lab, not a claim of calibrated visual correctness. Phase 1 intentionally invalidated older compensated brightness values. Phase 4 replaces the formerly weak procedural daytime source with one coupled sky/sun energy model. Phase 6 extends that frame-owned contract through dusk, night, and dawn.
+
+## Phase 6 night and celestial reference
+
+`Scenes/SkyTimeValidation.mcscene` is the deterministic day/dusk/night/dawn lab. It uses a full Moon (`moonPhase = 0.5`), physical lunar diameter `0.54 degrees`, effective lunar albedo `0.12`, the production star and Milky Way layers, one Environment-owned analytic key light, 4x MSAA, and the Phase 3 interactive/final IBL lifecycle. AO, clouds, bloom, and local fog are disabled for the primary celestial reference. Constant diffuse, dielectric, and metal objects plus fixed world-direction and shadow markers reveal lighting or orientation drift without relying on textures.
+
+The checked-in camera remains `0 EV` as a numeric source reference. Useful fixed photographic viewing ranges are approximately Camera EV `+1` for day, `+3` to `+6` for dusk/dawn, and `+8` to `+12` for moonlit or deep night. Keep Environment Source EV at `0`: Camera EV changes only the output stage and must not rebuild IBL, while Source EV changes the physical sky/Sun/Moon source generation. Do not raise source radiance simply to make a night scene visible at daytime exposure.
+
+- Fixed checkpoints: `06:00` dawn/horizon, `08:52` daylight, `12:00` noon, `17:34` golden hour, `18:00` sunset, `19:00` dusk, `22:00` moonlit night, `00:00` deep night, and `05:00` dawn transition.
+- Phase checks: set Moon Phase to `0.0` (new), `0.25` (quarter), and `0.5` (full). The visible illuminated disk and analytic irradiance must vary together; only the selected Environment key light may own directional shadows.
+- Direct only: disable global IBL and inspect the full-Moon highlight and shadow direction. IBL only: leave IBL enabled and use the Environment direct-light isolation control. Combined: enable both and verify additive pre-exposure HDR behavior.
+- Stars and the Milky Way are visible sources but enter IBL through the documented bounded celestial-capture factor. They must not wash diffuse materials or produce implausibly dominant metal reflections.
+- During the 60-second accelerated day, the visible Sun or Moon, analytic light, shadows, and active IBL direction must remain coherent. Interactive IBL may report lag; after time stops it must automatically become final/current without a black resource gap or an older generation replacing it.
+- For the secondary fog check only, enable the already-authored Phase 5 local medium without changing its coefficients. Fog must consume the selected Sun/Moon frame irradiance without changing the celestial source, IBL resources, or exposure. Do not save this exploratory state over the source scene.
+
+Deep-night calibration intentionally does not redesign clouds, cloud cards, night antialiasing, or gameplay. Existing 4x MSAA remains the accepted rasterization path.
 
 ## Phase 5 local fog and aerial perspective
 
@@ -143,14 +158,14 @@ The calibrated lower hemisphere is a bounded neutral-ground response, but the ba
 
 ### `SkyTimeValidation.mcscene`
 
-The accelerated lab begins at `06:00` and advances a full day in 60 seconds. It has the same fixed camera/output and disabled AO/fog/cloud/bloom state as `SkySunReference`. Stationary world-axis markers and the reflective material row reveal direction mismatch while the generated Sun and cascaded shadow owner follow the authoritative environment frame.
+The accelerated lab begins at `06:00` and advances a full day in 60 seconds. It has the same fixed source/output and disabled AO/fog/cloud/bloom state as `SkySunReference`, plus the Phase 6 reflected Moon, stars, and Milky Way. Stationary world-axis markers and the reflective material row reveal direction mismatch while the generated Sun-or-Moon key light and cascaded shadow owner follow the authoritative environment frame.
 
 - Watch solar elevation/direction, analytic RGB irradiance, active IBL source time/direction, angular lag, and rebuild phase in Environment status.
-- Visible disk, direct highlight, shadow ray, and current IBL marker should describe the same solar direction. Interactive IBL is allowed to lag visibly and must report that lag.
+- Visible disk, selected direct highlight, shadow ray, and current IBL marker should describe the same solar or lunar direction. Interactive IBL is allowed to lag visibly and must report that lag.
 - During continuous motion, rebuilds are coalesced. When time stops, status must advance from interactive/lagging through rebuilding-final to final/current without a black resource gap.
-- Exposure must remain `0 EV` and must not trigger an IBL rebuild.
+- The source reference remains at Camera EV `0`; use the documented fixed viewing EV ranges without saving them. Camera exposure must not trigger an IBL rebuild.
 
-Static checkpoints are authoritative. Do not save exploratory runtime state over these scenes. Raw and filtered SAO currently appear white everywhere in the live Editor; Phase 4 deliberately leaves AO disabled and does not compensate sky or material energy for that separate defect.
+Static checkpoints are authoritative. Do not save exploratory runtime state over these scenes. Phase 5 SSAO has passed manual acceptance, but AO remains disabled here so celestial energy can be inspected without an additional indirect-light factor.
 
 ## Static checkpoints and optional motion
 

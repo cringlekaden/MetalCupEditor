@@ -19,11 +19,11 @@
         "environment": {
           "schemaVersion": 1, "enabled": true,
           "source": { "schemaVersion": 1, "mode": 1 },
-          "celestial": { "schemaVersion": 3, "defaultTimeOfDay": 6, "timeControlMode": 1, "dayLengthSeconds": 60, "timeScale": 1, "moonIntensity": 0, "moonSizeDegrees": 0.54, "starIntensity": 0 },
+          "celestial": { "schemaVersion": 4, "defaultTimeOfDay": 6, "timeControlMode": 1, "dayLengthSeconds": 60, "timeScale": 1, "moonIntensity": 0.12, "moonSizeDegrees": 0.54, "moonPhase": 0.5, "starIntensity": 0.75, "starRichness": 1, "milkyWayIntensity": 1, "milkyWayChroma": 1, "milkyWayRotation": 0, "nightBrightness": 1 },
           "weather": { "schemaVersion": 1, "primaryType": 0, "secondaryType": 0, "blend": 0, "amount": 0 },
           "atmosphere": { "schemaVersion": 2, "amount": 0.28, "haze": 0.16, "density": 1, "temperature": 0, "mood": 0, "sourceEV": 0 },
           "clouds": { "schemaVersion": 1, "coverage": 0, "style": 0 },
-          "fog": { "schemaVersion": 1, "amount": 0, "height": 0, "distance": 0 },
+          "fog": { "schemaVersion": 2, "enabled": false, "extinction": 0.025, "scatteringAlbedo": [0.9, 0.9, 0.9], "baseHeight": 0, "scaleHeight": 12, "anisotropy": 0.2 },
           "ibl": { "schemaVersion": 1, "realtimeUpdate": false, "autoRebuildOnChange": false }
         }
       }
@@ -102,7 +102,7 @@
     },
     {
       "id": "40000000-0000-4000-8000-000000000041",
-      "components": { "name": { "schemaVersion": 1, "name": "Accelerated Generated Sun Shadow Caster" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 1, "z": 3 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.7, "y": 1.5, "z": 0.7 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 0.65, "y": 0.65, "z": 0.65 }, "metallicScalar": 0, "roughnessScalar": 0.5, "aoScalar": 1, "emissiveColor": { "x": 0, "y": 0, "z": 0 }, "emissiveScalar": 0, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
+      "components": { "name": { "schemaVersion": 1, "name": "Accelerated Celestial Shadow Caster" }, "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 1, "z": 3 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 0.7, "y": 1.5, "z": 0.7 } }, "meshRenderer": { "schemaVersion": 1, "meshHandle": "00000000-0000-0000-0000-000000000007", "material": { "schemaVersion": 1, "baseColor": { "x": 0.65, "y": 0.65, "z": 0.65 }, "metallicScalar": 0, "roughnessScalar": 0.5, "aoScalar": 1, "emissiveColor": { "x": 0, "y": 0, "z": 0 }, "emissiveScalar": 0, "flags": 0, "clearcoatFactor": 0, "clearcoatRoughness": 0, "sheenRoughness": 0, "sheenColor": { "x": 0, "y": 0, "z": 0 } } } }
     }
   ],
   "rendererSettingsOverride": {
