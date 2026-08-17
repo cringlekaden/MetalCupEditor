@@ -104,10 +104,12 @@ jq -e '[.entities[].components.reflectionProbe? | select(. != null)] | length ==
 
 for scene_name in SkySunReference SkyTimeValidation; do
     scene="$validation_root/Assets/Scenes/$scene_name.mcscene"
-    jq -e '[.entities[].components.environment? | select(. != null)] | length == 1 and .[0].source.mode == 1 and .[0].atmosphere.sourceEV == 0 and .[0].clouds.coverage == 0 and .[0].fog.amount == 0' "$scene" >/dev/null
+    jq -e '[.entities[].components.environment? | select(. != null)] | length == 1 and .[0].source.mode == 1 and .[0].atmosphere.sourceEV == 0' "$scene" >/dev/null
     jq -e '[.entities[].components.light? | select(. != null)] | length == 0' "$scene" >/dev/null
     jq -e '.rendererSettingsOverride | .iblEnabled == 1 and .iblIntensity == 1 and .ssaoEnabled == 0 and .bloomEnabled == 0 and .shadows.enabled == 1' "$scene" >/dev/null
 done
+jq -e '[.entities[].components.environment? | select(. != null)][0] | .clouds.coverage == 0 and .fog.enabled == false' \
+    "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
 jq -e '[.entities[].components.environment? | select(. != null)][0].celestial | .timeControlMode == 0 and .defaultTimeOfDay == 12' \
     "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
 jq -e '[.entities[] | select(.components.name.name == "White Diffuse Reference" or .components.name.name == "18 Percent Gray Diffuse Reference" or .components.name.name == "Smooth Dielectric" or .components.name.name == "Rough Dielectric" or .components.name.name == "Smooth Metal" or .components.name.name == "Rough Neutral Metal" or .components.name.name == "Copper Metal") | select(.components.meshRenderer.meshHandle == "00000000-0000-0000-0000-000000000008" and .components.meshRenderer.material.emissiveScalar == 0)] | length == 7' \
@@ -118,7 +120,7 @@ jq -e '[.entities[].components.meshRenderer?.material? | select(. != null and .m
     "$validation_root/Assets/Scenes/SkySunReference.mcscene" >/dev/null
 jq -e '[.entities[].components.environment? | select(. != null)][0].celestial | .timeControlMode == 1 and .dayLengthSeconds == 60 and .timeScale == 1' \
     "$validation_root/Assets/Scenes/SkyTimeValidation.mcscene" >/dev/null
-jq -e '[.entities[].components.environment? | select(. != null)][0] | .celestial.schemaVersion == 4 and .celestial.moonIntensity == 0.12 and .celestial.moonSizeDegrees == 0.54 and .celestial.moonPhase == 0.5 and .celestial.starIntensity > 0 and .celestial.milkyWayIntensity > 0 and .atmosphere.sourceEV == 0 and .clouds.coverage == 0 and .fog.schemaVersion == 2 and .fog.enabled == false' \
+jq -e '[.entities[].components.environment? | select(. != null)][0] | .celestial.schemaVersion == 4 and .celestial.moonIntensity == 0.12 and .celestial.moonSizeDegrees == 0.54 and .celestial.moonPhase == 0.5 and .celestial.starIntensity > 0 and .celestial.milkyWayIntensity > 0 and .atmosphere.sourceEV == 0 and .clouds.coverage > 0 and .clouds.renderMode == 1 and .fog.schemaVersion == 2 and .fog.enabled == true and .fog.extinction > 0 and .ibl.realtimeUpdate == false and .ibl.autoRebuildOnChange == false' \
     "$validation_root/Assets/Scenes/SkyTimeValidation.mcscene" >/dev/null
 
 for scene_name in FogReference AerialPerspectiveValidation; do

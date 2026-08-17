@@ -19,13 +19,27 @@
         "environment": {
           "schemaVersion": 1, "enabled": true,
           "source": { "schemaVersion": 1, "mode": 1 },
-          "celestial": { "schemaVersion": 4, "defaultTimeOfDay": 6, "timeControlMode": 1, "dayLengthSeconds": 60, "timeScale": 1, "moonIntensity": 0.12, "moonSizeDegrees": 0.54, "moonPhase": 0.5, "starIntensity": 0.75, "starRichness": 1, "milkyWayIntensity": 1, "milkyWayChroma": 1, "milkyWayRotation": 0, "nightBrightness": 1 },
+          "celestial": { "schemaVersion": 4, "defaultTimeOfDay": 12, "timeControlMode": 1, "dayLengthSeconds": 60, "timeScale": 1, "moonIntensity": 0.12, "moonSizeDegrees": 0.54, "moonPhase": 0.5, "starIntensity": 0.75, "starRichness": 1, "milkyWayIntensity": 1, "milkyWayChroma": 1, "milkyWayRotation": 0, "nightBrightness": 1 },
           "weather": { "schemaVersion": 1, "primaryType": 0, "secondaryType": 0, "blend": 0, "amount": 0 },
           "atmosphere": { "schemaVersion": 2, "amount": 0.28, "haze": 0.16, "density": 1, "temperature": 0, "mood": 0, "sourceEV": 0 },
-          "clouds": { "schemaVersion": 1, "coverage": 0, "style": 0 },
-          "fog": { "schemaVersion": 2, "enabled": false, "extinction": 0.025, "scatteringAlbedo": [0.9, 0.9, 0.9], "baseHeight": 0, "scaleHeight": 12, "anisotropy": 0.2 },
+          "clouds": { "schemaVersion": 1, "coverage": 0.45, "style": 0, "renderMode": 1 },
+          "fog": { "schemaVersion": 2, "enabled": true, "extinction": 0.008, "scatteringAlbedo": [0.9, 0.9, 0.9], "baseHeight": 0, "scaleHeight": 18, "anisotropy": 0.2 },
           "ibl": { "schemaVersion": 1, "realtimeUpdate": false, "autoRebuildOnChange": false }
         }
+      }
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000042",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "CHECKPOINTS — 12 Midday | 17 Golden | 18 Sunset | 18.5 Civil | 19 Nautical | 19.5 Astronomical | 0 Deep Night | 5.5 Dawn" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 0, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }
+      }
+    },
+    {
+      "id": "40000000-0000-4000-8000-000000000043",
+      "components": {
+        "name": { "schemaVersion": 1, "name": "ISOLATION — toggle Clouds/Fog; use Direct, Diffuse IBL, Global/Local Probe, and Fog diagnostics; rebuild Final IBL after each checkpoint" },
+        "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 0, "z": 0 }, "rotationQuat": { "x": 0, "y": 0, "z": 0, "w": 1 }, "scale": { "x": 1, "y": 1, "z": 1 } }
       }
     },
     {

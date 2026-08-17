@@ -316,8 +316,13 @@ struct ProjectPolicyTests {
                 "Phase 6 reference must begin with a deterministic full Moon")
         require(environment.celestial.starIntensity > 0 && environment.celestial.milkyWayIntensity > 0,
                 "Phase 6 reference must exercise stars and the Milky Way")
-        require(!environment.fog.enabled && environment.clouds.coverage == 0,
-                "Primary Phase 6 calibration must disable local fog and clouds")
+        require(environment.fog.enabled && environment.fog.extinction > 0,
+                "Phase 2 exterior cycle must exercise live-radiance fog")
+        require(environment.clouds.coverage > 0
+                    && environment.clouds.renderMode == EnvironmentCloudRenderMode.procedural.rawValue,
+                "Phase 2 exterior cycle must exercise procedural radiometric clouds")
+        require(!environment.ibl.realtimeUpdate && !environment.ibl.autoRebuildOnChange,
+                "Phase 2 static checkpoints must require explicit final-quality IBL rebuilds")
         require(settings.ssaoEnabled == 0 && settings.bloomEnabled == 0 && settings.iblEnabled != 0,
                 "Phase 6 reference must isolate celestial lighting with IBL enabled")
         require(settings.shadows.enabled != 0 && settings.shadows.directionalEnabled != 0,
@@ -327,7 +332,9 @@ struct ProjectPolicyTests {
         let names = Set(scene.entities.compactMap { $0.components.name?.name })
         for role in ["Diffuse Dielectric", "Rough Dielectric", "Smooth Dielectric",
                      "Rough Metal", "Smooth Metal", "Accelerated Shadow Receiver Floor",
-                     "Accelerated Celestial Shadow Caster"] {
+                     "Accelerated Celestial Shadow Caster",
+                     "CHECKPOINTS — 12 Midday | 17 Golden | 18 Sunset | 18.5 Civil | 19 Nautical | 19.5 Astronomical | 0 Deep Night | 5.5 Dawn",
+                     "ISOLATION — toggle Clouds/Fog; use Direct, Diffuse IBL, Global/Local Probe, and Fog diagnostics; rebuild Final IBL after each checkpoint"] {
             require(names.contains(role), "SkyTimeValidation is missing \(role)")
         }
     }
