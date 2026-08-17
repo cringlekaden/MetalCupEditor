@@ -76,6 +76,20 @@ extern "C" void MCEEditorSetReflectionProbe(MCE_CTX,  const char *entityId,
                                             int32_t rebuildMode,
                                             uint32_t includeSky);
 extern "C" uint32_t MCEEditorGetReflectionProbeRuntimeStatus(MCE_CTX,  const char *entityId, int32_t *statusOut);
+struct MCEReflectionProbeTemporalBridge {
+    int32_t status;
+    uint32_t policy;
+    uint32_t environmentDependent;
+    uint32_t scheduledProbeCount;
+    float representedTimeOfDay;
+    float timeLagHours;
+    uint64_t representedGeneration;
+    uint64_t currentSourceGeneration;
+};
+static_assert(sizeof(MCEReflectionProbeTemporalBridge) == 40,
+              "Reflection probe temporal bridge ABI changed");
+extern "C" uint32_t MCEEditorGetReflectionProbeTemporalStatus(MCE_CTX, const char *entityId,
+                                                               MCEReflectionProbeTemporalBridge *outValue);
 extern "C" uint32_t MCEEditorRequestReflectionProbeRebuild(MCE_CTX,  const char *entityId);
 extern "C" uint32_t MCEEditorRequestAllReflectionProbeRebuilds(MCE_CTX);
 extern "C" uint32_t MCEEditorGetCameraExposure(MCE_CTX, const char *entityId,
@@ -336,8 +350,23 @@ struct MCEEnvironmentIBLBridge {
     uint64_t representedGeneration;
     float skyDiffuseIrradiance;
     float skyAmbientRadiance;
+    float timeLagHours;
+    float moonAngularLagDegrees;
+    float skyLuminanceLagStops;
+    float diffuseBlendFactor;
+    float specularBlendFactor;
+    float crossfadeDuration;
+    uint32_t sourceDirty;
+    uint32_t interactiveAcceptable;
+    uint64_t incomingGeneration;
+    uint64_t coalescedRequests;
+    uint64_t discardedCompletions;
+    uint32_t dynamicEnvironmentResolution;
+    uint32_t dynamicDiffuseResolution;
+    uint32_t dynamicSpecularResolution;
+    uint64_t globalMemoryBytes;
 };
-static_assert(sizeof(MCEEnvironmentIBLBridge) == 136,
+static_assert(sizeof(MCEEnvironmentIBLBridge) == 216,
               "Environment IBL diagnostics bridge ABI changed");
 
 extern "C" uint32_t MCEEditorGetEnvironmentLookBridge(MCE_CTX, const char *entityId,
@@ -1707,6 +1736,24 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 ImGui::Text("Status: %s", statusLabel);
             } else {
                 ImGui::TextDisabled("%s", statusLabel);
+            }
+            MCEReflectionProbeTemporalBridge temporal = {};
+            if (MCEEditorGetReflectionProbeTemporalStatus(context, selectedEntityId, &temporal) != 0) {
+                const char *policyNames[] = {"Manual Checkpoint", "On Play", "Static / Interior",
+                                             "Environment Independent", "Environment Scheduled", "Fully Dynamic"};
+                const uint32_t policyIndex = temporal.policy < 6 ? temporal.policy : 0;
+                ImGui::Text("Policy: %s", policyNames[policyIndex]);
+                ImGui::Text("Environment dependent: %s", temporal.environmentDependent != 0 ? "yes" : "no");
+                ImGui::Text("Scheduled dynamic probes: %u", temporal.scheduledProbeCount);
+                if (temporal.representedTimeOfDay >= 0.0f) {
+                    ImGui::Text("Represented time / lag: %.3f h / %.3f h",
+                                temporal.representedTimeOfDay, temporal.timeLagHours);
+                }
+                if (temporal.representedGeneration != UINT64_MAX) {
+                    ImGui::Text("Represented / source generation: %llu / %llu",
+                                (unsigned long long)temporal.representedGeneration,
+                                (unsigned long long)temporal.currentSourceGeneration);
+                }
             }
 
             const bool canRebuildRuntime = isPlaying;
@@ -4012,8 +4059,9 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 int priorityValue = static_cast<int>(priority);
                 constexpr int kReflectionProbePriorityMin = -1024;
                 constexpr int kReflectionProbePriorityMax = 1024;
-                const char *rebuildModes[] = {"Manual", "On Play"};
-                int rebuildModeIndex = rebuildMode <= 0 ? 0 : 1;
+                const char *rebuildModes[] = {"Manual Checkpoint", "On Play", "Static / Interior",
+                                              "Environment Independent", "Environment Scheduled", "Fully Dynamic"};
+                int rebuildModeIndex = std::max(0, std::min(rebuildMode, 5));
                 const int captureResolutionOptions[] = {64, 128, 256, 512};
                 const char *captureResolutionLabels[] = {"64", "128", "256", "512"};
                 int captureResolutionIndex = 1;
@@ -4049,7 +4097,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     }
                     dirty |= EditorUI::PropertyBool("Include Sky", &includeSkyBool);
                     if (EditorUI::PropertyCombo("Rebuild Mode", &rebuildModeIndex, rebuildModes, IM_ARRAYSIZE(rebuildModes))) {
-                        rebuildMode = rebuildModeIndex == 0 ? 0 : 1;
+                        rebuildMode = rebuildModeIndex;
                         dirty = true;
                     }
                     EditorUI::EndPropertyTable();
@@ -4423,8 +4471,11 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 } else if (iblFailureMessage[0] != 0 || iblBridge.hasFailure != 0) {
                     iblStatusLabel = "Error";
                     iblStatusColor = ImVec4(1.0f, 0.35f, 0.3f, 1.0f);
+                } else if (iblBridge.sourceDirty != 0 && iblBridge.interactiveAcceptable != 0) {
+                    iblStatusLabel = "Interactive current";
+                    iblStatusColor = ImVec4(0.45f, 0.8f, 0.55f, 1.0f);
                 } else if (needsRebuild != 0 || iblDirtyState != 0) {
-                    iblStatusLabel = "Dirty";
+                    iblStatusLabel = "Source dirty / stale";
                     iblStatusColor = ImVec4(1.0f, 0.75f, 0.2f, 1.0f);
                 }
 
@@ -4816,6 +4867,8 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     ImGui::Text("IBL phase: %s", phaseLabels[phaseIndex]);
                     ImGui::Text("Exact source signature: %s", iblBridge.exactSignatureMatch != 0 ? "yes" : "no");
                     ImGui::Text("Final-quality exact current: %s", iblBridge.isCurrentFinal != 0 ? "yes" : "no");
+                    ImGui::Text("Interactive acceptable: %s", iblBridge.interactiveAcceptable != 0 ? "yes" : "no");
+                    ImGui::Text("Source dirty: %s", iblBridge.sourceDirty != 0 ? "yes" : "no");
                     if (iblBridge.representedGeneration != UINT64_MAX) {
                         ImGui::Text("IBL generation: %llu (source %llu)",
                                     (unsigned long long)iblBridge.representedGeneration,
@@ -4828,6 +4881,26 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                     if (iblBridge.angularLagDegrees >= 0.0f) {
                         ImGui::Text("IBL angular lag: %.3f deg", iblBridge.angularLagDegrees);
                     }
+                    ImGui::Text("Time / Moon / sky lag: %.3f h / %.3f deg / %.3f stops",
+                                iblBridge.timeLagHours,
+                                iblBridge.moonAngularLagDegrees,
+                                iblBridge.skyLuminanceLagStops);
+                    ImGui::Text("Crossfade diffuse/specular: %.3f / %.3f over %.3f s",
+                                iblBridge.diffuseBlendFactor,
+                                iblBridge.specularBlendFactor,
+                                iblBridge.crossfadeDuration);
+                    if (iblBridge.incomingGeneration != UINT64_MAX) {
+                        ImGui::Text("Incoming generation: %llu", (unsigned long long)iblBridge.incomingGeneration);
+                    }
+                    ImGui::Text("Requests coalesced / completions discarded: %llu / %llu",
+                                (unsigned long long)iblBridge.coalescedRequests,
+                                (unsigned long long)iblBridge.discardedCompletions);
+                    ImGui::Text("Interactive IBL resolution: source %u, diffuse %u, specular %u",
+                                iblBridge.dynamicEnvironmentResolution,
+                                iblBridge.dynamicDiffuseResolution,
+                                iblBridge.dynamicSpecularResolution);
+                    ImGui::Text("Global IBL allocation: %.1f MiB",
+                                (double)iblBridge.globalMemoryBytes / (1024.0 * 1024.0));
                     if (iblBridge.lastBuildDuration >= 0.0f) {
                         ImGui::Text("Last source + convolution: %.3f s", iblBridge.lastBuildDuration);
                     }

@@ -103,6 +103,32 @@ public struct MCEEnvironmentIBLBridge {
     public var representedGeneration: UInt64
     public var skyDiffuseIrradiance: Float
     public var skyAmbientRadiance: Float
+    public var timeLagHours: Float
+    public var moonAngularLagDegrees: Float
+    public var skyLuminanceLagStops: Float
+    public var diffuseBlendFactor: Float
+    public var specularBlendFactor: Float
+    public var crossfadeDuration: Float
+    public var sourceDirty: UInt32
+    public var interactiveAcceptable: UInt32
+    public var incomingGeneration: UInt64
+    public var coalescedRequests: UInt64
+    public var discardedCompletions: UInt64
+    public var dynamicEnvironmentResolution: UInt32
+    public var dynamicDiffuseResolution: UInt32
+    public var dynamicSpecularResolution: UInt32
+    public var globalMemoryBytes: UInt64
+}
+
+public struct MCEReflectionProbeTemporalBridge {
+    public var status: Int32
+    public var policy: UInt32
+    public var environmentDependent: UInt32
+    public var scheduledProbeCount: UInt32
+    public var representedTimeOfDay: Float
+    public var timeLagHours: Float
+    public var representedGeneration: UInt64
+    public var currentSourceGeneration: UInt64
 }
 
 #if DEBUG
@@ -4205,7 +4231,7 @@ public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointe
                                                    _ entityId: UnsafePointer<CChar>?,
                                                    _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
     #if DEBUG
-    MC_ASSERT(MemoryLayout<MCEEnvironmentIBLBridge>.stride == 136,
+    MC_ASSERT(MemoryLayout<MCEEnvironmentIBLBridge>.stride == 216,
               "Environment IBL diagnostics bridge ABI changed")
     #endif
     guard let context = resolveContext(contextPtr),
@@ -4220,6 +4246,13 @@ public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointe
             runtime: ecs.get(EnvironmentRuntimeStateComponent.self, for: entity)
         )
     let freshness = EnvironmentIBLRebuildLifecycle.freshness(state: state, current: renderState)
+    let lag = EnvironmentIBLRebuildLifecycle.lag(
+        current: renderState,
+        representedTime: state.lastBuiltTimeOfDay,
+        representedSun: state.lastBuiltSunDirection,
+        representedMoon: state.lastBuiltMoonDirection,
+        representedSkyLogLuminance: state.lastBuiltSkyLogLuminance
+    )
     let phaseCode: Int32
     switch state.phase {
     case .dirty: phaseCode = 0
@@ -4260,7 +4293,22 @@ public func MCEEditorGetEnvironmentIBLStatusBridge(_ contextPtr: UnsafeRawPointe
         sourceGeneration: freshness.sourceGeneration,
         representedGeneration: freshness.representedGeneration ?? UInt64.max,
         skyDiffuseIrradiance: DaytimeAtmosphereModel.rec709Luminance(renderState.skyDiffuseIrradianceRGB),
-        skyAmbientRadiance: DaytimeAtmosphereModel.rec709Luminance(renderState.skyAmbientRadianceRGB)
+        skyAmbientRadiance: DaytimeAtmosphereModel.rec709Luminance(renderState.skyAmbientRadianceRGB),
+        timeLagHours: lag.timeHours,
+        moonAngularLagDegrees: lag.moonDegrees,
+        skyLuminanceLagStops: lag.skyLuminanceStops,
+        diffuseBlendFactor: state.diffuseBlendFactor,
+        specularBlendFactor: state.specularBlendFactor,
+        crossfadeDuration: Float(state.crossfadeDuration),
+        sourceDirty: state.sourceDirty ? 1 : 0,
+        interactiveAcceptable: state.interactiveAcceptable ? 1 : 0,
+        incomingGeneration: state.incomingGeneration ?? UInt64.max,
+        coalescedRequests: state.coalescedRequestCount,
+        discardedCompletions: state.discardedCompletionCount,
+        dynamicEnvironmentResolution: 256,
+        dynamicDiffuseResolution: 16,
+        dynamicSpecularResolution: 128,
+        globalMemoryBytes: 180_772_864
     )
     return 1
 }
@@ -4767,6 +4815,34 @@ public func MCEEditorGetReflectionProbeRuntimeStatus(_ contextPtr: UnsafeRawPoin
         return 0
     }
     statusOut?.pointee = status.rawValue
+    return 1
+}
+
+@_cdecl("MCEEditorGetReflectionProbeTemporalStatus")
+public func MCEEditorGetReflectionProbeTemporalStatus(_ contextPtr: UnsafeRawPointer?,
+                                                      _ entityId: UnsafePointer<CChar>?,
+                                                      _ outValue: UnsafeMutableRawPointer?) -> UInt32 {
+    #if DEBUG
+    MC_ASSERT(MemoryLayout<MCEReflectionProbeTemporalBridge>.stride == 40,
+              "Reflection probe temporal bridge ABI changed")
+    #endif
+    guard let context = resolveContext(contextPtr),
+          context.bridgeServices.isPlaying,
+          let runtimeScene = context.bridgeServices.runtimeScene,
+          let renderer = context.engineContext.renderer,
+          let entity = entity(from: entityId, context: context),
+          let state = renderer.reflectionProbeTemporalDebugState(scene: runtimeScene, entityID: entity.id),
+          let outValue else { return 0 }
+    outValue.assumingMemoryBound(to: MCEReflectionProbeTemporalBridge.self).pointee = MCEReflectionProbeTemporalBridge(
+        status: state.status.rawValue,
+        policy: state.policy.rawValue,
+        environmentDependent: state.environmentDependent ? 1 : 0,
+        scheduledProbeCount: UInt32(state.queuedProbeCount),
+        representedTimeOfDay: state.representedTimeOfDay ?? -1,
+        timeLagHours: state.timeLagHours ?? -1,
+        representedGeneration: state.representedGeneration ?? UInt64.max,
+        currentSourceGeneration: state.currentSourceGeneration ?? UInt64.max
+    )
     return 1
 }
 
