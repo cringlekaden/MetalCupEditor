@@ -680,7 +680,11 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
                 "Fog Density",
                 "Fog Ambient Scattering",
                 "Fog Directional Scattering",
-                "Fog Pixel Classification"
+                "Fog Pixel Classification",
+                "AO Valid Samples",
+                "AO Obscurance",
+                "AO Production Depth",
+                "AO Indirect Factor"
             };
             int debugMode = static_cast<int>(MCERendererGetShadingDebugMode(engineContext));
             EditorUI::SetNextPropertyInfoTooltip("Visualization mode for renderer debugging.\nIncludes shadow-specific views for cascade selection, blend bands, final shadowing, and bias pressure.\nPersistence: Project.");
@@ -767,6 +771,14 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
                 ImGui::TextDisabled("Direct Specular Only: analytic direct BRDF specular from lights only, excluding direct diffuse, IBL, local probes, and emissive.");
             } else if (debugMode == 40) {
                 ImGui::TextDisabled("Sun Vector Alignment: sharp mirror lobe from the brightest directional light vector only, excluding BRDF, roughness, IBL, shadows, and emissive.");
+            } else if (debugMode == 48) {
+                ImGui::TextDisabled("AO Valid Samples: fraction of the fixed spatial kernel with valid, in-radius geometry taps. White means all taps were valid.");
+            } else if (debugMode == 49) {
+                ImGui::TextDisabled("AO Obscurance: normalized production obscurance before intensity and power convert it to visibility.");
+            } else if (debugMode == 50) {
+                ImGui::TextDisabled("AO Production Depth: linear depth from the AO-owned single-sample depth/normal raster pass.");
+            } else if (debugMode == 51) {
+                ImGui::TextDisabled("AO Indirect Factor: filtered visibility consumed by indirect diffuse and specular lighting; direct analytic light is excluded.");
             } else if (debugMode == 41) {
                 ImGui::TextDisabled("Fog Optical Depth: grayscale tau / 8; white means tau >= 8.");
             } else if (debugMode == 42) {
