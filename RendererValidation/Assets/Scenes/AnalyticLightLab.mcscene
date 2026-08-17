@@ -8,7 +8,7 @@
       "components": {
         "name": { "schemaVersion": 1, "name": "Analytic Light Camera" },
         "transform": { "schemaVersion": 2, "position": { "x": 0, "y": 5, "z": 15 }, "rotationQuat": { "x": -0.1736482, "y": 0, "z": 0, "w": 0.9848078 }, "scale": { "x": 1, "y": 1, "z": 1 } },
-        "camera": { "schemaVersion": 4, "fovDegrees": 45, "nearPlane": 0.1, "farPlane": 100, "isPrimary": true, "isEditor": true, "autoExposureEnabled": false, "exposureEV": 0 }
+        "camera": { "schemaVersion": 5, "fovDegrees": 45, "nearPlane": 0.1, "farPlane": 100, "isPrimary": true, "isEditor": true, "exposurePolicy": { "mode": 1, "manualEV100": 15 } }
       }
     },
     {

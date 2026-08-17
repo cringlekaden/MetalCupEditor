@@ -1,0 +1,12 @@
+{
+  "dependencies" : [
+
+  ],
+  "handle" : "61000000-0000-4000-8000-000000000101",
+  "importSettings" : {
+
+  },
+  "lastModified" : 1786932000,
+  "sourcePath" : "Scenes\/ExposureValidation.mcscene",
+  "type" : "scene"
+}

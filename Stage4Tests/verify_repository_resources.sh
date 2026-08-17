@@ -45,7 +45,9 @@ test -f "$validation_root/Assets/Scenes/RendererValidation.mcscene"
 test ! -d "$validation_root/Assets/Shaders"
 jq empty "$validation_root/Project.mcp"
 jq empty "$validation_root/Assets/Scenes/RendererValidation.mcscene"
-jq -e '.entities[] | select(.components.camera != null) | .components.camera | .autoExposureEnabled == false and .exposureEV == 0 and .schemaVersion == 4' \
+jq -e '.schemaVersion == 6 and .renderSettings.exposure.mode == 1 and .renderSettings.exposure.manualEV100 == 15' \
+    "$validation_root/Project.mcp" >/dev/null
+jq -e '.entities[] | select(.components.camera != null) | .components.camera | .schemaVersion == 5 and .exposurePolicy.mode == 1 and .exposurePolicy.manualEV100 == 15 and (has("autoExposureEnabled") | not) and (has("exposureEV") | not)' \
     "$validation_root/Assets/Scenes/RendererValidation.mcscene" >/dev/null
 jq -e '.rendererSettingsOverride | .iblEnabled == 1 and .iblIntensity == 1 and .tonemap == 5 and .gamma == 2.2' \
     "$validation_root/Assets/Scenes/RendererValidation.mcscene" >/dev/null
@@ -57,10 +59,23 @@ for scene_name in MaterialReference AnalyticLightLab ShadowValidation AOReferenc
     test -f "$meta"
     jq empty "$scene"
     jq empty "$meta"
-    jq -e '.entities[] | select(.components.camera != null) | .components.camera | .autoExposureEnabled == false and .exposureEV == 0' \
+    jq -e '.entities[] | select(.components.camera != null) | .components.camera | .schemaVersion == 5 and .exposurePolicy.mode == 1 and .exposurePolicy.manualEV100 == 15 and (has("autoExposureEnabled") | not) and (has("exposureEV") | not)' \
         "$scene" >/dev/null
     jq -e --arg source "Scenes/$scene_name.mcscene" '.sourcePath == $source and .type == "scene"' "$meta" >/dev/null
 done
+
+exposure_scene="$validation_root/Assets/Scenes/ExposureValidation.mcscene"
+test -f "$exposure_scene"
+test -f "$exposure_scene.meta"
+jq empty "$exposure_scene"
+jq empty "$exposure_scene.meta"
+jq -e '[.entities[].components.camera? | select(. != null) | .exposurePolicy.mode] | sort == [0, 1, 2]' "$exposure_scene" >/dev/null
+jq -e '[.entities[].components.camera? | select(. != null and .exposurePolicy.mode == 1 and .exposurePolicy.manualEV100 == 15)] | length == 1' "$exposure_scene" >/dev/null
+jq -e '[.entities[].components.camera? | select(. != null and .exposurePolicy.mode == 2 and .exposurePolicy.aperture == 16 and .exposurePolicy.shutterSeconds == 0.0078125 and .exposurePolicy.iso == 100)] | length == 1' "$exposure_scene" >/dev/null
+jq -e '[.entities[].components.postProcessVolume? | select(. != null and .isGlobal == false and .blendDistance > 0)] | length == 1' "$exposure_scene" >/dev/null
+jq -e '[.entities[].components.meshRenderer?.material? | select(. != null and .emissiveScalar >= 10000)] | length == 1' "$exposure_scene" >/dev/null
+jq -e '[.entities[].components.reflectionProbe? | select(. != null and .enabled == true)] | length == 1' "$exposure_scene" >/dev/null
+jq -e --arg source "Scenes/ExposureValidation.mcscene" '.sourcePath == $source and .type == "scene"' "$exposure_scene.meta" >/dev/null
 
 jq -e '[.entities[].components.light? | select(. != null)] | length == 1 and .[0].type == "directional" and (.[0].data.brightness - 3.1415927 | if . < 0 then -. else . end) < 0.0001' \
     "$validation_root/Assets/Scenes/MaterialReference.mcscene" >/dev/null
@@ -133,6 +148,8 @@ if git -C "$engine_root" rev-parse --git-dir >/dev/null 2>&1; then
         git -C "$editor_root" ls-files --error-unmatch "RendererValidation/Assets/Scenes/$scene_name.mcscene" >/dev/null
         git -C "$editor_root" ls-files --error-unmatch "RendererValidation/Assets/Scenes/$scene_name.mcscene.meta" >/dev/null
     done
+    git -C "$editor_root" ls-files --error-unmatch RendererValidation/Assets/Scenes/ExposureValidation.mcscene >/dev/null
+    git -C "$editor_root" ls-files --error-unmatch RendererValidation/Assets/Scenes/ExposureValidation.mcscene.meta >/dev/null
     git -C "$editor_root" ls-files --error-unmatch ASSET_ATTRIBUTION.md >/dev/null
     git -C "$editor_root" ls-files --error-unmatch MetalCupEditor/Projects/Sandbox/Assets/Textures/Moon/lroc_color_2k.jpg >/dev/null
     git -C "$editor_root" ls-files --error-unmatch MetalCupEditor/Resources/Icons/FA7Free-Regular-400.otf >/dev/null

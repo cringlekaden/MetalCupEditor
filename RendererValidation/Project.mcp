@@ -39,9 +39,37 @@
   ],
   "name" : "RendererValidation",
   "rootPath" : ".",
+  "renderSettings" : {
+    "exposure" : {
+      "aperture" : 16,
+      "compensation" : 0,
+      "darkAdaptationRate" : 3,
+      "highPercentile" : 0.95,
+      "histogramLogMax" : 16,
+      "histogramLogMin" : -20,
+      "iso" : 100,
+      "lightAdaptationRate" : 8,
+      "lowPercentile" : 0.05,
+      "manualEV100" : 15,
+      "maximumEV100" : 17,
+      "meteringMode" : 1,
+      "minimumEV100" : 2,
+      "mode" : 1,
+      "shutterSeconds" : 0.008,
+      "skyInfluenceCap" : 0.35,
+      "targetKeyCurve" : {
+        "daylightElevation" : 6,
+        "daylightKey" : 0.18,
+        "nightElevation" : -10,
+        "nightKey" : 0.04,
+        "twilightKey" : 0.09
+      },
+      "useOutdoorPrior" : true
+    }
+  },
   "savedDirectory" : "Saved",
   "scenesDirectory" : "Assets\/Scenes",
-  "schemaVersion" : 5,
+  "schemaVersion" : 6,
   "shaderSource" : {
     "mode" : "canonical"
   },

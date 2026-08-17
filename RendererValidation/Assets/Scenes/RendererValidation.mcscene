@@ -3,12 +3,10 @@
     {
       "components" : {
         "camera" : {
-          "adaptationSpeed" : 2,
-          "autoExposureEnabled" : false,
-          "autoExposureMax" : 8,
-          "autoExposureMin" : 0.03,
-          "exposureCompensation" : 0,
-          "exposureEV" : 0,
+          "exposurePolicy" : {
+            "manualEV100" : 15,
+            "mode" : 1
+          },
           "farPlane" : 1000,
           "fovDegrees" : 45,
           "isEditor" : true,
@@ -16,7 +14,7 @@
           "nearPlane" : 0.1,
           "orthoSize" : 10,
           "projectionType" : 0,
-          "schemaVersion" : 4
+          "schemaVersion" : 5
         },
         "layer" : {
           "layerIndex" : 0,

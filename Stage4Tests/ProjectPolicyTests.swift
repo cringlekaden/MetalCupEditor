@@ -15,6 +15,7 @@ struct ProjectPolicyTests {
         try phase4ValidationLabScenesDecode()
         try phase5ValidationLabScenesDecode()
         try phase6ValidationLabScenesDecode()
+        try phase1ExposureValidationDecodes()
         print("Stage 4 Editor policy tests passed")
     }
 
@@ -22,6 +23,8 @@ struct ProjectPolicyTests {
         let data = Data(#"{"name":"Legacy","rootPath":".","assetDirectory":"Assets","scenesDirectory":"Assets/Scenes","cacheDirectory":"Cache","intermediateDirectory":"Intermediate","savedDirectory":"Saved","startScene":"Assets/Scenes/Default.mcscene"}"#.utf8)
         let document = try JSONDecoder().decode(ProjectDocument.self, from: data)
         require(document.shaderSource == .canonical, "Missing shaderSource must decode as canonical")
+        require(document.renderSettings.exposure.mode == .automaticHistogram,
+                "New and legacy projects without exposure settings must inherit Automatic Histogram")
     }
 
     private static func explicitShaderOverrideDecodes() throws {
@@ -89,6 +92,9 @@ struct ProjectPolicyTests {
         let data = try Data(contentsOf: root.appendingPathComponent("Project.mcp"))
         let project = try JSONDecoder().decode(ProjectDocument.self, from: data)
         require(project.shaderSource == .canonical, "Validation project must explicitly use canonical shaders")
+        require(project.renderSettings.exposure.mode == .manualEV100
+                    && project.renderSettings.exposure.manualEV100 == 15,
+                "Deterministic validation defaults must explicitly use Manual EV100 15")
         require(project.rootPath == ".", "Validation project root must be portable")
         require(!FileManager.default.fileExists(atPath: root.appendingPathComponent("Assets/Shaders").path),
                 "Validation project must not contain a local shader copy")
@@ -100,8 +106,7 @@ struct ProjectPolicyTests {
         guard let camera = scene.entities.compactMap({ $0.components.camera }).first else {
             throw TestFailure("Validation scene must contain a camera")
         }
-        require(camera.autoExposureEnabled == false, "Validation camera must keep auto exposure disabled")
-        require(camera.exposureEV == 0.0, "Validation camera must use 0 EV")
+        requireManualReference(camera, context: "RendererValidation")
         guard let renderer = scene.rendererSettingsOverride?.makeRendererSettings() else {
             throw TestFailure("Validation scene must explicitly record Phase 1 renderer invariants")
         }
@@ -223,8 +228,7 @@ struct ProjectPolicyTests {
         guard let camera = sky.entities.compactMap({ $0.components.camera }).first else {
             throw TestFailure("SkySunReference must contain a camera")
         }
-        require(!camera.autoExposureEnabled && camera.exposureEV == 0,
-                "SkySunReference must use deterministic Camera Exposure EV 0")
+        requireManualReference(camera, context: "SkySunReference")
         guard let environment = sky.entities.compactMap({ $0.components.environment }).first else {
             throw TestFailure("SkySunReference must contain one Environment")
         }
@@ -265,8 +269,7 @@ struct ProjectPolicyTests {
                   let settings = scene.rendererSettingsOverride?.makeRendererSettings() else {
                 throw TestFailure("\(name) must contain camera, Environment, and renderer settings")
             }
-            require(!camera.autoExposureEnabled && camera.exposureEV == 0,
-                    "\(name) must use deterministic Camera Exposure EV 0")
+            requireManualReference(camera, context: name)
             require(environment.atmosphere.sourceEV == 0,
                     "\(name) must use Environment Source EV 0")
             require(environment.fog.enabled && environment.fog.extinction > 0,
@@ -302,8 +305,7 @@ struct ProjectPolicyTests {
               let settings = scene.rendererSettingsOverride?.makeRendererSettings() else {
             throw TestFailure("SkyTimeValidation must contain its camera, Environment, and settings")
         }
-        require(!camera.autoExposureEnabled && camera.exposureEV == 0,
-                "Phase 6 keeps Camera EV 0 as its numeric source reference")
+        requireManualReference(camera, context: "SkyTimeValidation")
         require(environment.atmosphere.sourceEV == 0,
                 "Phase 6 must keep Environment Source EV 0")
         require(environment.celestial.moonIntensity == 0.12,
@@ -328,6 +330,45 @@ struct ProjectPolicyTests {
                      "Accelerated Celestial Shadow Caster"] {
             require(names.contains(role), "SkyTimeValidation is missing \(role)")
         }
+    }
+
+    private static func phase1ExposureValidationDecodes() throws {
+        let root = URL(fileURLWithPath: CommandLine.arguments[1], isDirectory: true).standardizedFileURL
+        let scenes = root.appendingPathComponent("Assets/Scenes", isDirectory: true)
+        let scene = try decodeScene(named: "ExposureValidation", in: scenes)
+        let cameras = scene.entities.compactMap { $0.components.camera }
+        require(cameras.count == 3, "ExposureValidation must contain automatic, manual, and physical cameras")
+        require(cameras.contains { $0.exposurePolicy.mode == .automaticHistogram },
+                "ExposureValidation must exercise Automatic Histogram")
+        require(cameras.contains { $0.exposurePolicy.mode == .manualEV100 && $0.exposurePolicy.manualEV100 == 15 },
+                "ExposureValidation must include Manual EV100 15")
+        guard let physical = cameras.first(where: { $0.exposurePolicy.mode == .physicalCamera }),
+              let aperture = physical.exposurePolicy.aperture,
+              let shutter = physical.exposurePolicy.shutterSeconds,
+              let iso = physical.exposurePolicy.iso else {
+            throw TestFailure("ExposureValidation must include a complete physical camera")
+        }
+        require(abs(ExposureCalibration.physicalEV100(aperture: aperture,
+                                                      shutterSeconds: shutter,
+                                                      iso: iso) - 15) < 0.0001,
+                "ExposureValidation physical camera must equal EV100 15")
+        let volumes = scene.entities.compactMap { $0.components.postProcessVolume }
+        require(volumes.count == 1 && !volumes[0].isGlobal && volumes[0].blendDistance > 0,
+                "ExposureValidation must exercise a blended indoor/outdoor override volume")
+        require(scene.entities.compactMap { $0.components.environment }.count == 1,
+                "ExposureValidation must exercise a procedural accelerated weather cycle")
+        require(scene.entities.compactMap { $0.components.reflectionProbe }.count == 1,
+                "ExposureValidation must exercise radiometric capture isolation")
+        let names = Set(scene.entities.compactMap { $0.components.name?.name })
+        for role in ["AUTO PRIMARY - exterior to interior route", "Tiny HDR Emissive Stress",
+                     "Indoor Blend Volume - walk through box edge", "Capture Isolation Probe"] {
+            require(names.contains(role), "ExposureValidation is missing \(role)")
+        }
+    }
+
+    private static func requireManualReference(_ camera: CameraComponentDTO, context: String) {
+        require(camera.exposurePolicy.mode == .manualEV100 && camera.exposurePolicy.manualEV100 == 15,
+                "\(context) must explicitly use deterministic Manual EV100 15")
     }
 
     private static func decodeScene(named name: String, in scenes: URL) throws -> SceneDocument {

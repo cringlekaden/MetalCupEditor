@@ -1,6 +1,6 @@
 # Stage 4 policy tests
 
-`ProjectPolicyTests.swift` is a small executable test harness compiled against the production project-document and path-policy sources. It verifies canonical decoding, explicit override decoding, selected-location creation, open-in-place behavior, portable override paths, and production decoding of the tracked validation project and scene.
+`ProjectPolicyTests.swift` is a small executable test harness compiled against the production project-document and path-policy sources. It verifies canonical decoding, Automatic Histogram project defaults, explicit override decoding, selected-location creation, open-in-place behavior, portable override paths, deterministic Manual EV100 validation policies, and production decoding of the tracked renderer and exposure validation scenes.
 
 It intentionally remains outside the Editor application target. The Editor project has no shared unit-test scheme, and Stage 4 does not alter schemes solely to expose tests.
 
