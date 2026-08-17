@@ -187,6 +187,7 @@ private enum EditorComponentType: Int32 {
     case animator = 12
     case reflectionProbe = 13
     case environment = 14
+    case postProcessVolume = 15
 }
 
 private func resolveContext(_ contextPtr: UnsafeRawPointer?) -> MCEContext? {
@@ -1435,6 +1436,8 @@ public func MCEEditorRemoveComponent(_ contextPtr: UnsafeRawPointer?,
         ecs.remove(EnvironmentComponent.self, from: entity)
         ecs.remove(EnvironmentRuntimeStateComponent.self, from: entity)
         ecs.remove(EnvironmentIBLStateComponent.self, from: entity)
+    case .postProcessVolume:
+        ecs.remove(PostProcessVolumeComponent.self, from: entity)
     }
     context.bridgeServices.notifySceneMutation()
     return 1
@@ -2598,42 +2601,82 @@ public func MCEEditorSetCamera(_ contextPtr: UnsafeRawPointer?,
 @_cdecl("MCEEditorGetCameraExposure")
 public func MCEEditorGetCameraExposure(_ contextPtr: UnsafeRawPointer?,
                                        _ entityId: UnsafePointer<CChar>?,
-                                       _ autoExposureEnabled: UnsafeMutablePointer<UInt32>?,
-                                       _ exposureEV: UnsafeMutablePointer<Float>?,
-                                       _ exposureCompensation: UnsafeMutablePointer<Float>?,
-                                       _ autoExposureMin: UnsafeMutablePointer<Float>?,
-                                       _ autoExposureMax: UnsafeMutablePointer<Float>?,
-                                       _ adaptationSpeed: UnsafeMutablePointer<Float>?) -> UInt32 {
+                                       _ overrideMask: UnsafeMutablePointer<UInt64>?,
+                                       _ mode: UnsafeMutablePointer<UInt32>?,
+                                       _ compensation: UnsafeMutablePointer<Float>?,
+                                       _ manualEV100: UnsafeMutablePointer<Float>?,
+                                       _ aperture: UnsafeMutablePointer<Float>?,
+                                       _ shutterSeconds: UnsafeMutablePointer<Float>?,
+                                       _ iso: UnsafeMutablePointer<Float>?,
+                                       _ meteringMode: UnsafeMutablePointer<UInt32>?,
+                                       _ lowPercentile: UnsafeMutablePointer<Float>?,
+                                       _ highPercentile: UnsafeMutablePointer<Float>?,
+                                       _ minimumEV100: UnsafeMutablePointer<Float>?,
+                                       _ maximumEV100: UnsafeMutablePointer<Float>?,
+                                       _ darkAdaptationRate: UnsafeMutablePointer<Float>?,
+                                       _ lightAdaptationRate: UnsafeMutablePointer<Float>?) -> UInt32 {
     guard let context = resolveContext(contextPtr),
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           let camera = ecs.get(CameraComponent.self, for: entity) else { return 0 }
-    autoExposureEnabled?.pointee = 0
-    exposureEV?.pointee = camera.exposureEV
-    exposureCompensation?.pointee = camera.exposureCompensation
-    autoExposureMin?.pointee = camera.autoExposureMin
-    autoExposureMax?.pointee = camera.autoExposureMax
-    adaptationSpeed?.pointee = camera.adaptationSpeed
+    let resolved = ExposurePolicyResolver.resolve(
+        project: context.engineContext.projectExposureDefaults,
+        camera: camera.exposurePolicy
+    ).settings
+    overrideMask?.pointee = ExposureOverrideFieldMask.fields(in: camera.exposurePolicy).rawValue
+    mode?.pointee = resolved.mode.rawValue
+    compensation?.pointee = resolved.compensation
+    manualEV100?.pointee = resolved.manualEV100
+    aperture?.pointee = resolved.aperture
+    shutterSeconds?.pointee = resolved.shutterSeconds
+    iso?.pointee = resolved.iso
+    meteringMode?.pointee = resolved.meteringMode.rawValue
+    lowPercentile?.pointee = resolved.lowPercentile
+    highPercentile?.pointee = resolved.highPercentile
+    minimumEV100?.pointee = resolved.minimumEV100
+    maximumEV100?.pointee = resolved.maximumEV100
+    darkAdaptationRate?.pointee = resolved.darkAdaptationRate
+    lightAdaptationRate?.pointee = resolved.lightAdaptationRate
     return 1
 }
 
 @_cdecl("MCEEditorSetCameraExposure")
 public func MCEEditorSetCameraExposure(_ contextPtr: UnsafeRawPointer?,
                                        _ entityId: UnsafePointer<CChar>?,
-                                       _ autoExposureEnabled: UInt32,
-                                       _ exposureEV: Float,
-                                       _ exposureCompensation: Float,
-                                       _ autoExposureMin: Float,
-                                       _ autoExposureMax: Float,
-                                       _ adaptationSpeed: Float) {
+                                       _ overrideMask: UInt64,
+                                       _ mode: UInt32,
+                                       _ compensation: Float,
+                                       _ manualEV100: Float,
+                                       _ aperture: Float,
+                                       _ shutterSeconds: Float,
+                                       _ iso: Float,
+                                       _ meteringMode: UInt32,
+                                       _ lowPercentile: Float,
+                                       _ highPercentile: Float,
+                                       _ minimumEV100: Float,
+                                       _ maximumEV100: Float,
+                                       _ darkAdaptationRate: Float,
+                                       _ lightAdaptationRate: Float) {
     guard let context = resolveContext(contextPtr),
           !context.bridgeServices.isPlaying,
           let ecs = editorECS(context),
           let entity = entity(from: entityId, context: context),
           var camera = ecs.get(CameraComponent.self, for: entity) else { return }
 
-    camera.autoExposureEnabled = false
-    camera.exposureEV = min(max(exposureEV, -16.0), 16.0)
+    let mask = ExposureOverrideFieldMask(rawValue: overrideMask)
+    camera.exposurePolicy.mode = mask.contains(.mode) ? (ExposureMode(rawValue: mode) ?? .automaticHistogram) : nil
+    camera.exposurePolicy.compensation = mask.contains(.compensation) ? compensation : nil
+    camera.exposurePolicy.manualEV100 = mask.contains(.manualEV100) ? manualEV100 : nil
+    camera.exposurePolicy.aperture = mask.contains(.aperture) ? aperture : nil
+    camera.exposurePolicy.shutterSeconds = mask.contains(.shutterSeconds) ? shutterSeconds : nil
+    camera.exposurePolicy.iso = mask.contains(.iso) ? iso : nil
+    camera.exposurePolicy.meteringMode = mask.contains(.meteringMode) ? (ExposureMeteringMode(rawValue: meteringMode) ?? .centerWeighted) : nil
+    camera.exposurePolicy.lowPercentile = mask.contains(.percentiles) ? lowPercentile : nil
+    camera.exposurePolicy.highPercentile = mask.contains(.percentiles) ? highPercentile : nil
+    camera.exposurePolicy.minimumEV100 = mask.contains(.limits) ? minimumEV100 : nil
+    camera.exposurePolicy.maximumEV100 = mask.contains(.limits) ? maximumEV100 : nil
+    camera.exposurePolicy.darkAdaptationRate = mask.contains(.adaptation) ? darkAdaptationRate : nil
+    camera.exposurePolicy.lightAdaptationRate = mask.contains(.adaptation) ? lightAdaptationRate : nil
     ecs.add(camera, to: entity)
     context.bridgeServices.notifySceneMutation()
 }

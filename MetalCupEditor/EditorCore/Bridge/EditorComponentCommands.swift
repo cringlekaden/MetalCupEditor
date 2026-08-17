@@ -18,6 +18,7 @@ enum EditorComponentCommands {
         case animator = 12
         case reflectionProbe = 13
         case environment = 14
+        case postProcessVolume = 15
     }
 
     static func entityHasComponent(_ contextPtr: UnsafeRawPointer?, _ entityId: UnsafePointer<CChar>?, _ componentType: Int32) -> UInt32 {
@@ -41,6 +42,7 @@ enum EditorComponentCommands {
         case .animator: return ecs.has(AnimatorComponent.self, entity) ? 1 : 0
         case .reflectionProbe: return ecs.has(ReflectionProbeComponent.self, entity) ? 1 : 0
         case .environment: return ecs.has(EnvironmentComponent.self, entity) ? 1 : 0
+        case .postProcessVolume: return ecs.has(PostProcessVolumeComponent.self, entity) ? 1 : 0
         }
     }
 
@@ -104,6 +106,10 @@ enum EditorComponentCommands {
             ecs.add(environment, to: entity)
             ecs.add(EnvironmentRuntimeStateComponent.default(from: environment), to: entity)
             ecs.add(EnvironmentIBLStateComponent.defaultNeedsRebuild, to: entity)
+        case .postProcessVolume:
+            ecs.add(PostProcessVolumeComponent(
+                exposure: ExposurePolicyOverride(compensation: 0)
+            ), to: entity)
         }
         EditorBridgeInternals.commitMutation(context, label: "EditorCommand")
         return 1

@@ -13,6 +13,24 @@
 extern "C" void MCEEditorRequestActiveSkyRebuild(MCE_CTX);
 extern "C" void MCESceneNotifyMutation(MCE_CTX);
 extern "C" int32_t MCEProjectShaderSourceStatus(MCE_CTX, char *buffer, int32_t bufferSize);
+extern "C" uint32_t MCEProjectGetExposureSettings(MCE_CTX,
+                                                   uint32_t *mode, float *compensation, float *manualEV100,
+                                                   float *aperture, float *shutterSeconds, float *iso,
+                                                   uint32_t *meteringMode, float *histogramLogMin, float *histogramLogMax,
+                                                   float *lowPercentile, float *highPercentile,
+                                                   float *minimumEV100, float *maximumEV100,
+                                                   float *darkAdaptationRate, float *lightAdaptationRate,
+                                                   float *skyInfluenceCap, float *daylightKey, float *twilightKey,
+                                                   float *nightKey, uint32_t *useOutdoorPrior);
+extern "C" void MCEProjectSetExposureSettings(MCE_CTX,
+                                               uint32_t mode, float compensation, float manualEV100,
+                                               float aperture, float shutterSeconds, float iso,
+                                               uint32_t meteringMode, float histogramLogMin, float histogramLogMax,
+                                               float lowPercentile, float highPercentile,
+                                               float minimumEV100, float maximumEV100,
+                                               float darkAdaptationRate, float lightAdaptationRate,
+                                               float skyInfluenceCap, float daylightKey, float twilightKey,
+                                               float nightKey, uint32_t useOutdoorPrior);
 
 namespace {
     void *EngineContextFromMCE(void *context) {
@@ -52,6 +70,93 @@ namespace {
             MCERendererSetBloomIntensity(engineContext, 0.11f);
         }
     }
+
+    void DrawProjectExposureSettings(void *context) {
+        uint32_t mode = 0;
+        float compensation = 0.0f;
+        float manualEV100 = 14.0f;
+        float aperture = 16.0f;
+        float shutterSeconds = 1.0f / 125.0f;
+        float iso = 100.0f;
+        uint32_t meteringMode = 1;
+        float histogramLogMin = -20.0f;
+        float histogramLogMax = 16.0f;
+        float lowPercentile = 0.05f;
+        float highPercentile = 0.95f;
+        float minimumEV100 = 2.0f;
+        float maximumEV100 = 17.0f;
+        float darkAdaptationRate = 3.0f;
+        float lightAdaptationRate = 8.0f;
+        float skyInfluenceCap = 0.35f;
+        float daylightKey = 0.18f;
+        float twilightKey = 0.09f;
+        float nightKey = 0.04f;
+        uint32_t useOutdoorPrior = 1;
+        if (MCEProjectGetExposureSettings(context, &mode, &compensation, &manualEV100,
+                                          &aperture, &shutterSeconds, &iso, &meteringMode,
+                                          &histogramLogMin, &histogramLogMax, &lowPercentile,
+                                          &highPercentile, &minimumEV100, &maximumEV100,
+                                          &darkAdaptationRate, &lightAdaptationRate,
+                                          &skyInfluenceCap, &daylightKey, &twilightKey,
+                                          &nightKey, &useOutdoorPrior) == 0) {
+            ImGui::TextDisabled("Open a project to edit inherited exposure defaults.");
+            return;
+        }
+
+        bool dirty = false;
+        int modeIndex = static_cast<int>(mode);
+        const char *modeItems[] = {"Automatic Histogram", "Manual EV100", "Physical Camera"};
+        if (EditorUI::BeginPropertyTable("ProjectExposureBasic")) {
+            EditorUI::SetNextPropertyInfoTooltip("Default policy inherited by cameras unless a higher-priority source overrides this field. New projects use Automatic Histogram.");
+            dirty |= EditorUI::PropertyCombo("Mode", &modeIndex, modeItems, IM_ARRAYSIZE(modeItems));
+            EditorUI::SetNextPropertyInfoTooltip("Artistic offset applied after metering, in photographic stops.");
+            dirty |= EditorUI::PropertyFloat("Compensation", &compensation, 0.05f, -5.0f, 5.0f, "%+.2f stops", true, true, 0.0f);
+            if (modeIndex == 1) {
+                EditorUI::SetNextPropertyInfoTooltip("Deterministic EV100. Engine scene-linear calibration uses EV100 15 as unity gain.");
+                dirty |= EditorUI::PropertyFloat("Manual EV100", &manualEV100, 0.1f, -8.0f, 24.0f, "%.2f EV100", true, true, 14.0f);
+            } else if (modeIndex == 2) {
+                dirty |= EditorUI::PropertyFloat("Aperture (f)", &aperture, 0.1f, 0.7f, 64.0f, "f/%.1f", true, true, 16.0f);
+                dirty |= EditorUI::PropertyFloat("Shutter (s)", &shutterSeconds, 0.0001f, 0.00001f, 60.0f, "%.5f s", true, true, 1.0f / 125.0f);
+                dirty |= EditorUI::PropertyFloat("ISO", &iso, 1.0f, 1.0f, 204800.0f, "%.0f", true, true, 100.0f);
+            }
+            EditorUI::EndPropertyTable();
+        }
+
+        if (ImGui::TreeNodeEx("ProjectExposureAdvanced", ImGuiTreeNodeFlags_None, "Advanced")) {
+            int meteringIndex = static_cast<int>(meteringMode);
+            const char *meteringItems[] = {"Average", "Center Weighted", "Spot", "Texture Mask"};
+            bool outdoorPrior = useOutdoorPrior != 0;
+            if (EditorUI::BeginPropertyTable("ProjectExposureAdvancedTable")) {
+                dirty |= EditorUI::PropertyCombo("Metering", &meteringIndex, meteringItems, IM_ARRAYSIZE(meteringItems));
+                dirty |= EditorUI::PropertyFloat("Low Percentile", &lowPercentile, 0.005f, 0.0f, 0.49f, "%.3f", true, true, 0.05f);
+                dirty |= EditorUI::PropertyFloat("High Percentile", &highPercentile, 0.005f, 0.51f, 1.0f, "%.3f", true, true, 0.95f);
+                dirty |= EditorUI::PropertyFloat("Histogram Min", &histogramLogMin, 0.25f, -32.0f, 0.0f, "%.1f EV", true, true, -20.0f);
+                dirty |= EditorUI::PropertyFloat("Histogram Max", &histogramLogMax, 0.25f, 1.0f, 32.0f, "%.1f EV", true, true, 16.0f);
+                dirty |= EditorUI::PropertyFloat("Minimum EV100", &minimumEV100, 0.1f, -8.0f, 24.0f, "%.2f", true, true, 2.0f);
+                dirty |= EditorUI::PropertyFloat("Maximum EV100", &maximumEV100, 0.1f, -8.0f, 24.0f, "%.2f", true, true, 17.0f);
+                dirty |= EditorUI::PropertyFloat("Dark Adaptation", &darkAdaptationRate, 0.1f, 0.01f, 32.0f, "%.2f EV/s", true, true, 3.0f);
+                dirty |= EditorUI::PropertyFloat("Light Adaptation", &lightAdaptationRate, 0.1f, 0.01f, 32.0f, "%.2f EV/s", true, true, 8.0f);
+                dirty |= EditorUI::PropertyFloat("Sky Influence Cap", &skyInfluenceCap, 0.01f, 0.0f, 1.0f, "%.2f", true, true, 0.35f);
+                dirty |= EditorUI::PropertyBool("Outdoor Prior", &outdoorPrior);
+                dirty |= EditorUI::PropertyFloat("Day Target Key", &daylightKey, 0.005f, 0.005f, 1.0f, "%.3f", true, true, 0.18f);
+                dirty |= EditorUI::PropertyFloat("Twilight Target Key", &twilightKey, 0.005f, 0.005f, 1.0f, "%.3f", true, true, 0.09f);
+                dirty |= EditorUI::PropertyFloat("Night Target Key", &nightKey, 0.005f, 0.005f, 1.0f, "%.3f", true, true, 0.04f);
+                EditorUI::EndPropertyTable();
+            }
+            meteringMode = static_cast<uint32_t>(meteringIndex);
+            useOutdoorPrior = outdoorPrior ? 1u : 0u;
+            ImGui::TreePop();
+        }
+
+        if (dirty) {
+            MCEProjectSetExposureSettings(context, static_cast<uint32_t>(modeIndex), compensation,
+                                          manualEV100, aperture, shutterSeconds, iso, meteringMode,
+                                          histogramLogMin, histogramLogMax, lowPercentile, highPercentile,
+                                          minimumEV100, maximumEV100, darkAdaptationRate,
+                                          lightAdaptationRate, skyInfluenceCap, daylightKey,
+                                          twilightKey, nightKey, useOutdoorPrior);
+        }
+    }
 }
 
 
@@ -86,6 +191,10 @@ static void DrawRendererSettingsBody(void *context, const char *childId, uint32_
         } else {
             ImGui::TextDisabled("Canonical Engine shaders");
         }
+        EditorUI::StandardSpacing();
+
+        SectionTitle("Project Exposure");
+        DrawProjectExposureSettings(context);
         EditorUI::StandardSpacing();
 
         SectionTitle("Post Processing");

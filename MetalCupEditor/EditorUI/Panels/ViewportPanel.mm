@@ -10,6 +10,8 @@
 #import "../Widgets/UIWidgets.h"
 #import "../EditorIcons.h"
 #include <algorithm>
+#include <cfloat>
+#include <cstdint>
 #include <cmath>
 #include <string.h>
 
@@ -83,6 +85,23 @@ extern "C" uint32_t MCEEditorGetViewportShowSelectedCameraFrustum(MCE_CTX);
 extern "C" uint32_t MCEEditorGetViewportPreviewEnabled(MCE_CTX);
 extern "C" float MCEEditorGetViewportPreviewSize(MCE_CTX);
 extern "C" int32_t MCEEditorGetViewportPreviewPosition(MCE_CTX);
+extern "C" void MCEViewportSetExposureOverride(MCE_CTX, uint64_t viewportID,
+                                                uint32_t enabled, uint32_t mode,
+                                                float compensation, float manualEV100,
+                                                uint32_t locked);
+extern "C" void MCEViewportResetExposure(MCE_CTX, uint64_t viewportID);
+extern "C" uint32_t MCEExposureGetDiagnostics(MCE_CTX, uint64_t viewportID,
+                                               float *meteredLuminance,
+                                               float *targetEV100, float *currentEV100,
+                                               float *gain, float *compensation,
+                                               float *minimumEV100, float *maximumEV100,
+                                               float *preExposure, float *maximumStoredHDR,
+                                               uint32_t *saturationCount,
+                                               float *outdoorPriorStops,
+                                               char *adaptationState, int32_t adaptationStateCapacity,
+                                               char *viewIdentity, int32_t viewIdentityCapacity,
+                                               uint32_t *histogram128,
+                                               char *source, int32_t sourceCapacity);
 
 namespace {
     using MCEPanelState::GizmoOperation;
@@ -364,6 +383,111 @@ namespace {
         ImGui::EndChild();
         return hovered;
     }
+
+    bool DrawExposureToolbar(void *context,
+                             ViewportState &state,
+                             uint64_t viewportID,
+                             const ImVec2& imageMin,
+                             const ImVec2& imageMax) {
+        const float padding = 10.0f;
+        ImGui::SetCursorScreenPos(ImVec2(imageMin.x + padding, imageMin.y + padding));
+        ImGui::BeginChild("ViewportExposureToolbar", ImVec2(244.0f, 30.0f), false,
+                          ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse |
+                          ImGuiWindowFlags_NoBackground);
+        const char *modeLabel = state.exposureMode == 1 ? "Fixed EV" : "Auto";
+        if (!state.exposureOverrideEnabled) modeLabel = "Camera";
+        if (ImGui::Button(modeLabel)) ImGui::OpenPopup("ViewportExposurePopup");
+        bool hovered = ImGui::IsItemHovered() || ImGui::IsItemActive();
+        ImGui::SameLine();
+        if (ImGui::Button(state.exposureLocked ? "Unlock" : "Lock")) {
+            state.exposureLocked = !state.exposureLocked;
+        }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
+        ImGui::SameLine();
+        if (ImGui::Button("Reset")) {
+            state.exposureLocked = false;
+            MCEViewportResetExposure(context, viewportID);
+        }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
+        ImGui::SameLine();
+        if (ImGui::Button(state.showExposureDiagnostics ? "Diag*" : "Diag")) {
+            state.showExposureDiagnostics = !state.showExposureDiagnostics;
+        }
+        hovered = hovered || ImGui::IsItemHovered() || ImGui::IsItemActive();
+
+        if (ImGui::BeginPopup("ViewportExposurePopup")) {
+            if (ImGui::MenuItem("Automatic Histogram", nullptr,
+                                state.exposureOverrideEnabled && state.exposureMode == 0)) {
+                state.exposureOverrideEnabled = true;
+                state.exposureMode = 0;
+            }
+            if (ImGui::MenuItem("Fixed Reference (14 EV100)", nullptr,
+                                state.exposureOverrideEnabled && state.exposureMode == 1)) {
+                state.exposureOverrideEnabled = true;
+                state.exposureMode = 1;
+                state.fixedReferenceEV100 = 14.0f;
+            }
+            if (ImGui::MenuItem("Use Camera / Project Policy", nullptr, !state.exposureOverrideEnabled)) {
+                state.exposureOverrideEnabled = false;
+                state.exposureLocked = false;
+            }
+            ImGui::Separator();
+            ImGui::SetNextItemWidth(180.0f);
+            ImGui::SliderFloat("Compensation", &state.exposureCompensation, -5.0f, 5.0f, "%+.2f stops");
+            if (state.exposureMode == 1) {
+                ImGui::SetNextItemWidth(180.0f);
+                ImGui::SliderFloat("EV100", &state.fixedReferenceEV100, -8.0f, 24.0f, "%.2f");
+            }
+            ImGui::TextDisabled("Temporary; never serialized");
+            ImGui::EndPopup();
+        }
+        ImGui::EndChild();
+
+        MCEViewportSetExposureOverride(context, viewportID,
+                                       state.exposureOverrideEnabled ? 1u : 0u,
+                                       static_cast<uint32_t>(state.exposureMode),
+                                       state.exposureCompensation,
+                                       state.fixedReferenceEV100,
+                                       state.exposureLocked ? 1u : 0u);
+
+        if (state.showExposureDiagnostics) {
+            float metered = 0.0f, targetEV = 0.0f, currentEV = 0.0f, gain = 1.0f;
+            float compensation = 0.0f, minEV = 0.0f, maxEV = 0.0f, preExposure = 1.0f;
+            float maxStoredHDR = 0.0f, outdoorPriorStops = 0.0f;
+            uint32_t saturationCount = 0;
+            uint32_t histogram[128] = {};
+            char adaptationState[96] = {};
+            char viewIdentity[256] = {};
+            char source[192] = {};
+            if (MCEExposureGetDiagnostics(context, viewportID, &metered, &targetEV, &currentEV,
+                                          &gain, &compensation, &minEV, &maxEV, &preExposure,
+                                          &maxStoredHDR, &saturationCount, &outdoorPriorStops,
+                                          adaptationState, sizeof(adaptationState),
+                                          viewIdentity, sizeof(viewIdentity), histogram, source,
+                                          sizeof(source)) != 0) {
+                float histogramFloat[128] = {};
+                for (int index = 0; index < 128; ++index) histogramFloat[index] = static_cast<float>(histogram[index]);
+                const ImVec2 panelSize(420.0f, 264.0f);
+                ImGui::SetCursorScreenPos(ImVec2(imageMin.x + padding,
+                                                 imageMax.y - padding - panelSize.y));
+                ImGui::BeginChild("ViewportExposureDiagnostics", panelSize, true,
+                                  ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+                ImGui::Text("Exposure Diagnostics");
+                ImGui::Text("Metered %.6g | Target %.2f | Current %.2f EV100", metered, targetEV, currentEV);
+                ImGui::Text("Gain %.5g | Compensation %+.2f | Bounds %.1f..%.1f", gain, compensation, minEV, maxEV);
+                ImGui::Text("Pre-exposure %.5g | Stored max %.5g", preExposure, maxStoredHDR);
+                ImGui::Text("FP16 saturation %u | Solar prior %+.2f stops", saturationCount, outdoorPriorStops);
+                ImGui::Text("Adaptation: %s", adaptationState);
+                ImGui::TextWrapped("Resolved: %s", source);
+                ImGui::TextWrapped("View: %s", viewIdentity);
+                ImGui::PlotHistogram("##ExposureHistogram", histogramFloat, 128, 0, nullptr,
+                                     0.0f, FLT_MAX, ImVec2(-1.0f, 70.0f));
+                hovered = hovered || ImGui::IsWindowHovered() || ImGui::IsWindowFocused();
+                ImGui::EndChild();
+            }
+        }
+        return hovered;
+    }
 }
 
 void ImGuiViewportPanelDraw(void *context,
@@ -477,6 +601,10 @@ void ImGuiViewportPanelDraw(void *context,
     bool playing = MCESceneIsPlaying(context) != 0;
     bool paused = MCESceneIsPaused(context) != 0;
     bool simulating = MCESceneIsSimulating(context) != 0;
+    const uint64_t exposureViewportID = playing ? 2ull : 1ull;
+    if (imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
+        viewportUIHovered = viewportUIHovered || DrawExposureToolbar(context, state, exposureViewportID, imageMin, imageMax);
+    }
     if (imageMax.x > imageMin.x && imageMax.y > imageMin.y) {
         const float toolbarPadding = 10.0f;
         const char *modeLabel = "Mode: Edit";

@@ -79,19 +79,55 @@ extern "C" uint32_t MCEEditorGetReflectionProbeRuntimeStatus(MCE_CTX,  const cha
 extern "C" uint32_t MCEEditorRequestReflectionProbeRebuild(MCE_CTX,  const char *entityId);
 extern "C" uint32_t MCEEditorRequestAllReflectionProbeRebuilds(MCE_CTX);
 extern "C" uint32_t MCEEditorGetCameraExposure(MCE_CTX, const char *entityId,
-                                               uint32_t *autoExposureEnabled,
-                                               float *exposureEV,
-                                               float *exposureCompensation,
-                                               float *autoExposureMin,
-                                               float *autoExposureMax,
-                                               float *adaptationSpeed);
+                                               uint64_t *overrideMask,
+                                               uint32_t *mode,
+                                               float *compensation,
+                                               float *manualEV100,
+                                               float *aperture,
+                                               float *shutterSeconds,
+                                               float *iso,
+                                               uint32_t *meteringMode,
+                                               float *lowPercentile,
+                                               float *highPercentile,
+                                               float *minimumEV100,
+                                               float *maximumEV100,
+                                               float *darkAdaptationRate,
+                                               float *lightAdaptationRate);
 extern "C" void MCEEditorSetCameraExposure(MCE_CTX, const char *entityId,
-                                           uint32_t autoExposureEnabled,
-                                           float exposureEV,
-                                           float exposureCompensation,
-                                           float autoExposureMin,
-                                           float autoExposureMax,
-                                           float adaptationSpeed);
+                                           uint64_t overrideMask,
+                                           uint32_t mode,
+                                           float compensation,
+                                           float manualEV100,
+                                           float aperture,
+                                           float shutterSeconds,
+                                           float iso,
+                                           uint32_t meteringMode,
+                                           float lowPercentile,
+                                           float highPercentile,
+                                           float minimumEV100,
+                                           float maximumEV100,
+                                           float darkAdaptationRate,
+                                           float lightAdaptationRate);
+extern "C" uint32_t MCEEditorGetPostProcessExposureVolume(MCE_CTX, const char *entityId,
+                                                           uint32_t *enabled, uint32_t *isGlobal,
+                                                           int32_t *priority, float *blendDistance, float *weight,
+                                                           uint64_t *overrideMask, uint32_t *mode,
+                                                           float *compensation, float *manualEV100,
+                                                           float *aperture, float *shutterSeconds, float *iso,
+                                                           uint32_t *meteringMode,
+                                                           float *lowPercentile, float *highPercentile,
+                                                           float *minimumEV100, float *maximumEV100,
+                                                           float *darkAdaptationRate, float *lightAdaptationRate);
+extern "C" void MCEEditorSetPostProcessExposureVolume(MCE_CTX, const char *entityId,
+                                                       uint32_t enabled, uint32_t isGlobal,
+                                                       int32_t priority, float blendDistance, float weight,
+                                                       uint64_t overrideMask, uint32_t mode,
+                                                       float compensation, float manualEV100,
+                                                       float aperture, float shutterSeconds, float iso,
+                                                       uint32_t meteringMode,
+                                                       float lowPercentile, float highPercentile,
+                                                       float minimumEV100, float maximumEV100,
+                                                       float darkAdaptationRate, float lightAdaptationRate);
 
 extern "C" uint32_t MCEEditorGetMeshRenderer(MCE_CTX,  const char *entityId, char *meshHandle, int32_t meshHandleSize,
                                              char *materialHandle, int32_t materialHandleSize);
@@ -666,7 +702,8 @@ enum ComponentType : int32_t {
     ComponentSkinnedMesh = 11,
     ComponentAnimator = 12,
     ComponentReflectionProbe = 13,
-    ComponentEnvironment = 14
+    ComponentEnvironment = 14,
+    ComponentPostProcessVolume = 15
 };
 
 namespace {
@@ -2197,20 +2234,37 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 int projectionIndex = projectionType;
                 bool dirty = false;
                 bool primaryDirty = false;
-                uint32_t autoExposureEnabled = 0;
-                float exposureEV = 0.0f;
+                uint64_t exposureOverrideMask = 0;
+                uint32_t exposureMode = 0;
                 float exposureCompensation = 0.0f;
-                float autoExposureMin = 0.03f;
-                float autoExposureMax = 8.0f;
-                float adaptationSpeed = 2.0f;
+                float manualEV100 = 14.0f;
+                float aperture = 16.0f;
+                float shutterSeconds = 1.0f / 125.0f;
+                float iso = 100.0f;
+                uint32_t meteringMode = 1;
+                float lowPercentile = 0.05f;
+                float highPercentile = 0.95f;
+                float minimumEV100 = 2.0f;
+                float maximumEV100 = 17.0f;
+                float darkAdaptationRate = 3.0f;
+                float lightAdaptationRate = 8.0f;
                 bool hasExposureSettings = MCEEditorGetCameraExposure(context,
                                                                       selectedEntityId,
-                                                                      &autoExposureEnabled,
-                                                                      &exposureEV,
+                                                                      &exposureOverrideMask,
+                                                                      &exposureMode,
                                                                       &exposureCompensation,
-                                                                      &autoExposureMin,
-                                                                      &autoExposureMax,
-                                                                      &adaptationSpeed) != 0;
+                                                                      &manualEV100,
+                                                                      &aperture,
+                                                                      &shutterSeconds,
+                                                                      &iso,
+                                                                      &meteringMode,
+                                                                      &lowPercentile,
+                                                                      &highPercentile,
+                                                                      &minimumEV100,
+                                                                      &maximumEV100,
+                                                                      &darkAdaptationRate,
+                                                                      &lightAdaptationRate) != 0;
+                bool exposureDirty = false;
                 if (EditorUI::BeginPropertyTable("CameraProps")) {
                     EditorUI::SetNextPropertyInfoTooltip("Camera projection model.\nUnits: enum.\nPerformance: similar.\nPersistence: Scene.");
                     dirty |= EditorUI::PropertyCombo("Projection", &projectionIndex, projectionItems, 2);
@@ -2234,34 +2288,93 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                         ImGui::EndDisabled();
                     }
                     if (hasExposureSettings) {
-                        const bool editorCamera = isEditor != 0;
-                        const char *exposureModeItems[] = {"Manual (Phase 1)"};
-                        int exposureMode = 0;
-                        bool exposureDirty = false;
-
-                        EditorUI::SetNextPropertyInfoTooltip("Auto exposure is unavailable pending histogram and temporal-adaptation reconstruction. Phase 1 rendering is deterministic and manual-only.");
-                        ImGui::BeginDisabled(true);
-                        EditorUI::PropertyCombo("Exposure Mode", &exposureMode, exposureModeItems, 1);
-                        ImGui::EndDisabled();
-
-                        EditorUI::SetNextPropertyInfoTooltip(editorCamera
-                            ? "Stable editor viewport exposure in stops. EV 0 is unity; +1 doubles and -1 halves final-stage exposure.\nPersistence: Scene."
-                            : "Manual final-stage exposure in stops. EV 0 is unity; +1 doubles and -1 halves exposure.\nPersistence: Scene.");
-                        exposureDirty |= EditorUI::PropertyFloat("Exposure (EV)", &exposureEV, 0.1f, -16.0f, 16.0f, "%+.2f EV", true);
-
-                        if (exposureDirty) {
-                            autoExposureEnabled = 0;
-                            MCEEditorSetCameraExposure(context,
-                                                       selectedEntityId,
-                                                       autoExposureEnabled,
-                                                       exposureEV,
-                                                       exposureCompensation,
-                                                       autoExposureMin,
-                                                       autoExposureMax,
-                                                       adaptationSpeed);
+                        constexpr uint64_t kMode = 1ull << 0;
+                        constexpr uint64_t kCompensation = 1ull << 1;
+                        constexpr uint64_t kManualEV100 = 1ull << 2;
+                        constexpr uint64_t kAperture = 1ull << 3;
+                        constexpr uint64_t kShutter = 1ull << 4;
+                        constexpr uint64_t kISO = 1ull << 5;
+                        bool inheritsAll = exposureOverrideMask == 0;
+                        bool inheritEdited = EditorUI::PropertyBool("Inherit Project Exposure", &inheritsAll);
+                        if (inheritEdited) {
+                            if (inheritsAll) {
+                                exposureOverrideMask = 0;
+                            } else {
+                                exposureOverrideMask |= kMode | kCompensation;
+                            }
+                            exposureDirty = true;
                         }
+
+                        const char *exposureModeItems[] = {"Automatic Histogram", "Manual EV100", "Physical Camera"};
+                        int exposureModeIndex = static_cast<int>(exposureMode);
+                        ImGui::BeginDisabled(inheritsAll);
+                        exposureDirty |= EditorUI::PropertyCombo("Exposure Mode", &exposureModeIndex, exposureModeItems, IM_ARRAYSIZE(exposureModeItems));
+                        exposureDirty |= EditorUI::PropertyFloat("Compensation", &exposureCompensation, 0.05f, -5.0f, 5.0f, "%+.2f stops", true, true, 0.0f);
+                        exposureMode = static_cast<uint32_t>(exposureModeIndex);
+                        if (exposureModeIndex == 1) {
+                            exposureOverrideMask |= kManualEV100;
+                            EditorUI::SetNextPropertyInfoTooltip("Serialized deterministic EV100; this is not the legacy positive gain control.");
+                            exposureDirty |= EditorUI::PropertyFloat("Manual EV100", &manualEV100, 0.1f, -8.0f, 24.0f, "%.2f EV100", true, true, 14.0f);
+                        } else if (exposureModeIndex == 2) {
+                            exposureOverrideMask |= kAperture | kShutter | kISO;
+                            exposureDirty |= EditorUI::PropertyFloat("Aperture (f)", &aperture, 0.1f, 0.7f, 64.0f, "f/%.1f", true, true, 16.0f);
+                            exposureDirty |= EditorUI::PropertyFloat("Shutter (s)", &shutterSeconds, 0.0001f, 0.00001f, 60.0f, "%.5f s", true, true, 1.0f / 125.0f);
+                            exposureDirty |= EditorUI::PropertyFloat("ISO", &iso, 1.0f, 1.0f, 204800.0f, "%.0f", true, true, 100.0f);
+                        }
+                        ImGui::EndDisabled();
                     }
                     EditorUI::EndPropertyTable();
+
+                    if (hasExposureSettings && ImGui::TreeNodeEx("CameraExposureAdvanced", ImGuiTreeNodeFlags_None, "Exposure Advanced")) {
+                        constexpr uint64_t kMetering = 1ull << 6;
+                        constexpr uint64_t kPercentiles = 1ull << 7;
+                        constexpr uint64_t kLimits = 1ull << 8;
+                        constexpr uint64_t kAdaptation = 1ull << 9;
+                        bool inherited = exposureOverrideMask == 0;
+                        ImGui::BeginDisabled(inherited);
+                        if (EditorUI::BeginPropertyTable("CameraExposureAdvancedTable")) {
+                            const char *meteringItems[] = {"Average", "Center Weighted", "Spot", "Texture Mask"};
+                            int meteringIndex = static_cast<int>(meteringMode);
+                            bool meteringDirty = EditorUI::PropertyCombo("Metering", &meteringIndex, meteringItems, IM_ARRAYSIZE(meteringItems));
+                            if (meteringDirty) exposureOverrideMask |= kMetering;
+                            exposureDirty |= meteringDirty;
+                            meteringMode = static_cast<uint32_t>(meteringIndex);
+                            bool percentileDirty = false;
+                            percentileDirty |= EditorUI::PropertyFloat("Low Percentile", &lowPercentile, 0.005f, 0.0f, 0.49f, "%.3f", true, true, 0.05f);
+                            percentileDirty |= EditorUI::PropertyFloat("High Percentile", &highPercentile, 0.005f, 0.51f, 1.0f, "%.3f", true, true, 0.95f);
+                            if (percentileDirty) exposureOverrideMask |= kPercentiles;
+                            exposureDirty |= percentileDirty;
+                            bool limitDirty = false;
+                            limitDirty |= EditorUI::PropertyFloat("Minimum EV100", &minimumEV100, 0.1f, -8.0f, 24.0f, "%.2f", true, true, 2.0f);
+                            limitDirty |= EditorUI::PropertyFloat("Maximum EV100", &maximumEV100, 0.1f, -8.0f, 24.0f, "%.2f", true, true, 17.0f);
+                            if (limitDirty) exposureOverrideMask |= kLimits;
+                            exposureDirty |= limitDirty;
+                            bool adaptationDirty = false;
+                            adaptationDirty |= EditorUI::PropertyFloat("Dark Adaptation", &darkAdaptationRate, 0.1f, 0.01f, 32.0f, "%.2f EV/s", true, true, 3.0f);
+                            adaptationDirty |= EditorUI::PropertyFloat("Light Adaptation", &lightAdaptationRate, 0.1f, 0.01f, 32.0f, "%.2f EV/s", true, true, 8.0f);
+                            if (adaptationDirty) exposureOverrideMask |= kAdaptation;
+                            exposureDirty |= adaptationDirty;
+                            EditorUI::EndPropertyTable();
+                        }
+                        ImGui::EndDisabled();
+                        if (ImGui::Button("Reset Exposure Inheritance")) {
+                            exposureOverrideMask = 0;
+                            exposureDirty = true;
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    if (exposureDirty) {
+                        if (exposureOverrideMask != 0) {
+                            exposureOverrideMask |= (1ull << 0) | (1ull << 1);
+                        }
+                        MCEEditorSetCameraExposure(context, selectedEntityId, exposureOverrideMask,
+                                                   exposureMode, exposureCompensation, manualEV100,
+                                                   aperture, shutterSeconds, iso, meteringMode,
+                                                   lowPercentile, highPercentile, minimumEV100,
+                                                   maximumEV100, darkAdaptationRate,
+                                                   lightAdaptationRate);
+                    }
 
                     if (dirty || primaryDirty) {
                         const uint32_t primaryValue = (primary ? 1u : 0u);
@@ -2276,7 +2389,7 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
                 }
                 if (isEditor != 0) {
                     ImGui::TextDisabled("Editor Camera");
-                    ImGui::TextDisabled("Editor camera exposure settings persist with the scene.");
+                    ImGui::TextDisabled("Serialized camera policy; temporary viewport exposure does not modify it.");
                 }
             }
         }
@@ -3961,6 +4074,137 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         }
     }
 
+    if (hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentPostProcessVolume) != 0) {
+        bool volumeOpen = EditorUI::BeginSectionWithContext(context,
+            "Post Process Volume",
+            "Inspector.PostProcessVolume",
+            "PostProcessVolumeContext",
+            [&]() {
+                if (ImGui::MenuItem("Remove")) {
+                    MCEEditorRemoveComponent(context, selectedEntityId, ComponentPostProcessVolume);
+                }
+            },
+            true);
+        if (volumeOpen) {
+            uint32_t enabled = 1, isGlobal = 0, mode = 0, meteringMode = 1;
+            int32_t priority = 0;
+            float blendDistance = 2.0f, weight = 1.0f, compensation = 0.0f, manualEV100 = 14.0f;
+            float aperture = 16.0f, shutterSeconds = 1.0f / 125.0f, iso = 100.0f;
+            float lowPercentile = 0.05f, highPercentile = 0.95f;
+            float minimumEV100 = 2.0f, maximumEV100 = 17.0f;
+            float darkAdaptationRate = 3.0f, lightAdaptationRate = 8.0f;
+            uint64_t overrideMask = 0;
+            if (MCEEditorGetPostProcessExposureVolume(context, selectedEntityId,
+                                                      &enabled, &isGlobal, &priority,
+                                                      &blendDistance, &weight, &overrideMask,
+                                                      &mode, &compensation, &manualEV100,
+                                                      &aperture, &shutterSeconds, &iso,
+                                                      &meteringMode, &lowPercentile, &highPercentile,
+                                                      &minimumEV100, &maximumEV100,
+                                                      &darkAdaptationRate, &lightAdaptationRate) != 0) {
+                constexpr uint64_t kMode = 1ull << 0;
+                constexpr uint64_t kCompensation = 1ull << 1;
+                constexpr uint64_t kManual = 1ull << 2;
+                constexpr uint64_t kAperture = 1ull << 3;
+                constexpr uint64_t kShutter = 1ull << 4;
+                constexpr uint64_t kISO = 1ull << 5;
+                constexpr uint64_t kMetering = 1ull << 6;
+                constexpr uint64_t kPercentiles = 1ull << 7;
+                constexpr uint64_t kLimits = 1ull << 8;
+                constexpr uint64_t kAdaptation = 1ull << 9;
+                bool dirty = false;
+                bool enabledBool = enabled != 0;
+                bool globalBool = isGlobal != 0;
+                bool overrideMode = (overrideMask & kMode) != 0;
+                bool overrideCompensation = (overrideMask & kCompensation) != 0;
+                int priorityValue = static_cast<int>(priority);
+                int modeIndex = static_cast<int>(mode);
+                const char *modeItems[] = {"Automatic Histogram", "Manual EV100", "Physical Camera"};
+                if (EditorUI::BeginPropertyTable("PostProcessExposureVolumeProps")) {
+                    dirty |= EditorUI::PropertyBool("Enabled", &enabledBool);
+                    dirty |= EditorUI::PropertyBool("Global", &globalBool);
+                    dirty |= EditorUI::PropertyInt("Priority", &priorityValue, -1024, 1024);
+                    if (!globalBool) dirty |= EditorUI::PropertyFloat("Blend Distance", &blendDistance, 0.1f, 0.0f, 10000.0f, "%.2f", true, true, 2.0f);
+                    dirty |= EditorUI::PropertyFloat("Weight", &weight, 0.01f, 0.0f, 1.0f, "%.2f", true, true, 1.0f);
+                    if (EditorUI::PropertyBool("Override Mode", &overrideMode)) {
+                        if (overrideMode) overrideMask |= kMode; else overrideMask &= ~kMode;
+                        dirty = true;
+                    }
+                    ImGui::BeginDisabled(!overrideMode);
+                    dirty |= EditorUI::PropertyCombo("Mode", &modeIndex, modeItems, IM_ARRAYSIZE(modeItems));
+                    ImGui::EndDisabled();
+                    if (EditorUI::PropertyBool("Override Compensation", &overrideCompensation)) {
+                        if (overrideCompensation) overrideMask |= kCompensation; else overrideMask &= ~kCompensation;
+                        dirty = true;
+                    }
+                    ImGui::BeginDisabled(!overrideCompensation);
+                    dirty |= EditorUI::PropertyFloat("Compensation", &compensation, 0.05f, -5.0f, 5.0f, "%+.2f stops", true, true, 0.0f);
+                    ImGui::EndDisabled();
+                    if (modeIndex == 1 && overrideMode) {
+                        overrideMask |= kManual;
+                        dirty |= EditorUI::PropertyFloat("Manual EV100", &manualEV100, 0.1f, -8.0f, 24.0f, "%.2f", true, true, 14.0f);
+                    } else if (modeIndex == 2 && overrideMode) {
+                        overrideMask |= kAperture | kShutter | kISO;
+                        dirty |= EditorUI::PropertyFloat("Aperture (f)", &aperture, 0.1f, 0.7f, 64.0f, "f/%.1f", true, true, 16.0f);
+                        dirty |= EditorUI::PropertyFloat("Shutter (s)", &shutterSeconds, 0.0001f, 0.00001f, 60.0f, "%.5f", true, true, 1.0f / 125.0f);
+                        dirty |= EditorUI::PropertyFloat("ISO", &iso, 1.0f, 1.0f, 204800.0f, "%.0f", true, true, 100.0f);
+                    }
+                    EditorUI::EndPropertyTable();
+                }
+                if (ImGui::TreeNodeEx("PostProcessExposureAdvanced", ImGuiTreeNodeFlags_None, "Exposure Advanced")) {
+                    bool overrideMetering = (overrideMask & kMetering) != 0;
+                    bool overridePercentiles = (overrideMask & kPercentiles) != 0;
+                    bool overrideLimits = (overrideMask & kLimits) != 0;
+                    bool overrideAdaptation = (overrideMask & kAdaptation) != 0;
+                    const char *meteringItems[] = {"Average", "Center Weighted", "Spot", "Texture Mask"};
+                    int meteringIndex = static_cast<int>(meteringMode);
+                    if (EditorUI::BeginPropertyTable("PostProcessExposureAdvancedProps")) {
+                        if (EditorUI::PropertyBool("Override Metering", &overrideMetering)) { dirty = true; }
+                        if (overrideMetering) overrideMask |= kMetering; else overrideMask &= ~kMetering;
+                        ImGui::BeginDisabled(!overrideMetering);
+                        dirty |= EditorUI::PropertyCombo("Metering", &meteringIndex, meteringItems, IM_ARRAYSIZE(meteringItems));
+                        ImGui::EndDisabled();
+                        if (EditorUI::PropertyBool("Override Percentiles", &overridePercentiles)) { dirty = true; }
+                        if (overridePercentiles) overrideMask |= kPercentiles; else overrideMask &= ~kPercentiles;
+                        ImGui::BeginDisabled(!overridePercentiles);
+                        dirty |= EditorUI::PropertyFloat("Low Percentile", &lowPercentile, 0.005f, 0.0f, 0.49f, "%.3f", true);
+                        dirty |= EditorUI::PropertyFloat("High Percentile", &highPercentile, 0.005f, 0.51f, 1.0f, "%.3f", true);
+                        ImGui::EndDisabled();
+                        if (EditorUI::PropertyBool("Override Limits", &overrideLimits)) { dirty = true; }
+                        if (overrideLimits) overrideMask |= kLimits; else overrideMask &= ~kLimits;
+                        ImGui::BeginDisabled(!overrideLimits);
+                        dirty |= EditorUI::PropertyFloat("Minimum EV100", &minimumEV100, 0.1f, -8.0f, 24.0f, "%.2f", true);
+                        dirty |= EditorUI::PropertyFloat("Maximum EV100", &maximumEV100, 0.1f, -8.0f, 24.0f, "%.2f", true);
+                        ImGui::EndDisabled();
+                        if (EditorUI::PropertyBool("Override Adaptation", &overrideAdaptation)) { dirty = true; }
+                        if (overrideAdaptation) overrideMask |= kAdaptation; else overrideMask &= ~kAdaptation;
+                        ImGui::BeginDisabled(!overrideAdaptation);
+                        dirty |= EditorUI::PropertyFloat("Dark Adaptation", &darkAdaptationRate, 0.1f, 0.01f, 32.0f, "%.2f EV/s", true);
+                        dirty |= EditorUI::PropertyFloat("Light Adaptation", &lightAdaptationRate, 0.1f, 0.01f, 32.0f, "%.2f EV/s", true);
+                        ImGui::EndDisabled();
+                        EditorUI::EndPropertyTable();
+                    }
+                    if (ImGui::Button("Clear All Exposure Overrides")) {
+                        overrideMask = 0;
+                        dirty = true;
+                    }
+                    ImGui::TreePop();
+                    meteringMode = static_cast<uint32_t>(meteringIndex);
+                }
+                mode = static_cast<uint32_t>(modeIndex);
+                if (dirty) {
+                    MCEEditorSetPostProcessExposureVolume(context, selectedEntityId,
+                                                          enabledBool ? 1u : 0u, globalBool ? 1u : 0u,
+                                                          static_cast<int32_t>(priorityValue), blendDistance, weight,
+                                                          overrideMask, mode, compensation, manualEV100,
+                                                          aperture, shutterSeconds, iso, meteringMode,
+                                                          lowPercentile, highPercentile, minimumEV100,
+                                                          maximumEV100, darkAdaptationRate, lightAdaptationRate);
+                }
+            }
+        }
+    }
+
     if (hasValidEntity && MCEEditorEntityHasComponent(context, selectedEntityId, ComponentEnvironment) != 0) {
         bool environmentOpen = EditorUI::BeginSectionWithContext(context,
             "Environment",
@@ -5385,6 +5629,11 @@ void ImGuiInspectorPanelDraw(void *context, bool *isOpen, const char *selectedEn
         if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentReflectionProbe) == 0) {
             if (ImGui::MenuItem("Reflection Probe")) {
                 MCEEditorAddComponent(context, selectedEntityId, ComponentReflectionProbe);
+            }
+        }
+        if (MCEEditorEntityHasComponent(context, selectedEntityId, ComponentPostProcessVolume) == 0) {
+            if (ImGui::MenuItem("Post Process Volume")) {
+                MCEEditorAddComponent(context, selectedEntityId, ComponentPostProcessVolume);
             }
         }
         ImGui::EndPopup();

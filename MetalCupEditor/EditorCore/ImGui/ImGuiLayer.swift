@@ -16,6 +16,7 @@ final class ImGuiLayer: Layer {
     private let contextPtr: UnsafeMutableRawPointer
     private let imguiBridge: ImGuiBridge
     private let sceneContext = EditorSceneContext()
+    private var previewHDRTexture: MTLTexture?
     private var previewTexture: MTLTexture?
     private var previewDepthTexture: MTLTexture?
     private var previewSelectedEntityId: UUID?
@@ -190,6 +191,10 @@ final class ImGuiLayer: Layer {
         let exposureSettings = activeScene.map { SceneRenderer.cameraExposure(scene: $0) } ?? SceneViewExposureSettings()
         return SceneView(
             viewId: sceneContext.isPlaying ? 2 : 1,
+            sceneId: activeScene?.id ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
+            cameraId: activeScene.map { SceneRenderer.cameraID(scene: $0) }
+                ?? UUID(uuidString: "00000000-0000-0000-0000-000000000000")!,
+            viewKind: sceneContext.isPlaying ? .game : .editorScene,
             viewMatrix: matrices?.view ?? matrix_identity_float4x4,
             projectionMatrix: matrices?.projection ?? matrix_identity_float4x4,
             cameraPosition: cameraPosition,
@@ -282,29 +287,22 @@ final class ImGuiLayer: Layer {
         }
 
         ensurePreviewTextures(device: view.device!)
-        guard let previewTexture, let previewDepthTexture else { return nil }
+        guard let previewHDRTexture, let previewTexture, let previewDepthTexture,
+              let renderer = context.engineContext.renderer else { return nil }
 
         let shouldUpdate = previewNeedsUpdate(selectedId: selectedId, transform: transform, camera: camera)
         if shouldUpdate {
-            let pass = MTLRenderPassDescriptor()
-            pass.colorAttachments[0].texture = previewTexture
-            pass.colorAttachments[0].loadAction = .clear
-            pass.colorAttachments[0].storeAction = .store
-            pass.colorAttachments[0].clearColor = MTLClearColorMake(0.0, 0.0, 0.0, 1.0)
-            pass.depthAttachment.texture = previewDepthTexture
-            pass.depthAttachment.loadAction = .clear
-            pass.depthAttachment.storeAction = .store
-            pass.depthAttachment.clearDepth = 1.0
-
-            if let encoder = commandBuffer.makeRenderCommandEncoder(descriptor: pass) {
-                scene.renderPreview(
-                    encoder: encoder,
-                    cameraEntity: entity,
-                    viewportSize: SIMD2<Float>(Float(previewTextureSize.x), Float(previewTextureSize.y)),
-                    frameContext: frameContext
-                )
-                encoder.endEncoding()
-            }
+            _ = renderer.renderCameraPreview(
+                scene: scene,
+                cameraEntity: entity,
+                viewportSize: SIMD2<Float>(Float(previewTextureSize.x), Float(previewTextureSize.y)),
+                hdrTarget: previewHDRTexture,
+                depthTarget: previewDepthTexture,
+                outputTarget: previewTexture,
+                commandBuffer: commandBuffer,
+                frameContext: frameContext,
+                unscaledDeltaTime: max(Float(lastFrameTime?.unscaledDeltaTime ?? 0.0) * Float(previewUpdateInterval), 0.0)
+            )
 
             previewSelectedEntityId = selectedId
             previewLastTransform = transform
@@ -317,9 +315,9 @@ final class ImGuiLayer: Layer {
 
     private func ensurePreviewTextures(device: MTLDevice) {
         let size = previewTextureSize
-        if previewTexture?.width != size.x
-            || previewTexture?.height != size.y
-            || previewTexture?.pixelFormat != .rgba16Float {
+        if previewHDRTexture?.width != size.x
+            || previewHDRTexture?.height != size.y
+            || previewHDRTexture?.pixelFormat != .rgba16Float {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(
                 pixelFormat: .rgba16Float,
                 width: size.x,
@@ -327,7 +325,22 @@ final class ImGuiLayer: Layer {
                 mipmapped: false
             )
             descriptor.usage = [.renderTarget, .shaderRead]
+            previewHDRTexture = device.makeTexture(descriptor: descriptor)
+            previewHDRTexture?.label = "Camera Preview Scene HDR"
+        }
+
+        if previewTexture?.width != size.x
+            || previewTexture?.height != size.y
+            || previewTexture?.pixelFormat != context.engineContext.preferences.defaultColorPixelFormat {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: context.engineContext.preferences.defaultColorPixelFormat,
+                width: size.x,
+                height: size.y,
+                mipmapped: false
+            )
+            descriptor.usage = [.renderTarget, .shaderRead]
             previewTexture = device.makeTexture(descriptor: descriptor)
+            previewTexture?.label = "Camera Preview Display Output"
         }
 
         if previewDepthTexture?.width != size.x || previewDepthTexture?.height != size.y {
@@ -337,7 +350,7 @@ final class ImGuiLayer: Layer {
                 height: size.y,
                 mipmapped: false
             )
-            depthDescriptor.usage = [.renderTarget]
+            depthDescriptor.usage = [.renderTarget, .shaderRead]
             previewDepthTexture = device.makeTexture(descriptor: depthDescriptor)
         }
     }

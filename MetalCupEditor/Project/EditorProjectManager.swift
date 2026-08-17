@@ -286,6 +286,7 @@ final class EditorProjectManager {
                 sceneController.resetSimulation()
             }
             projectDocument = migrated
+            engineContext.projectExposureDefaults = migrated.renderSettings.exposure
             projectURL = resolvedProjectURL
             projectRootURL = resolvedRootURL
             activeProjectPath = resolvedRootURL
@@ -667,6 +668,21 @@ final class EditorProjectManager {
 
     func shaderSourceStatus() -> String {
         engineContext.resources.activeShaderSourceStatus
+    }
+
+    func exposureDefaults() -> ExposureSettings {
+        projectDocument?.renderSettings.exposure ?? ExposurePolicyResolver.engineFallback
+    }
+
+    func updateExposureDefaults(_ settings: ExposureSettings) {
+        guard let projectURL, projectDocument != nil else { return }
+        var sanitized = settings
+        sanitized.sanitize()
+        projectDocument?.renderSettings.exposure = sanitized
+        engineContext.projectExposureDefaults = sanitized
+        if let projectDocument {
+            _ = writeProject(projectDocument, to: projectURL)
+        }
     }
 
     private func writeProject(_ project: ProjectDocument, to url: URL) -> Bool {

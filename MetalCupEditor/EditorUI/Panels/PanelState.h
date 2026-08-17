@@ -221,6 +221,12 @@ namespace MCEPanelState {
         float translateSnap = 0.5f;
         float rotateSnap = 15.0f;
         float scaleSnap = 0.1f;
+        bool exposureOverrideEnabled = true;
+        int exposureMode = 0;
+        float exposureCompensation = 0.0f;
+        float fixedReferenceEV100 = 14.0f;
+        bool exposureLocked = false;
+        bool showExposureDiagnostics = false;
     };
 
     struct AnimationGraphPanelState {

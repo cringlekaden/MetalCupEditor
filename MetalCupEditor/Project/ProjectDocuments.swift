@@ -6,7 +6,15 @@ import Foundation
 import MetalCupEngine
 
 enum ProjectSchema {
-    static let currentVersion: Int = 5
+    static let currentVersion: Int = 6
+}
+
+struct ProjectRenderSettingsDocument: Codable, Equatable {
+    var exposure: ExposureSettings
+
+    init(exposure: ExposureSettings = ExposurePolicyResolver.engineFallback) {
+        self.exposure = exposure
+    }
 }
 
 enum ProjectShaderSource: Codable, Equatable {
@@ -61,6 +69,7 @@ struct ProjectDocument: Codable {
     var startScene: String
     var layerNames: [String]
     var shaderSource: ProjectShaderSource
+    var renderSettings: ProjectRenderSettingsDocument
 
     init(
         schemaVersion: Int = ProjectSchema.currentVersion,
@@ -74,7 +83,8 @@ struct ProjectDocument: Codable {
         savedDirectory: String,
         startScene: String,
         layerNames: [String] = LayerCatalog.defaultNames(),
-        shaderSource: ProjectShaderSource = .canonical
+        shaderSource: ProjectShaderSource = .canonical,
+        renderSettings: ProjectRenderSettingsDocument = ProjectRenderSettingsDocument()
     ) {
         self.schemaVersion = schemaVersion
         self.id = id
@@ -88,6 +98,7 @@ struct ProjectDocument: Codable {
         self.startScene = startScene
         self.layerNames = LayerCatalog.normalizedNames(layerNames)
         self.shaderSource = shaderSource
+        self.renderSettings = renderSettings
     }
 
     enum CodingKeys: String, CodingKey {
@@ -103,6 +114,7 @@ struct ProjectDocument: Codable {
         case startScene
         case layerNames
         case shaderSource
+        case renderSettings
     }
 
     init(from decoder: Decoder) throws {
@@ -120,6 +132,8 @@ struct ProjectDocument: Codable {
         let decodedNames = try container.decodeIfPresent([String].self, forKey: .layerNames) ?? LayerCatalog.defaultNames()
         layerNames = LayerCatalog.normalizedNames(decodedNames)
         shaderSource = try container.decodeIfPresent(ProjectShaderSource.self, forKey: .shaderSource) ?? .canonical
+        renderSettings = try container.decodeIfPresent(ProjectRenderSettingsDocument.self, forKey: .renderSettings)
+            ?? ProjectRenderSettingsDocument()
     }
 }
 
